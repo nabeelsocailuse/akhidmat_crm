@@ -1,0 +1,249 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2025-08-19 19:37:57.965142",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "details_section",
+  "full_name",
+  "gender",
+  "date_of_birth",
+  "cnic",
+  "column_break_fqfu",
+  "fatherhusband_name",
+  "photo",
+  "contact_location",
+  "address",
+  "section_break_qvwp",
+  "city",
+  "province",
+  "phone_number__mobile",
+  "gps_coordinates",
+  "column_break_unrn",
+  "district",
+  "country",
+  "email_address_if_available",
+  "demographic_and_household_data",
+  "employee_education",
+  "section_break_ogtk",
+  "marital_status",
+  "household_size_number_of_dependents",
+  "special_vulnerabilities",
+  "column_break_tqeq",
+  "occupation",
+  "household",
+  "verification_and_documentation_tab",
+  "supporting_documents",
+  "section_break_sooa",
+  "verification_status",
+  "assessment",
+  "column_break_dzcn",
+  "field_officer__social_mobilizer_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "details_section",
+   "fieldtype": "Section Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "full_name",
+   "fieldtype": "Data",
+   "label": "Full Name"
+  },
+  {
+   "fieldname": "gender",
+   "fieldtype": "Link",
+   "label": "Gender",
+   "options": "Gender"
+  },
+  {
+   "fieldname": "date_of_birth",
+   "fieldtype": "Date",
+   "label": "Date Of Birth"
+  },
+  {
+   "fieldname": "cnic",
+   "fieldtype": "Data",
+   "label": "CNIC / B-Form / Other ID "
+  },
+  {
+   "fieldname": "column_break_fqfu",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "fatherhusband_name",
+   "fieldtype": "Data",
+   "label": " Father/Husband Name "
+  },
+  {
+   "fieldname": "photo",
+   "fieldtype": "Attach Image",
+   "label": "Photo"
+  },
+  {
+   "fieldname": "contact_location",
+   "fieldtype": "Tab Break",
+   "label": "Contact & Location"
+  },
+  {
+   "fieldname": "address",
+   "fieldtype": "Small Text",
+   "label": "Address "
+  },
+  {
+   "fieldname": "section_break_qvwp",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "City"
+  },
+  {
+   "fieldname": "province",
+   "fieldtype": "Data",
+   "label": "Province"
+  },
+  {
+   "fieldname": "phone_number__mobile",
+   "fieldtype": "Phone",
+   "label": "Phone Number / Mobile "
+  },
+  {
+   "fieldname": "gps_coordinates",
+   "fieldtype": "Float",
+   "label": "GPS Coordinates (for field tracking, esp. WASH / Shelter projects) "
+  },
+  {
+   "fieldname": "column_break_unrn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "district",
+   "fieldtype": "Data",
+   "label": "District "
+  },
+  {
+   "fieldname": "country",
+   "fieldtype": "Link",
+   "label": "    Country ",
+   "options": "Country"
+  },
+  {
+   "fieldname": "email_address_if_available",
+   "fieldtype": "Data",
+   "label": "Email Address (if available) "
+  },
+  {
+   "fieldname": "demographic_and_household_data",
+   "fieldtype": "Tab Break",
+   "label": "Demographic & Household Data "
+  },
+  {
+   "fieldname": "employee_education",
+   "fieldtype": "Table",
+   "label": "Employee Education",
+   "options": "Employee Education"
+  },
+  {
+   "fieldname": "section_break_ogtk",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "marital_status",
+   "fieldtype": "Select",
+   "label": "Marital Status ",
+   "options": "\nSingle\nMarried\nDivorced\nWidowed\nSeparated\nEngaged"
+  },
+  {
+   "fieldname": "household_size_number_of_dependents",
+   "fieldtype": "Data",
+   "label": "    Household Size (number of dependents) "
+  },
+  {
+   "fieldname": "special_vulnerabilities",
+   "fieldtype": "Select",
+   "label": "Special Vulnerabilities ",
+   "options": "\nOrphan\nWidow\nDisabled\nIDP/refugee\nDisaster-affected\nOthers"
+  },
+  {
+   "fieldname": "column_break_tqeq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "occupation",
+   "fieldtype": "Data",
+   "label": "    Occupation "
+  },
+  {
+   "fieldname": "household",
+   "fieldtype": "Data",
+   "label": "Household Income Level (optional for poverty scoring) "
+  },
+  {
+   "fieldname": "verification_and_documentation_tab",
+   "fieldtype": "Tab Break",
+   "label": "Verification & Documentation "
+  },
+  {
+   "fieldname": "supporting_documents",
+   "fieldtype": "Table",
+   "label": "Supporting Documents",
+   "options": "Supporting Documents"
+  },
+  {
+   "fieldname": "section_break_sooa",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "verification_status",
+   "fieldtype": "Select",
+   "label": "Verification Status ",
+   "options": "\nPending\nVerified\nRejected"
+  },
+  {
+   "fieldname": "assessment",
+   "fieldtype": "Data",
+   "label": "Assessment / Survey Reference ID (if integrated with mobile data collection) "
+  },
+  {
+   "fieldname": "column_break_dzcn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "field_officer__social_mobilizer_name",
+   "fieldtype": "Data",
+   "label": "Field Officer / Social Mobilizer Name "
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-08-19 20:07:11.848318",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "Beneficiary",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

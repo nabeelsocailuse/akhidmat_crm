@@ -1,0 +1,2518 @@
+<template>
+  <LayoutHeader v-if="donor.data">
+    <template #left-header>
+      <Breadcrumbs :items="breadcrumbs" />
+    </template>
+    <template #right-header>
+      <CustomActions
+        v-if="donor.data.actions?.length"
+        :actions="donor.data.actions"
+      />
+      <Dropdown
+        v-if="document.doc"
+        :options="donorStatusOptions"
+      >
+        <template #default="{ open }">  
+          <Button :label="document.doc.status || 'Active'">
+            <template #prefix>
+              <IndicatorIcon :class="getDonorStatus(document.doc.status).color" />
+            </template>
+            <template #suffix>
+              <FeatherIcon
+                :name="open ? 'chevron-up' : 'chevron-down'"
+                class="h-4"
+              />
+            </template>
+          </Button>
+        </template>
+      </Dropdown>
+      <AssignTo
+        v-model="assignees.data"
+        :data="document.doc"
+        doctype="Donor"
+      />
+    </template>
+  </LayoutHeader>
+  <AppStyling type="detail-background">
+    <div v-if="donor.data" class="flex h-full overflow-hidden">
+      <Tabs as="div" v-model="tabIndex" :tabs="tabs">
+        <template #tab-panel>
+          <Activities
+            v-if="donor.data && donor.data.name"
+            ref="activities"
+            doctype="Donor"
+            :docname="donorId"
+            :tabs="tabs"
+            v-model:reload="reload"
+            v-model:tabIndex="tabIndex"
+            @beforeSave="saveChanges"
+            @afterSave="reloadAssignees"
+          />
+        </template>
+      </Tabs>
+    <Resizer class="flex flex-col justify-between border-l" side="right">
+      <div
+        class="flex h-10.5 cursor-copy items-center border-b px-5 py-2.5 text-lg font-medium text-ink-gray-9"
+        @click="copyToClipboard(donor.data.name)"
+      >
+        {{ __(donor.data.name) }}
+      </div>
+      <FileUploader
+        @success="(file) => updateField('image', file.file_url)"
+        :validateFile="validateIsImageFile"
+      >
+        <template #default="{ openFileSelector, error }">
+          <div class="flex items-center justify-start gap-5 border-b p-5">
+            <div class="group relative size-12">
+              <Avatar
+                size="3xl"
+                class="size-12"
+                :label="title"
+                :image="donor.data.image"
+              />
+              <component
+                :is="donor.data.image ? Dropdown : 'div'"
+                v-bind="
+                  donor.data.image
+                    ? {
+                        options: [
+                          {
+                            icon: 'upload',
+                            label: donor.data.image
+                              ? __('Change image')
+                              : __('Upload image'),
+                            onClick: openFileSelector,
+                          },
+                          {
+                            icon: 'trash-2',
+                            label: __('Remove image'),
+                            onClick: () => updateField('image', ''),
+                          },
+                        ],
+                      }
+                    : { onClick: openFileSelector }
+                "
+                class="!absolute bottom-0 left-0 right-0"
+              >
+                <div
+                  class="z-1 absolute bottom-0.5 left-0 right-0.5 flex h-9 cursor-pointer items-center justify-center rounded-b-full bg-black bg-opacity-40 pt-3 opacity-0 duration-300 ease-in-out group-hover:opacity-100"
+                  style="
+                    -webkit-clip-path: inset(12px 0 0 0);
+                    clip-path: inset(12px 0 0 0);
+                  "
+                >
+                  <CameraIcon class="size-4 cursor-pointer text-white" />
+                </div>
+              </component>
+            </div>
+            <div class="flex flex-col gap-2.5 truncate">
+              <Tooltip :text="donor.data.donor_name || __('Set donor name')">
+                <div class="truncate text-2xl font-medium text-ink-gray-9">
+                  {{ title }}
+                </div>
+              </Tooltip>
+              <div class="flex gap-1.5">
+                <Tooltip v-if="callEnabled" :text="__('Make a call')">
+                  <div>
+                    <Button
+                      class="h-7 w-7"
+                      @click="
+                        () =>
+                          donor.data.mobile_no
+                            ? makeCall(donor.data.mobile_no)
+                            : toast.error(__('No phone number set'))
+                      " 
+                    >
+                      <template #icon>c
+                        <PhoneIcon />
+                      </template>
+                    </Button>
+                  </div>
+                </Tooltip>
+                <Tooltip :text="__('Send an email')">
+                  <div>
+                    <Button
+                      class="h-7 w-7"
+                      @click="
+                        donor.data.email
+                          ? openEmailBox()
+                          : toast.error(__('No email set'))
+                      "
+                    >
+                      <template #icon>
+                        <Email2Icon />
+                      </template>
+                    </Button>
+                  </div>
+                </Tooltip>
+                <Tooltip :text="__('Go to website')">
+                  <div>
+                    <Button
+                      class="h-7 w-7"
+                      @click="
+                        donor.data.website
+                          ? openWebsite(donor.data.website)
+                          : toast.error(__('No website set'))
+                      "
+                    >
+                      <template #icon>
+                        <LinkIcon />
+                      </template>
+                    </Button>
+                  </div>
+                </Tooltip>
+                <Tooltip :text="__('Attach a file')">
+                  <div>
+                    <Button class="h-7 w-7" @click="showFilesUploader = true">
+                      <template #icon>
+                        <AttachmentIcon />
+                      </template>
+                    </Button>
+                  </div>
+                </Tooltip>
+                <Tooltip :text="__('Delete')">
+                  <div>
+                    <Button
+                      class="h-7 w-7"
+                      @click="deleteDonorWithModal(donor.data.name)"
+                      variant="subtle"
+                      theme="red"
+                    >
+                      <template #icon>
+                        <FeatherIcon name="trash-2" class="h-4 w-4" />
+                      </template>
+                    </Button>
+                  </div>
+                </Tooltip>
+              </div>
+              <ErrorMessage :message="__(error)" />
+            </div>
+          </div>
+        </template>
+      </FileUploader>
+      <SLASection
+        v-if="donor.data.sla_status"
+        v-model="donor.data"
+        @updateField="updateField"
+      />
+      <div
+        v-if="sections.data"
+        class="flex flex-1 flex-col justify-between overflow-hidden"
+      >
+        <SidePanelLayout
+          :sections="sections.data"
+          doctype="Donor"
+          :docname="donor.data.name"
+          @reload="sections.reload"
+          @afterFieldChange="reloadAssignees"
+          @open-create-modal="openCreateModal"
+        />
+        <template v-for="(modal, idx) in modalStack" :key="idx">
+          <CreateDocumentModal
+            v-model="modal.visible"
+            :doctype="modal.doctype"
+            :data="{ name: modal.initialValue }"
+            @callback="(doc) => handleModalSuccess(idx, doc)"
+            @close="() => handleModalClose(idx)"
+            @open-create-modal="openCreateModal"
+          />
+        </template>
+      </div>
+    </Resizer>
+    </div>
+  </AppStyling>
+  <ErrorPage
+    v-if="errorTitle"
+    :errorTitle="errorTitle"
+    :errorMessage="errorMessage"
+  />
+  <FilesUploader
+    v-if="donor.data?.name"
+    v-model="showFilesUploader"
+    doctype="Donor"
+    :docname="donor.data.name"
+    @after="() => { activities?.all_activities?.reload(); changeTabTo('attachments') }"
+  />
+
+  <!-- CNIC Exists Dialog -->
+  <Dialog v-model="showCnicExistsDialog" :options="{ size: 'sm' }" :disableOutsideClickToClose="true" :disableEscToClose="true">
+    <template #body>
+      <div class="p-6 text-center">
+        <div class="text-lg font-semibold text-red-600 mb-2">{{ cnicExistsMessage }}</div>
+        <Button variant="solid" @click="showCnicExistsDialog = false">OK</Button>
+      </div>
+    </template>
+  </Dialog>
+
+  <!-- CNIC Validation Error Dialog -->
+  <Dialog v-model="showCnicValidationDialog" :options="{ size: 'sm' }" :disableOutsideClickToClose="true" :disableEscToClose="true">
+    <template #body>
+      <div class="p-6 text-center">
+        <div class="text-lg font-semibold text-red-600 mb-2">{{ cnicValidationMessage }}</div>
+        <Button variant="solid" @click="showCnicValidationDialog = false">OK</Button>
+      </div>
+    </template>
+  </Dialog>
+
+</template>
+
+<script setup>
+import LayoutHeader from '@/components/LayoutHeader.vue'
+import Breadcrumbs from '@/components/Breadcrumbs.vue'
+import CustomActions from '@/components/CustomActions.vue'
+import AssignTo from '@/components/AssignTo.vue'
+import Activities from '@/components/Activities/Activities.vue'
+import SidePanelLayout from '@/components/SidePanelLayout.vue'
+import Resizer from '@/components/Resizer.vue'
+import ErrorPage from '@/components/ErrorPage.vue'
+import Icon from '@/components/Icon.vue'
+import DataFields from '@/components/Activities/DataFields.vue'
+import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
+import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
+import SLASection from '@/components/SLASection.vue'
+import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
+import CameraIcon from '@/components/Icons/CameraIcon.vue'
+import LinkIcon from '@/components/Icons/LinkIcon.vue'
+import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
+import EditIcon from '@/components/Icons/EditIcon.vue'
+import AppStyling from '@/components/AppStyling.vue'
+import { getMeta } from '@/stores/meta'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick, h, reactive } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useActiveTabManager } from '@/composables/useActiveTabManager'
+import { createResource } from 'frappe-ui'
+import { getSettings } from '@/stores/settings'
+import { sessionStore } from '@/stores/session'
+import { usersStore } from '@/stores/users'
+import { globalStore } from '@/stores/global'
+import { statusesStore } from '@/stores/statuses'
+import {
+  whatsappEnabled,
+  callEnabled,
+  isMobileView,
+} from '@/composables/settings'
+import {
+  openWebsite,
+  setupCustomizations,
+  copyToClipboard,
+  validateIsImageFile,
+} from '@/utils'
+import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
+import { getView } from '@/utils/view'
+import { capture } from '@/telemetry'
+import { useOnboarding } from 'frappe-ui/frappe'
+import {
+  FileUploader,
+  Dropdown,
+  Tooltip,
+  Avatar,
+  Tabs,
+  Switch,
+  call,
+  usePageMeta,
+  toast,
+  FeatherIcon,
+} from 'frappe-ui'
+import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
+import EmailIcon from '@/components/Icons/EmailIcon.vue'
+import Email2Icon from '@/components/Icons/Email2Icon.vue'
+import CommentIcon from '@/components/Icons/CommentIcon.vue'
+import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
+import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
+import TaskIcon from '@/components/Icons/TaskIcon.vue'
+import NoteIcon from '@/components/Icons/NoteIcon.vue'
+import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
+import { useDocument } from '@/data/document'
+import ViewBreadcrumbs from '@/components/ViewBreadcrumbs.vue'
+import CreateDocumentModal from '@/components/Modals/CreateDocumentModal.vue'
+
+import { useInputMask } from '@/composables/useInputMask'
+import { useDonorFieldValidation } from '@/composables/useDonorFieldValidation'
+
+const { brand } = getSettings()
+const { user } = sessionStore()
+const { isManager } = usersStore()
+const { $dialog, $socket, makeCall } = globalStore()
+const { statusOptions, getLeadStatus, getDealStatus } = statusesStore()
+const { doctypeMeta } = getMeta('Donor')
+
+const { updateOnboardingStep } = useOnboarding('frappecrm')
+
+// Initialize donor field validation composable
+const {
+  showCnicExistsDialog,
+  cnicExistsMessage,
+  showCnicValidationDialog,
+  cnicValidationMessage,
+  formatCnic,
+  formatNtn,
+  formatPassport,
+  getMaskPattern,
+  applyCnicMaskToInput,
+  validateCnicFormat,
+  getCountryPhoneMask,
+  applyPhoneMaskToInput,
+  applyPhoneMasksForCountry,
+  validatePhoneNumber,
+  showPhoneValidationFeedback,
+  findInputField
+} = useDonorFieldValidation()
+
+const route = useRoute()
+const router = useRouter()
+
+const props = defineProps({
+  donorId: {
+    type: String,
+    required: true,
+  },
+})
+
+const errorTitle = ref('')
+const errorMessage = ref('')
+
+const donor = createResource({
+  url: 'crm.fcrm.doctype.donor.api.get_donor',
+  params: { name: props.donorId },
+  cache: ['donor', props.donorId],
+  auto: true,
+  onSuccess: (data) => {
+    errorTitle.value = ''
+    errorMessage.value = ''
+  },
+  onError: (err) => {
+    if (err.messages?.[0]) {
+      errorTitle.value = __('Not permitted')
+      errorMessage.value = __(err.messages?.[0])
+    } else {
+      router.push({ name: 'Donor' })
+    }
+  },
+})
+
+
+
+const { document, assignees, triggerOnchange } = useDocument('Donor', props.donorId)
+
+// Override the document save method to include validation
+const overrideDocumentSave = () => {
+  if (document && document.save && document.save.submit) {
+    // Only override if not already overridden
+    if (!document.save._validationOverridden) {
+      const originalSubmit = document.save.submit
+      document.save.submit = async function(data, options) {
+        // Validate before allowing save
+        const isValid = await validateBeforeSave()
+        if (!isValid) {
+          return // Don't save if validation fails
+        }
+        
+        // Call the original submit method
+        return originalSubmit.call(this, data, options)
+      }
+      document.save._validationOverridden = true
+      console.log('Document save method overridden with validation')
+    }
+  }
+}
+
+// Function to validate form immediately and show errors
+async function validateFormNow() {
+  const isValid = await validateBeforeSave()
+  if (!isValid) {
+    // Validation failed, errors are already shown by validateBeforeSave
+    return false
+  }
+  return true
+}
+
+// Function to validate a specific field
+async function validateField(fieldname, value) {
+  // Check if it's a required field
+  if (donor.fields_meta && donor.fields_meta[fieldname]?.reqd && (!value || value.trim() === '')) {
+    const fieldLabel = donor.fields_meta[fieldname].label || fieldname
+    toast.error(__('{0} is a required field', [fieldLabel]))
+    return false
+  }
+  
+  // CNIC validation
+  if (fieldname === 'cnic' && document.doc?.identification_type && document.doc?.identification_type !== 'Others') {
+    if (!value || value.trim() === '') {
+      toast.error('CNIC is required when identification type is set')
+      return false
+    } else if (!validateCnicFormat(value, document.doc.identification_type)) {
+      toast.error(`Invalid ${document.doc.identification_type} format. Please enter a valid ${document.doc.identification_type} number.`)
+      return false
+    }
+  }
+  
+  // Contact number validation
+  if (['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person'].includes(fieldname) && document.doc?.country) {
+    if (value && value.trim() !== '') {
+      const validation = await validatePhoneNumber(value, document.doc.country)
+      if (!validation.isValid) {
+        const fieldLabels = {
+          'contact_no': 'Contact Number',
+          'co_contact_no': 'C/O Contact Number',
+          'company_contact_number': 'Company Contact Number',
+          'organization_contact_person': 'Organization Contact Person'
+        }
+        toast.error(`${fieldLabels[fieldname]}: ${validation.message}`)
+        return false
+      }
+    }
+  }
+  
+  return true
+}
+
+// Function to reapply all masks
+async function reapplyAllMasksNow() {
+  console.log('Reapplying all masks...')
+  
+  // Reapply CNIC mask if identification type is set
+  if (document.doc?.identification_type) {
+    applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+  }
+  
+  // Reapply phone masks if country is set
+  if (document.doc?.country) {
+    await applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+  }
+  
+  console.log('All masks reapplied')
+}
+
+
+
+// Add a more comprehensive mask reapplication function that can be called manually
+window.forceReapplyAllMasks = async () => {
+  console.log('Force reapplying all masks...')
+  
+  // Wait a bit for DOM to be ready
+  await new Promise(resolve => setTimeout(resolve, 100))
+  
+  // Try to find and reapply masks to all relevant fields
+  const cnicInput = findInputField('cnic')
+  const contactInput = findInputField('contact_no')
+  
+  if (cnicInput && document.doc?.identification_type) {
+    console.log('Reapplying CNIC mask...')
+    applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+  }
+  
+  if (contactInput && document.doc?.country) {
+    console.log('Reapplying phone masks...')
+    await applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+  }
+  
+  console.log('Force mask reapplication completed')
+}
+
+// Add a function specifically for the Activities component to call
+window.reapplyMasksForActivities = async () => {
+  console.log('Activities component requesting mask reapplication...')
+  
+  // Wait for DOM to be ready
+  await nextTick()
+  
+  // Try multiple times with increasing delays
+  setTimeout(reapplyAllMasksNow, 100)
+  setTimeout(reapplyAllMasksNow, 300)
+  setTimeout(reapplyAllMasksNow, 500)
+  setTimeout(reapplyAllMasksNow, 1000)
+  
+  // Also run aggressive monitoring
+  if (window.aggressiveMaskMonitor) {
+    window.aggressiveMaskMonitor()
+  }
+}
+
+// Add a function that can be called from any component to reapply masks
+window.reapplyMasksImmediately = async () => {
+  console.log('Immediate mask reapplication requested...')
+  
+  // Run aggressive monitoring immediately
+  if (window.aggressiveMaskMonitor) {
+    window.aggressiveMaskMonitor()
+  }
+  
+  // Also try to reapply all masks
+  await reapplyAllMasksNow()
+  
+  // Set up a more aggressive monitoring for the next few seconds
+  for (let i = 1; i <= 10; i++) {
+    setTimeout(() => {
+      if (window.aggressiveMaskMonitor) {
+        window.aggressiveMaskMonitor()
+      }
+    }, i * 200)
+  }
+}
+
+// Make the aggressive mask monitor available globally
+window.aggressiveMaskMonitor = null // Will be set in onMounted
+
+// Add comprehensive debugging functions
+window.debugDonorMasks = () => {
+  console.log('=== Donor Mask Debugging ===')
+  
+  const cnicInput = findInputField('cnic')
+  const contactInput = findInputField('contact_no')
+  
+  console.log('CNIC Input:', cnicInput)
+  if (cnicInput) {
+    console.log('CNIC Mask Handler:', cnicInput._maskHandler)
+    console.log('CNIC Mask Applied:', cnicInput._maskApplied)
+    console.log('CNIC Value:', cnicInput.value)
+  }
+  
+  console.log('Contact Input:', contactInput)
+  if (contactInput) {
+    console.log('Pakistan Handler:', contactInput._pakistanHandler)
+    console.log('Other Country Handler:', contactInput._otherCountryHandler)
+    console.log('Phone Mask Applied:', contactInput._phoneMaskApplied)
+    console.log('Contact Value:', contactInput.value)
+  }
+  
+  console.log('Document Data:', {
+    identification_type: document.doc?.identification_type,
+    country: document.doc?.country,
+    cnic: document.doc?.cnic,
+    contact_no: document.doc?.contact_no
+  })
+  
+  console.log('Available Functions:', {
+    reapplyAllMasksNow: typeof reapplyAllMasksNow,
+    applyCnicMaskToInput: typeof applyCnicMaskToInput,
+    applyPhoneMasksForCountry: typeof applyPhoneMasksForCountry,
+    findInputField: typeof findInputField
+  })
+}
+
+// Override any global save functions that might be used
+const originalSave = window.save || window.Save
+if (originalSave && typeof originalSave === 'function') {
+  window.save = async function(...args) {
+    // Check if this is a donor-related save
+    if (document && document.doc && document.doc.doctype === 'Donor') {
+      console.log('Global save function intercepted, validating...')
+      const isValid = await validateBeforeSave()
+      if (!isValid) {
+        console.log('Global save validation failed')
+        return false
+      }
+    }
+    
+    // Call the original save function
+    return originalSave.apply(this, args)
+  }
+  window.Save = window.save // Also override capitalized version
+}
+
+// Try to override immediately
+overrideDocumentSave()
+
+// Watch for document changes to ensure save method is overridden
+watch(() => document, () => {
+  if (document && document.save) {
+    setTimeout(overrideDocumentSave, 100)
+  }
+}, { deep: true })
+
+watch(() => document.doc?.country, async (newCountry, oldCountry) => {
+  if (document.doc && newCountry && oldCountry && newCountry !== oldCountry) {
+    const fieldsToClear = [
+      'contact_no',
+      'co_contact_no', 
+
+      'state',
+      'area',
+      'citytown',
+      'stateprovince',
+      'address_type',
+      'address_line_1',
+      'address_line_2'
+    ]
+    
+    fieldsToClear.forEach(field => {
+      if (document.doc && document.doc[field] !== undefined) {
+        document.doc[field] = ""
+      }
+    })
+    
+    if (donor.data) {
+      fieldsToClear.forEach(field => {
+        if (donor.data[field] !== undefined) {
+          donor.data[field] = ""
+        }
+      })
+    }
+  }
+  
+
+})
+
+const reload = ref(false)
+const showFilesUploader = ref(false)
+const modalStack = ref([])
+function openCreateModal({ doctype, initialValue, onSuccess }) {
+  modalStack.value.push({
+    doctype,
+    initialValue,
+    onSuccess,
+    visible: true,
+  })
+}
+function handleModalSuccess(idx, doc) {
+  const modal = modalStack.value[idx]
+  if (modal && modal.onSuccess) modal.onSuccess(doc)
+  modalStack.value.splice(idx, 1)
+}
+function handleModalClose(idx) {
+  modalStack.value.splice(idx, 1)
+}
+
+async function validateRequired(fieldname, value) {
+  let meta = donor.fields_meta || {}
+  
+  if (donor.data?.foa === 1 || donor.data?.foa === true || donor.data?.foa == 1 || !!donor.data?.foa) {
+    const foaRequiredFields = ['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor']
+    
+    if (foaRequiredFields.includes(fieldname)) {
+      if (!value || value.trim() === '') {
+        const fieldLabels = {
+          'co_name': 'C/O Name',
+          'co_contact_no': 'C/O Contact No',
+          'co_email': 'C/O Email',
+          'co_address': 'C/O Address',
+          'relationship_with_donor': 'Relationship With Donor'
+        }
+        toast.error(__('{0} is required when FOA is enabled', [fieldLabels[fieldname] || fieldname]))
+        return true
+      }
+      
+
+      
+      if (fieldname === 'co_email' && value) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(value.trim())) {
+          toast.error(__('Invalid C/O Email format. Please enter a valid email address.'))
+          return true
+        }
+      }
+    }
+  }
+  
+  if (fieldname === 'contact_no' && value && donor.data?.country) {
+    const phoneValidationResult = await validatePhoneNumber(value, donor.data.country)
+    if (!phoneValidationResult.isValid) {
+      toast.error(`Invalid contact number for ${donor.data.country}. ${phoneValidationResult.message}`)
+      return true
+    }
+  }
+  
+  if (fieldname === 'co_contact_no' && value && donor.data?.country && donor.data?.foa) {
+    // Phone validation removed
+  }
+  
+  if (meta[fieldname]?.reqd && !value) {
+    toast.error(__('{0} is a required field', [meta[fieldname].label]))
+    return true
+  }
+  
+
+  
+
+  
+  return false
+}
+
+// Phone validation function removed
+
+
+// Phone masking functions moved to useDonorFieldValidation composable
+
+// Phone validation feedback functions moved to useDonorFieldValidation composable
+
+function showEmailValidationFeedback(fieldName, isValid, message) {
+  nextTick(() => {
+    let inputElement = null
+    
+    inputElement = globalThis.document.querySelector(`input[name="${fieldName}"]`)
+    
+    if (!inputElement) {
+      inputElement = globalThis.document.querySelector(`[data-name="${fieldName}"] input`)
+    }
+    
+    if (!inputElement) {
+      inputElement = globalThis.document.querySelector(`[data-fieldname="${fieldName}"] input`)
+    }
+    
+    // If no input element found, return early
+    if (!inputElement || !inputElement.parentNode) return
+    
+    // Clear existing validation messages first
+    const existingMessages = inputElement.parentNode.querySelectorAll('.email-error-message')
+    existingMessages?.forEach(msg => msg.remove())
+    
+    // Remove existing validation classes
+    inputElement.classList.remove('border-red-500', 'border-green-500')
+    
+    if (!isValid) {
+      inputElement.classList.add('border-red-500')
+      // Show error message below the field
+      let errorElement = inputElement.parentNode.querySelector('.email-error-message')
+      if (!errorElement) {
+        errorElement = globalThis.document.createElement('div')
+        errorElement.className = 'email-error-message text-red-500 text-sm mt-1 block w-full'
+        errorElement.style.cssText = 'color: #ef4444; font-size: 12px; margin-top: 4px; display: block; width: 100%;'
+        inputElement.parentNode.appendChild(errorElement)
+      }
+      errorElement.textContent = message
+    } else {
+      inputElement.classList.add('border-green-500')
+      // Remove error message
+      const errorElement = inputElement.parentNode.querySelector('.email-error-message')
+      if (errorElement) {
+        errorElement.remove()
+      }
+    }
+  })
+}
+
+// findInputField function moved to useDonorFieldValidation composable
+
+// Phone mask application function removed
+
+// Conditional field discovery function removed
+
+// Phone field discovery function removed
+
+// Helper function to set field value based on field name
+function setFieldValue(fieldName, value) {
+  if (!document.doc) return
+  
+  switch (fieldName) {
+    case 'cnic':
+      document.doc.cnic = value
+      break
+    case 'contact_no':
+      document.doc.contact_no = value
+      break
+    case 'co_contact_no':
+      document.doc.co_contact_no = value
+      break
+    case 'company_contact_number':
+      document.doc.company_contact_number = value
+      break
+    case 'organization_contact_person':
+      document.doc.organization_contact_person = value
+      break
+  }
+}
+
+// CNIC masking functions moved to useDonorFieldValidation composable
+
+// CNIC mask application function removed
+
+// Reapply all masks function removed
+
+// This duplicate function has been removed
+
+// Tab change handler function removed
+
+// Add FOA validation watcher
+watch(() => donor.data?.foa, (newFOA, oldFOA) => {
+  if (newFOA !== oldFOA) {
+    // When FOA changes, validate all FOA-related fields
+    const foaFields = ['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor']
+    foaFields.forEach(fieldname => {
+      if (newFOA) {
+        // If FOA is enabled, validate that required fields are filled
+        const value = donor.data?.[fieldname]
+        if (!value || value.trim() === '') {
+          const fieldLabels = {
+            'co_name': 'C/O Name',
+            'co_contact_no': 'C/O Contact No',
+            'co_email': 'C/O Email',
+            'co_address': 'C/O Address',
+            'relationship_with_donor': 'Relationship With Donor'
+          }
+          toast.error(__('{0} is required when FOA is enabled', [fieldLabels[fieldname] || fieldname]))
+        }
+      }
+    })
+  }
+}, { immediate: true })
+
+async function validateBeforeSave() {
+  const errors = []
+  
+  // CNIC validation - this is the field mentioned in the user's issue
+  if (document.doc?.identification_type && document.doc?.identification_type !== 'Others') {
+    if (!document.doc?.cnic || document.doc.cnic.trim() === '') {
+      errors.push('CNIC is required when identification type is set')
+    } else if (!validateCnicFormat(document.doc.cnic, document.doc.identification_type)) {
+      errors.push(`Invalid ${document.doc.identification_type} format. Please enter a valid ${document.doc.identification_type} number.`)
+    }
+  }
+  
+  // Contact number validation - this is the field mentioned in the user's issue
+  if (document.doc?.country) {
+    const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person']
+    
+    for (const fieldName of phoneFields) {
+      if (document.doc[fieldName] && document.doc[fieldName].trim() !== '') {
+        const validation = await validatePhoneNumber(document.doc[fieldName], document.doc.country)
+        if (!validation.isValid) {
+          const fieldLabels = {
+            'contact_no': 'Contact Number',
+            'co_contact_no': 'C/O Contact Number',
+            'company_contact_number': 'Company Contact Number',
+            'organization_contact_person': 'Organization Contact Person'
+          }
+          errors.push(`${fieldLabels[fieldName]}: ${validation.message}`)
+        }
+      }
+    }
+  }
+  
+  // FOA validation
+  if (donor.data?.foa === 1 || donor.data?.foa === true || donor.data?.foa == 1 || !!donor.data?.foa) {
+    const foaRequiredFields = [
+      { fieldname: 'co_name', label: 'C/O Name' },
+      { fieldname: 'co_contact_no', label: 'C/O Contact No' },
+      { fieldname: 'co_email', label: 'C/O Email' },
+      { fieldname: 'co_address', label: 'C/O Address' },
+      { fieldname: 'relationship_with_donor', label: 'Relationship With Donor' }
+    ]
+    
+    for (const field of foaRequiredFields) {
+      const value = donor.data?.[field.fieldname]
+      if (!value || value.trim() === '') {
+        errors.push(`${field.label} is required when FOA is enabled`)
+      } else {
+        // Phone validation removed
+        
+        if (field.fieldname === 'co_email') {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+          if (!emailRegex.test(value.trim())) {
+            errors.push('Invalid C/O Email format. Please enter a valid email address.')
+          }
+        }
+      }
+    }
+  }
+  
+  // Check for required fields based on metadata - this ensures all required fields are validated
+  if (donor.fields_meta) {
+    for (const [fieldname, meta] of Object.entries(donor.fields_meta)) {
+      if (meta.reqd && document.doc && (!document.doc[fieldname] || document.doc[fieldname].toString().trim() === '')) {
+        errors.push(`${meta.label || fieldname} is a required field`)
+      }
+    }
+  }
+  
+  // Additional validation for critical fields that should always be required
+  const criticalFields = ['donor_name', 'email']
+  for (const fieldname of criticalFields) {
+    if (document.doc && (!document.doc[fieldname] || document.doc[fieldname].toString().trim() === '')) {
+      const fieldLabel = donor.fields_meta?.[fieldname]?.label || fieldname
+      errors.push(`${fieldLabel} is a required field`)
+    }
+  }
+  
+  if (errors.length > 0) {
+    const errorMessage = `Please fix the following validation errors:\n\n${errors.map(error => `• ${error}`).join('\n')}`
+    toast.error(errorMessage)
+    return false
+  }
+  
+  return true
+}
+
+
+
+// Override the updateDonor function to include FOA validation
+async function updateDonor(fieldname, value, callback) {
+  value = Array.isArray(fieldname) ? '' : value
+
+  // Validate before updating
+  if (!Array.isArray(fieldname) && await validateRequired(fieldname, value)) return
+  
+  // Special validation for main contact number removed
+  
+  // Always validate FOA fields if FOA is enabled, regardless of which field is being updated
+  if (donor.data?.foa === 1 || donor.data?.foa === true || donor.data?.foa == 1 || !!donor.data?.foa) {
+    // If we're updating a FOA field, validate it specifically
+    if (['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor'].includes(fieldname)) {
+      if (!(await validateFOAField(fieldname, value))) return
+    }
+    
+    // If we're updating the FOA field itself, validate all FOA fields
+    if (fieldname === 'foa' && value) {
+      if (!(await validateAllFOAFields())) return
+    }
+  }
+
+  createResource({
+    url: 'frappe.client.set_value',
+    params: {
+      doctype: 'Donor',
+      name: props.donorId,
+      fieldname,
+      value,
+    },
+    auto: true,
+    onSuccess: () => {
+      donor.reload()
+      toast.success(__('Donor updated successfully'))
+      callback?.()
+    },
+    onError: (err) => {
+      const msg = err.messages?.[0] || err.message || __('Error updating donor')
+      
+      // Check if it's a timestamp mismatch error
+      if (msg.includes('TimestampMismatchError') || 
+          msg.includes('Document has been modified') ||
+          msg.includes('Please refresh to get the latest document')) {
+        
+        toast.error(__('Document has been modified. Refreshing donor details...'))
+        
+        // Refresh only the donor data after a short delay
+        setTimeout(() => {
+          donor.cache = ['donor', props.donorId, Date.now()]
+          donor.reload()
+        }, 1000)
+      } else if (/CNIC|cnic|valid CNIC|xxxxx-xxxxxxx-x/.test(msg)) {
+        toast.error(msg)
+      } else {
+        toast.error(msg)
+      }
+    },
+  })
+}
+
+// Add function to validate individual FOA field
+async function validateFOAField(fieldname, value) {
+  const fieldLabels = {
+    'co_name': 'C/O Name',
+    'co_contact_no': 'C/O Contact No',
+    'co_email': 'C/O Email',
+    'co_address': 'C/O Address',
+    'relationship_with_donor': 'Relationship With Donor'
+  }
+  
+  if (!value || value.trim() === '') {
+    toast.error(__('{0} is required when FOA is enabled', [fieldLabels[fieldname] || fieldname]))
+    return false
+  }
+  
+        // Phone validation for C/O contact number removed
+  
+  if (fieldname === 'co_email') {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(value.trim())) {
+      toast.error(__('Invalid C/O Email format. Please enter a valid email address.'))
+      return false
+    }
+  }
+  
+  return true
+}
+
+// Add function to validate all FOA fields
+async function validateAllFOAFields() {
+  const errors = []
+  const foaRequiredFields = [
+    { fieldname: 'co_name', label: 'C/O Name' },
+    { fieldname: 'co_contact_no', label: 'C/O Contact No' },
+    { fieldname: 'co_email', label: 'C/O Email' },
+    { fieldname: 'co_address', label: 'C/O Address' },
+    { fieldname: 'relationship_with_donor', label: 'Relationship With Donor' }
+  ]
+  
+  for (const field of foaRequiredFields) {
+    const value = donor.data?.[field.fieldname]
+    if (!value || value.trim() === '') {
+      errors.push(`${field.label} is required when FOA is enabled`)
+    } else {
+              // Phone validation for C/O contact number removed
+      
+      if (field.fieldname === 'co_email') {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(value.trim())) {
+          errors.push('Invalid C/O Email format. Please enter a valid email address.')
+        }
+      }
+    }
+  }
+  
+  // Phone validation removed
+  
+  if (errors.length > 0) {
+    const errorMessage = `Please fix the following validation errors:\n\n${errors.map(error => `• ${error}`).join('\n')}`
+    toast.error(errorMessage)
+    return false
+  }
+  
+  return true
+}
+
+// Add real-time validation for field changes
+watch(() => donor.data, async (newData, oldData) => {
+  if (!newData || !oldData) return
+  
+  // Check if FOA was enabled and validate all FOA fields
+  if (newData.foa && !oldData.foa) {
+    // FOA was just enabled, validate all FOA fields
+    await validateAllFOAFields()
+  }
+  
+  // Check if any FOA field was changed and FOA is enabled
+  const foaFields = ['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor']
+  for (const fieldname of foaFields) {
+    if (newData[fieldname] !== oldData[fieldname] && newData.foa) {
+      // A FOA field was changed and FOA is enabled, validate it
+      await validateFOAField(fieldname, newData[fieldname])
+    }
+  }
+}, { deep: true })
+
+// Phone validation watchers removed
+
+const breadcrumbs = computed(() => [
+  { label: __('Donor'), route: { name: 'Donor' } },
+  { label: title.value, route: { name: 'DonorDetail', params: { donorId: donor.data.name } } }
+])
+
+const title = computed(() => {
+  let t = doctypeMeta['Donor']?.title_field || 'name'
+  return donor.data?.[t] || props.donorId
+})
+
+usePageMeta(() => {
+  return {
+    title: title.value,
+    icon: brand.favicon,
+  }
+})
+
+const tabs = computed(() => {
+  let tabOptions = [
+    {
+      name: 'Activity',
+      label: __('Activity'),
+      icon: ActivityIcon,
+    },
+    {
+      name: 'Emails',
+      label: __('Emails'),
+      icon: EmailIcon,
+    },
+    {
+      name: 'Comments',
+      label: __('Comments'),
+      icon: CommentIcon,
+    },
+    {
+      name: 'Data',
+      label: __('Data'),
+      icon: DetailsIcon,
+    },
+    {
+      name: 'Calls',
+      label: __('Calls'),
+      icon: PhoneIcon,
+    },
+    {
+      name: 'Tasks',
+      label: __('Tasks'),
+      icon: TaskIcon,
+    },
+    {
+      name: 'Notes',
+      label: __('Notes'),
+      icon: NoteIcon,
+    },
+    {
+      name: 'Attachments',
+      label: __('Attachments'),
+      icon: AttachmentIcon,
+    },
+    {
+      name: 'WhatsApp',
+      label: __('WhatsApp'),
+      icon: WhatsAppIcon,
+      condition: () => whatsappEnabled.value,
+    },
+  ]
+  return tabOptions.filter((tab) => (tab.condition ? tab.condition() : true))
+})
+
+const { tabIndex, changeTabTo } = useActiveTabManager(tabs, 'lastDonorTab')
+
+// Watch for tab changes to reapply masks
+watch(tabIndex, async (newTabIndex, oldTabIndex) => {
+  if (newTabIndex !== oldTabIndex) {
+    console.log('Tab changed, reapplying masks...')
+    // Wait for the DOM to update with the new tab content
+    await nextTick()
+    
+    // Dispatch custom event for other components to listen to
+    document.dispatchEvent(new CustomEvent('tabChanged', { 
+      detail: { 
+        newTabIndex, 
+        oldTabIndex,
+        tabName: tabs.value[newTabIndex]?.name 
+      } 
+    }))
+    
+    // Try multiple times with increasing delays to ensure DOM is ready
+    setTimeout(reapplyAllMasksNow, 100)
+    setTimeout(reapplyAllMasksNow, 300)
+    setTimeout(reapplyAllMasksNow, 500)
+    setTimeout(reapplyAllMasksNow, 1000)
+    
+    // Also set up a MutationObserver to watch for field layout changes
+    setTimeout(() => {
+      const fieldLayout = document.querySelector('.field-layout-wrapper')
+      if (fieldLayout) {
+        // Create a new observer for this tab change
+        const tabChangeObserver = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+              // New nodes were added, reapply masks
+              setTimeout(reapplyMasks, 100)
+            }
+          })
+        })
+        
+        tabChangeObserver.observe(fieldLayout, {
+          childList: true,
+          subtree: true
+        })
+        
+        // Store the observer for cleanup
+        if (!window.tabChangeObservers) {
+          window.tabChangeObservers = []
+        }
+        window.tabChangeObservers.push(tabChangeObserver)
+        
+        // Clean up after 5 seconds
+        setTimeout(() => {
+          if (tabChangeObserver) {
+            tabChangeObserver.disconnect()
+            const index = window.tabChangeObservers.indexOf(tabChangeObserver)
+            if (index > -1) {
+              window.tabChangeObservers.splice(index, 1)
+            }
+          }
+        }, 5000)
+        
+        // Also call the reapply function when mutations are detected
+        const mutationHandler = (mutations) => {
+          mutations.forEach((mutation) => {
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+              // New nodes were added, reapply masks
+              setTimeout(reapplyAllMasksNow, 100)
+            }
+          })
+        }
+        
+        tabChangeObserver.observe(fieldLayout, {
+          childList: true,
+          subtree: true
+        })
+        
+        // Store the observer for cleanup
+        if (!window.tabChangeObservers) {
+          window.tabChangeObservers = []
+        }
+        window.tabChangeObservers.push(tabChangeObserver)
+        
+        // Clean up after 5 seconds
+        setTimeout(() => {
+          if (tabChangeObserver) {
+            tabChangeObserver.disconnect()
+            const index = window.tabChangeObservers.indexOf(tabChangeObserver)
+            if (index > -1) {
+              window.tabChangeObservers.splice(index, 1)
+            }
+          }
+        }, 5000)
+      }
+    }, 200)
+  }
+})
+
+// Also watch for Activities component reload to reapply masks
+watch(() => reload.value, async (newReload, oldReload) => {
+  if (newReload !== oldReload && newReload) {
+    console.log('Activities reloaded, reapplying masks...')
+    // Wait for the DOM to update
+    await nextTick()
+    
+    // Reapply masks after a short delay to ensure DOM is ready
+    setTimeout(async () => {
+      if (document.doc?.identification_type) {
+        applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+      }
+      
+      if (document.doc?.country) {
+        await applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+      }
+    }, 500)
+  }
+})
+
+// Watch for Activities component changes more aggressively
+watch(() => activities.value, async (newActivities, oldActivities) => {
+  if (newActivities && newActivities !== oldActivities) {
+    console.log('Activities component changed, reapplying masks...')
+    // Wait for the DOM to update
+    await nextTick()
+    
+    // Try multiple times with increasing delays
+    setTimeout(reapplyAllMasksNow, 100)
+    setTimeout(reapplyAllMasksNow, 300)
+    setTimeout(reapplyAllMasksNow, 500)
+    setTimeout(reapplyAllMasksNow, 1000)
+  }
+}, { deep: true })
+
+// Donor status management
+const donorStatusOptions = computed(() => [
+  {
+    label: __('Active'),
+    value: 'Active',
+    icon: () => h(IndicatorIcon, { class: 'text-green-500' }),
+    onClick: async () => {
+      await updateDonorStatus('Active')
+    },
+  },
+  {
+    label: __('Blocked'),
+    value: 'Blocked',
+    icon: () => h(IndicatorIcon, { class: 'text-red-500' }),
+    onClick: async () => {
+      await updateDonorStatus('Blocked')
+    },
+  },
+])
+
+function getDonorStatus(status) {
+  if (!status || status === 'Active') {
+    return {
+      name: 'Active',
+      color: 'text-green-500',
+    }
+  }
+  return {
+    name: status,
+    color: 'text-red-500',
+  }
+}
+
+async function updateDonorStatus(newStatus) {
+  if (!donor.data || !newStatus) return
+  
+  try {
+    // Use the custom API method to update status without validation issues
+    const result = await call('crm.fcrm.doctype.donor.api.update_donor_status', {
+      name: donor.data.name,
+      status: newStatus
+    })
+    
+    if (result.success) {
+      donor.data.status = newStatus
+      document.doc.status = newStatus
+      toast.success(__('Status updated successfully'))
+      
+      // Refresh donor details after status update
+      donor.cache = ['donor', props.donorId, Date.now()]
+      donor.reload()
+      
+      // Also reload document object
+      if (document && document.reload) {
+        document.reload()
+      }
+    } else {
+      toast.error(result.message || __('Failed to update status'))
+    }
+  } catch (error) {
+    // Check if it's a timestamp mismatch error
+    const errorMessage = error.message || error.toString()
+    if (errorMessage.includes('TimestampMismatchError') || 
+        errorMessage.includes('Document has been modified') ||
+        errorMessage.includes('Please refresh to get the latest document')) {
+      
+      toast.error(__('Document has been modified. Refreshing donor details...'))
+      
+      // Refresh only the donor data after a short delay
+      setTimeout(() => {
+        donor.cache = ['donor', props.donorId, Date.now()]
+        donor.reload()
+      }, 1000)
+    } else {
+    toast.error(__('Failed to update status'))
+    }
+  }
+}
+
+watch(tabs, (value) => {
+  if (value && route.params.tabName) {
+    let index = value.findIndex(
+      (tab) => tab.name.toLowerCase() === route.params.tabName.toLowerCase(),
+    )
+    if (index !== -1) {
+      tabIndex.value = index
+    }
+  }
+})
+
+const sections = createResource({
+  url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
+  cache: ['sidePanelSections', 'Donor'],
+  params: { doctype: 'Donor' },
+  auto: true,
+  onSuccess: (data) => {
+    // Data loaded successfully
+  },
+  onError: (error) => {
+    // Handle error silently
+  }
+})
+
+async function updateField(name, value, callback) {
+  // Validate through the validateRequired function
+  const validationResult = await validateRequired(name, value)
+  if (validationResult) {
+    return // Block the update if validation fails
+  }
+  
+  // Additional validation for required fields based on metadata
+  if (donor.fields_meta && donor.fields_meta[name]?.reqd && (!value || value.trim() === '')) {
+    toast.error(__('{0} is a required field', [donor.fields_meta[name].label]))
+    return
+  }
+  
+  await updateDonor(name, value, () => {
+    donor.data[name] = value
+    callback?.()
+  })
+}
+
+async function deleteDonor(name) {
+  await call('frappe.client.delete', {
+    doctype: 'Donor',
+    name,
+  })
+  router.push({ name: 'Donor' })
+}
+
+async function deleteDonorWithModal(name) {
+  const confirmed = await $dialog.confirm({
+    title: __('Delete Donor'),
+    message: __('Are you sure you want to delete this donor? This action cannot be undone.'),
+    confirmText: __('Delete'),
+    cancelText: __('Cancel'),
+    variant: 'danger'
+  })
+  
+  if (confirmed) {
+    await deleteDonor(name)
+  }
+}
+
+
+
+function reloadAssignees(data) {
+  if (data?.hasOwnProperty('donor_owner')) {
+    assignees.reload()
+  }
+}
+
+
+
+const activities = ref(null)
+
+function openEmailBox() {
+  let currentTab = tabs.value[tabIndex.value]
+  if (!['Emails', 'Comments', 'Activities'].includes(currentTab.name)) {
+    activities.value.changeTabTo('emails')
+  }
+  nextTick(() => (activities.value.emailBox.show = true))
+}
+
+async function saveChanges(data) {
+  // Validate before saving
+  const isValid = await validateBeforeSave()
+  if (!isValid) {
+    return // Don't save if validation fails
+  }
+  
+  document.save.submit(null, {
+    onSuccess: () => reloadAssignees(data),
+  })
+}
+
+const countryCurrencyMap = {
+  "Afghanistan": "AFN",
+  "Albania": "ALL",
+  "Algeria": "DZD",
+  "Andorra": "EUR",
+  "Angola": "AOA",
+  "Anguilla": "XCD",
+  "Antarctica": "",
+  "Antigua and Barbuda": "XCD",
+  "Argentina": "ARS",
+  "Armenia": "AMD",
+  "Aruba": "AWG",
+  "Australia": "AUD",
+  "Austria": "EUR",
+  "Azerbaijan": "AZN",
+  "Bahamas": "BSD",
+  "Bahrain": "BHD",
+  "Bangladesh": "BDT",
+  "Barbados": "BBD",
+  "Belarus": "BYR",
+  "Belgium": "EUR",
+  "Belize": "BZD",
+  "Benin": "XOF",
+  "Bermuda": "BMD",
+  "Bhutan": "BTN",
+  "Bolivia": "BOB",
+  "Bosnia and Herzegovina": "BAM",
+  "Botswana": "BWP",
+  "Bouvet Island": "NOK",
+  "Brazil": "BRL",
+  "British Indian Ocean Territory": "USD",
+  "Brunei Darussalam": "BND",
+  "Bulgaria": "BGN",
+  "Burkina Faso": "XOF",
+  "Burundi": "BIF",
+  "Cambodia": "KHR",
+  "Cameroon": "XAF",
+  "Canada": "CAD",
+  "Cape Verde": "CVE",
+  "Cayman Islands": "KYD",
+  "Central African Republic": "XAF",
+  "Chad": "XAF",
+  "Chile": "CLP",
+  "China": "CNY",
+  "Christmas Island": "AUD",
+  "Cocos (Keeling) Islands": "AUD",
+  "Colombia": "COP",
+  "Comoros": "KMF",
+  "Congo (Brazzaville)": "XAF",
+  "Congo (Kinshasa)": "CDF",
+  "Cook Islands": "NZD",
+  "Costa Rica": "CRC",
+  "Croatia": "HRK",
+  "Cuba": "CUP",
+  "Curaçao": "ANG",
+  "Cyprus": "EUR",
+  "Czech Republic": "CZK",
+  "Denmark": "DKK",
+  "Djibouti": "DJF",
+  "Dominica": "XCD",
+  "Dominican Republic": "DOP",
+  "Ecuador": "USD",
+  "Egypt": "EGP",
+  "El Salvador": "USD",
+  "Equatorial Guinea": "XAF",
+  "Eritrea": "ERN",
+  "Estonia": "EUR",
+  "Eswatini": "SZL",
+  "Ethiopia": "ETB",
+  "Falkland Islands": "FKP",
+  "Faroe Islands": "DKK",
+  "Fiji": "FJD",
+  "Finland": "EUR",
+  "France": "EUR",
+  "French Guiana": "EUR",
+  "French Polynesia": "XPF",
+  "French Southern Territories": "EUR",
+  "Gabon": "XAF",
+  "Gambia": "GMD",
+  "Georgia": "GEL",
+  "Germany": "EUR",
+  "Ghana": "GHS",
+  "Gibraltar": "GIP",
+  "Greece": "EUR",
+  "Greenland": "DKK",
+  "Grenada": "XCD",
+  "Guadeloupe": "EUR",
+  "Guam": "USD",
+  "Guatemala": "GTQ",
+  "Guernsey": "GBP",
+  "Guinea": "GNF",
+  "Guinea-Bissau": "XOF",
+  "Guyana": "GYD",
+  "Haiti": "HTG",
+  "Heard Island and McDonald Islands": "AUD",
+  "Honduras": "HNL",
+  "Hong Kong": "HKD",
+  "Hungary": "HUF",
+  "Iceland": "ISK",
+  "India": "INR",
+  "Indonesia": "IDR",
+  "Iran": "IRR",
+  "Iraq": "IQD",
+  "Ireland": "EUR",
+  "Isle of Man": "GBP",
+  "Israel": "ILS",
+  "Italy": "EUR",
+  "Jamaica": "JMD",
+  "Japan": "JPY",
+  "Jersey": "GBP",
+  "Jordan": "JOD",
+  "Kazakhstan": "KZT",
+  "Kenya": "KES",
+  "Kiribati": "AUD",
+  "Korea (North)": "KPW",
+  "Korea (South)": "KRW",
+  "Kosovo": "EUR",
+  "Kuwait": "KWD",
+  "Kyrgyzstan": "KGS",
+  "Laos": "LAK",
+  "Latvia": "EUR",
+  "Lebanon": "LBP",
+  "Lesotho": "LSL",
+  "Liberia": "LRD",
+  "Libya": "LYD",
+  "Liechtenstein": "CHF",
+  "Lithuania": "LTL",
+  "Luxembourg": "EUR",
+  "Macau": "MOP",
+  "Madagascar": "MGA",
+  "Malawi": "MWK",
+  "Malaysia": "MYR",
+  "Maldives": "MVR",
+  "Mali": "XOF",
+  "Malta": "EUR",
+  "Marshall Islands": "USD",
+  "Martinique": "EUR",
+  "Mauritania": "MRO",
+  "Mauritius": "MUR",
+  "Mayotte": "EUR",
+  "Mexico": "MXN",
+  "Micronesia": "USD",
+  "Moldova": "MDL",
+  "Monaco": "EUR",
+  "Mongolia": "MNT",
+  "Montenegro": "EUR",
+  "Montserrat": "XCD",
+  "Morocco": "MAD",
+  "Mozambique": "MZN",
+  "Myanmar": "MMK",
+  "Namibia": "NAD",
+  "Nauru": "AUD",
+  "Nepal": "NPR",
+  "Netherlands": "EUR",
+  "New Caledonia": "XPF",
+  "New Zealand": "NZD",
+  "Nicaragua": "NIO",
+  "Niger": "XOF",
+  "Nigeria": "NGN",
+  "Niue": "NZD",
+  "Norfolk Island": "AUD",
+  "North Macedonia": "MKD",
+  "Northern Mariana Islands": "USD",
+  "Norway": "NOK",
+  "Oman": "OMR",
+  "Pakistan": "PKR",
+  "Palau": "USD",
+  "Palestine": "ILS",
+  "Panama": "PAB",
+  "Papua New Guinea": "PGK",
+  "Paraguay": "PYG",
+  "Peru": "PEN",
+  "Philippines": "PHP",
+  "Pitcairn Islands": "NZD",
+  "Poland": "PLN",
+  "Portugal": "EUR",
+  "Puerto Rico": "USD",
+  "Qatar": "QAR",
+  "Réunion": "EUR",
+  "Romania": "RON",
+  "Russia": "RUB",
+  "Rwanda": "RWF",
+  "Saint Helena": "SHP",
+  "Saint Kitts and Nevis": "XCD",
+  "Saint Lucia": "XCD",
+  "Saint Martin": "EUR",
+  "Saint Pierre and Miquelon": "EUR",
+  "Saint Vincent and the Grenadines": "XCD",
+  "Samoa": "WST",
+  "San Marino": "EUR",
+  "Sao Tome and Principe": "STD",
+  "Saudi Arabia": "SAR",
+  "Senegal": "XOF",
+  "Serbia": "RSD",
+  "Seychelles": "SCR",
+  "Sierra Leone": "SLL",
+  "Singapore": "SGD",
+  "Sint Maarten": "ANG",
+  "Slovakia": "EUR",
+  "Slovenia": "EUR",
+  "Solomon Islands": "SBD",
+  "Somalia": "SOS",
+  "South Africa": "ZAR",
+  "South Georgia and the South Sandwich Islands": "GBP",
+  "South Sudan": "SSP",
+  "Spain": "EUR",
+  "Sri Lanka": "LKR",
+  "Sudan": "SDG",
+  "Suriname": "SRD",
+  "Svalbard and Jan Mayen": "NOK",
+  "Sweden": "SEK",
+  "Switzerland": "CHF",
+  "Syria": "SYP",
+  "Taiwan": "TWD",
+  "Tajikistan": "TJS",
+  "Tanzania": "TZS",
+  "Thailand": "THB",
+  "Timor-Leste": "USD",
+  "Togo": "XOF",
+  "Tokelau": "NZD",
+  "Tonga": "TOP",
+  "Trinidad and Tobago": "TTD",
+  "Tunisia": "TND",
+  "Turkey": "TRY",
+  "Turkmenistan": "TMT",
+  "Turks and Caicos Islands": "USD",
+  "Tuvalu": "AUD",
+  "Uganda": "UGX",
+  "Ukraine": "UAH",
+  "United Arab Emirates": "AED",
+  "United Kingdom": "GBP",
+  "United States": "USD",
+  "Uruguay": "UYU",
+  "Uzbekistan": "UZS",
+  "Vanuatu": "VUV",
+  "Vatican City": "EUR",
+  "Venezuela": "VEF",
+  "Vietnam": "VND",
+  "Western Sahara": "MAD",
+  "Yemen": "YER",
+  "Zambia": "ZMK",
+  "Zimbabwe": "ZWL"
+};
+
+function setCurrencyForCountry(country) {
+  const code = countryCurrencyMap[country] || ''
+  document.doc.default_currency = code
+  if (!code) {
+    document.doc._default_currency_readonly = false
+  } else {
+    document.doc._default_currency_readonly = true
+  }
+}
+
+watch(() => document.doc?.country, (newCountry) => {
+  if (newCountry && document.doc) {
+    setCurrencyForCountry(newCountry)
+  }
+})
+
+// Watch for refresh parameter changes
+watch(() => route.query.refresh, (newRefresh) => {
+  if (newRefresh) {
+    // Clear cache and force reload
+    donor.cache = ['donor', props.donorId, Date.now()]
+    donor.reload()
+    // Clear the refresh parameter from URL
+    router.replace({ 
+      name: 'DonorDetail', 
+      params: { donorId: props.donorId },
+      query: {} 
+    })
+  }
+}, { immediate: true })
+
+// Country change watcher for phone masks removed
+
+// Identification type change watcher for CNIC masks removed
+
+// Donor type change watcher for phone masks removed
+
+// Watch for email fields to provide real-time validation
+watch(() => document.doc?.email, (newEmail) => {
+  if (newEmail && newEmail.trim() !== '' && document.doc) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newEmail.trim())) {
+      showEmailValidationFeedback('email', false, 'Invalid email format. Please enter a valid email address.')
+    } else {
+      showEmailValidationFeedback('email', true, '')
+    }
+  } else {
+    showEmailValidationFeedback('email', true, '')
+  }
+})
+
+watch(() => document.doc?.co_email, (newCoEmail) => {
+  if (newCoEmail && newCoEmail.trim() !== '' && document.doc) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newCoEmail.trim())) {
+      showEmailValidationFeedback('co_email', false, 'Invalid email format. Please enter a valid email address.')
+    } else {
+      showEmailValidationFeedback('co_email', true, '')
+    }
+  } else {
+    showEmailValidationFeedback('co_email', true, '')
+  }
+})
+
+watch(() => document.doc?.company_email_address, (newCompanyEmail) => {
+  if (newCompanyEmail && newCompanyEmail.trim() !== '' && document.doc) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newCompanyEmail.trim())) {
+      showEmailValidationFeedback('company_email_address', false, 'Invalid email format. Please enter a valid email address.')
+    } else {
+      showEmailValidationFeedback('company_email_address', true, '')
+    }
+  } else {
+    showEmailValidationFeedback('company_email_address', true, '')
+  }
+})
+
+watch(() => document.doc?.representative_email, (newRepresentativeEmail) => {
+  if (newRepresentativeEmail && newRepresentativeEmail.trim() !== '' && document.doc) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newRepresentativeEmail.trim())) {
+      showEmailValidationFeedback('representative_email', false, 'Invalid email format. Please enter a valid email address.')
+    } else {
+      showEmailValidationFeedback('representative_email', true, '')
+    }
+  } else {
+    showEmailValidationFeedback('representative_email', true, '')
+  }
+})
+
+watch(() => document.doc?.org_email, (newOrgEmail) => {
+  if (newOrgEmail && newOrgEmail.trim() !== '' && document.doc) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newOrgEmail.trim())) {
+      showEmailValidationFeedback('org_email', false, 'Invalid email format. Please enter a valid email address.')
+    } else {
+      showEmailValidationFeedback('org_email', true, '')
+    }
+  } else {
+    showEmailValidationFeedback('org_email', true, '')
+  }
+})
+
+watch(() => document.doc?.donor_email, (newDonorEmail) => {
+  if (newDonorEmail && newDonorEmail.trim() !== '' && document.doc) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newDonorEmail.trim())) {
+      showEmailValidationFeedback('donor_email', false, 'Invalid email format. Please enter a valid email address.')
+    } else {
+      showEmailValidationFeedback('donor_email', true, '')
+    }
+  } else {
+    showEmailValidationFeedback('donor_email', true, '')
+  }
+})
+
+// Watch for phone field changes to provide real-time validation
+watch(() => document.doc?.contact_no, async (newContactNo) => {
+  if (newContactNo && document.doc?.country && document.doc) {
+    const validation = await validatePhoneNumber(newContactNo, document.doc.country)
+    if (validation && validation.isValid !== undefined) {
+      showPhoneValidationFeedback('contact_no', validation.isValid, validation.message)
+    }
+  } else if (document.doc?.country && document.doc.country !== 'Pakistan' && document.doc.country !== 'pakistan' && document.doc) {
+    const validation = await validatePhoneNumber('', document.doc.country)
+    if (validation && validation.isValid !== undefined) {
+      showPhoneValidationFeedback('contact_no', validation.isValid, validation.message)
+    }
+  }
+})
+
+watch(() => document.doc?.co_contact_no, async (newCoContactNo) => {
+  if (newCoContactNo && document.doc?.country && document.doc) {
+    const validation = await validatePhoneNumber(newCoContactNo, document.doc.country)
+    if (validation && validation.isValid !== undefined) {
+      showPhoneValidationFeedback('co_contact_no', validation.isValid, validation.message)
+    }
+  } else if (document.doc?.country && document.doc.country !== 'Pakistan' && document.doc.country !== 'pakistan' && document.doc) {
+    const validation = await validatePhoneNumber('', document.doc.country)
+    if (validation && validation.isValid !== undefined) {
+      showPhoneValidationFeedback('co_contact_no', validation.isValid, validation.message)
+    }
+  }
+})
+
+watch(() => document.doc?.company_contact_number, async (newCompanyContact) => {
+  if (newCompanyContact && document.doc?.country && document.doc) {
+    const validation = await validatePhoneNumber(newCompanyContact, document.doc.country)
+    if (validation && validation.isValid !== undefined) {
+      showPhoneValidationFeedback('company_contact_number', validation.isValid, validation.message)
+    }
+  } else if (document.doc?.country && document.doc.country !== 'Pakistan' && document.doc.country !== 'pakistan' && document.doc) {
+    const validation = await validatePhoneNumber('', document.doc.country)
+    if (validation && validation.isValid !== undefined) {
+      showPhoneValidationFeedback('company_contact_number', validation.isValid, validation.message)
+    }
+  }
+})
+
+watch(() => document.doc?.organization_contact_person, async (newOrgContact) => {
+  if (newOrgContact && document.doc?.country && document.doc) {
+    const validation = await validatePhoneNumber(newOrgContact, document.doc.country)
+    if (validation && validation.isValid !== undefined) {
+      showPhoneValidationFeedback('organization_contact_person', validation.isValid, validation.message)
+    }
+  } else if (document.doc?.country && document.doc.country !== 'Pakistan' && document.doc.country !== 'pakistan' && document.doc) {
+    const validation = await validatePhoneNumber('', document.doc.country)
+    if (validation && validation.isValid !== undefined) {
+      showPhoneValidationFeedback('organization_contact_person', validation.isValid, validation.message)
+    }
+  }
+})
+
+watch(() => document.doc, (newDoc) => {
+  if (newDoc) {
+    setTimeout(async () => {
+      if (newDoc.country) {
+        await applyPhoneMasksForCountry(newDoc.country, setFieldValue)
+      }
+      if (newDoc.identification_type) {
+        applyCnicMaskToInput('cnic', newDoc.identification_type, setFieldValue)
+      }
+    }, 300)
+  }
+}, { immediate: true })
+
+// Watch for identification type changes to reapply CNIC masks
+watch(() => document.doc?.identification_type, (newType, oldType) => {
+  if (newType && oldType && newType !== oldType) {
+    // Only clear CNIC field if user actually changed the identification type
+    // Don't clear on component initialization or re-renders
+    if (document.doc) {
+      document.doc.cnic = ""
+    }
+    
+    // Apply masking to CNIC field when identification type changes
+    setTimeout(() => {
+      applyCnicMaskToInput('cnic', newType, setFieldValue)
+    }, 100)
+  }
+}, { immediate: true })
+
+// Watch for country changes to reapply phone masks
+watch(() => document.doc?.country, async (newCountry, oldCountry) => {
+  if (newCountry && oldCountry && newCountry !== oldCountry) {
+    // Only clear phone fields if user actually changed the country
+    // Don't clear on component initialization or re-renders
+    const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person']
+    phoneFields.forEach(field => {
+      if (document.doc && document.doc[field] !== undefined) {
+        document.doc[field] = ""
+      }
+    })
+    
+    // Apply phone masks for the new country
+    setTimeout(async () => {
+      await applyPhoneMasksForCountry(newCountry, setFieldValue)
+    }, 200)
+  }
+}, { immediate: true })
+
+onMounted(() => {
+  if (document.doc?.country) {
+    setCurrencyForCountry(document.doc.country)
+  }
+  
+  if (route.query.refresh) {
+    donor.cache = ['donor', props.donorId, Date.now()]
+    donor.reload()
+    router.replace({ 
+      name: 'DonorDetail', 
+      params: { donorId: props.donorId },
+      query: {} 
+    })
+  }
+  
+  setTimeout(async () => {
+    const startTime = performance.now()
+    console.log('onMounted: Starting validation initialization')
+    
+    // Initialize CNIC and phone masking
+    if (document.doc?.identification_type) {
+      applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+    }
+    
+    if (document.doc?.country) {
+      await applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+    }
+    
+    interceptSave()
+    
+    const fieldLayout = globalThis.document.querySelector('.field-layout-wrapper')
+    if (fieldLayout) {
+      const fieldLayoutObserver = new MutationObserver(() => {
+        // Only reapply masks if they're actually missing, not on every DOM change
+        setTimeout(() => {
+          const cnicInput = findInputField('cnic')
+          const contactInput = findInputField('contact_no')
+          
+          // Only reapply CNIC mask if it's missing
+          if (cnicInput && !cnicInput._maskHandler && document.doc?.identification_type) {
+            applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+          }
+          
+          // Only reapply phone masks if they're missing
+          if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && document.doc?.country) {
+            applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+          }
+        }, 500) // Increased delay to reduce frequency
+      })
+      
+      fieldLayoutObserver.observe(fieldLayout, {
+        childList: true,
+        subtree: false, // Don't watch entire subtree
+        attributes: false // Don't watch attribute changes
+      })
+      
+      window.fieldLayoutObserver = fieldLayoutObserver
+    }
+    
+    const modalContent = globalThis.document.querySelector('[data-modal="parent"]')
+    if (modalContent) {
+      const modalObserver = new MutationObserver(() => {
+        // Only reapply masks if they're actually missing, not on every DOM change
+        setTimeout(() => {
+          const cnicInput = findInputField('cnic')
+          const contactInput = findInputField('contact_no')
+          
+          // Only reapply CNIC mask if it's missing
+          if (cnicInput && !cnicInput._maskHandler && document.doc?.identification_type) {
+            applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+          }
+          
+          // Only reapply phone masks if they're missing
+          if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && document.doc?.country) {
+            applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+          }
+        }, 500) // Increased delay to reduce frequency
+      })
+      
+      modalObserver.observe(modalContent, {
+        childList: true,
+        subtree: false, // Don't watch entire subtree
+        attributes: false // Don't watch attribute changes
+      })
+      
+      window.modalObserver = modalObserver
+    }
+    
+    // Set up periodic mask check to ensure masks don't get lost
+    const maskCheckInterval = setInterval(() => {
+      const cnicInput = findInputField('cnic')
+      const contactInput = findInputField('contact_no')
+      
+      // Only reapply CNIC mask if it's missing
+      if (cnicInput && !cnicInput._maskHandler && document.doc?.identification_type) {
+        applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+      }
+      
+      // Only reapply phone masks if they're missing
+      if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && document.doc?.country) {
+        applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+      }
+    }, 10000) // Check every 10 seconds to reduce performance impact
+    
+    // Store interval for cleanup
+    window.maskCheckInterval = maskCheckInterval
+    
+    // Set up a more aggressive mask monitoring system
+    const aggressiveMaskMonitor = () => {
+      // Check for CNIC field and apply mask if needed
+      const cnicInput = findInputField('cnic')
+      if (cnicInput && document.doc?.identification_type) {
+        // Check if mask is missing or if the input has been recreated
+        if (!cnicInput._maskHandler || !cnicInput._maskApplied) {
+          console.log('Aggressive monitor: CNIC mask missing, reapplying...')
+          applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+          cnicInput._maskApplied = true
+        }
+      }
+      
+      // Check for contact number field and apply mask if needed
+      const contactInput = findInputField('contact_no')
+      if (contactInput && document.doc?.country) {
+        // Check if phone masks are missing or if the input has been recreated
+        if (!contactInput._pakistanHandler && !contactInput._otherCountryHandler || !contactInput._phoneMaskApplied) {
+          console.log('Aggressive monitor: Phone masks missing, reapplying...')
+          applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+          contactInput._phoneMaskApplied = true
+        }
+      }
+    }
+    
+    // Make the aggressive mask monitor available globally
+    window.aggressiveMaskMonitor = aggressiveMaskMonitor
+    
+    // Run aggressive monitoring more frequently
+    const aggressiveMaskInterval = setInterval(aggressiveMaskMonitor, 1000) // Check every second
+    window.aggressiveMaskInterval = aggressiveMaskInterval
+    
+    // Also run aggressive monitoring immediately after any DOM changes
+    const aggressiveMaskObserver = new MutationObserver(() => {
+      // Debounce the aggressive monitoring to avoid excessive calls
+      clearTimeout(window.aggressiveMaskTimeout)
+      window.aggressiveMaskTimeout = setTimeout(aggressiveMaskMonitor, 100)
+    })
+    
+    aggressiveMaskObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: false
+    })
+    
+    window.aggressiveMaskObserver = aggressiveMaskObserver
+    
+    // Set up periodic save button interception to catch dynamically added buttons
+    const saveCheckInterval = setInterval(() => {
+      interceptSave()
+    }, 5000) // Check every 5 seconds for new save buttons
+    
+    // Store interval for cleanup
+    window.saveCheckInterval = saveCheckInterval
+    
+    // Set up a global event listener for field layout changes
+    const handleFieldLayoutChange = () => {
+      console.log('Field layout changed, reapplying masks...')
+      setTimeout(reapplyAllMasksNow, 100)
+    }
+    
+    // Listen for custom events that might indicate field layout changes
+    document.addEventListener('fieldLayoutChanged', handleFieldLayoutChange)
+    document.addEventListener('tabChanged', handleFieldLayoutChange)
+    document.addEventListener('activitiesReloaded', handleFieldLayoutChange)
+    
+    // Store the event listeners for cleanup
+    window.fieldLayoutEventListeners = [
+      { event: 'fieldLayoutChanged', handler: handleFieldLayoutChange },
+      { event: 'tabChanged', handler: handleFieldLayoutChange },
+      { event: 'activitiesReloaded', handler: handleFieldLayoutChange }
+    ]
+    
+    // Set up a more comprehensive observer for save-related elements
+    const saveObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              // Check for new save buttons
+              const saveButtons = node.querySelectorAll && node.querySelectorAll('button[data-action="save"], button[data-action="Save"], button[data-action="submit"], button[data-action="Submit"], button[type="submit"]')
+              if (saveButtons && saveButtons.length > 0) {
+                console.log('New save buttons detected, intercepting...')
+                setTimeout(interceptSave, 100)
+              }
+              
+              // Check if the node itself is a save button
+              if (node.matches && node.matches('button[data-action="save"], button[data-action="Save"], button[data-action="submit"], button[data-action="Submit"], button[type="submit"]')) {
+                console.log('New save button detected, intercepting...')
+                setTimeout(interceptSave, 100)
+              }
+            }
+          })
+        }
+      })
+    })
+    
+    // Start observing the entire document for new save buttons
+    saveObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    })
+    
+    window.saveObserver = saveObserver
+    
+    // Set up global form submission interceptor
+    const originalSubmit = HTMLFormElement.prototype.submit
+    HTMLFormElement.prototype.submit = async function() {
+      // Check if this form is related to the donor document
+      if (this.closest('[data-doctype="Donor"]') || this.closest('.donor-form') || this.closest('.field-layout-wrapper')) {
+        console.log('Form submission intercepted, validating...')
+        const isValid = await validateBeforeSave()
+        if (!isValid) {
+          console.log('Form validation failed, preventing submission')
+          return
+        }
+      }
+      
+      // Call the original submit method
+      return originalSubmit.call(this)
+    }
+    
+    // Store the original submit method for cleanup
+    window.originalFormSubmit = originalSubmit
+    
+    // Also intercept any save-related events
+    const submitEventListener = async (e) => {
+      // Check if this is a donor-related form submission
+      if (e.target.closest('[data-doctype="Donor"]') || e.target.closest('.donor-form') || e.target.closest('.field-layout-wrapper')) {
+        console.log('Submit event intercepted, validating...')
+        const isValid = await validateBeforeSave()
+        if (!isValid) {
+          console.log('Submit validation failed, preventing submission')
+          e.preventDefault()
+          e.stopPropagation()
+          return false
+        }
+      }
+    }
+    
+    document.addEventListener('submit', submitEventListener, true) // Use capture phase to intercept early
+    window.submitEventListener = submitEventListener
+    
+    // Intercept keyboard shortcuts (Ctrl+S, Cmd+S)
+    const keyboardEventListener = async (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        // Check if we're in a donor-related context
+        if (document.activeElement && (
+          document.activeElement.closest('[data-doctype="Donor"]') || 
+          document.activeElement.closest('.donor-form') || 
+          document.activeElement.closest('.field-layout-wrapper')
+        )) {
+          console.log('Keyboard save shortcut intercepted, validating...')
+          e.preventDefault()
+          e.stopPropagation()
+          
+          const isValid = await validateBeforeSave()
+          if (!isValid) {
+            console.log('Keyboard save validation failed')
+            return false
+          }
+          
+          // If validation passes, trigger the save manually
+          if (document && document.save && document.save.submit) {
+            document.save.submit()
+          }
+        }
+      }
+    }
+    
+    document.addEventListener('keydown', keyboardEventListener, true)
+    window.keyboardEventListener = keyboardEventListener
+    
+    // Add beforeunload event handler to prevent navigation if form has validation errors
+    const beforeUnloadHandler = (e) => {
+      // Check if we're in a donor form context
+      if (document.activeElement && (
+        document.activeElement.closest('[data-doctype="Donor"]') || 
+        document.activeElement.closest('.donor-form') || 
+        document.activeElement.closest('.field-layout-wrapper')
+      )) {
+        // Check if there are any validation errors
+        const hasValidationErrors = document.querySelector('.text-red-500, .border-red-500, .email-error-message')
+        if (hasValidationErrors) {
+          e.preventDefault()
+          e.returnValue = 'You have validation errors. Please fix them before leaving the page.'
+          return 'You have validation errors. Please fix them before leaving the page.'
+        }
+      }
+    }
+    
+    window.addEventListener('beforeunload', beforeUnloadHandler)
+    window.beforeUnloadHandler = beforeUnloadHandler
+    
+    // Set up global window functions for external access
+    window.validateDonorForm = validateFormNow
+    window.validateDonorField = validateField
+    window.reapplyDonorMasks = reapplyAllMasksNow
+    
+    // Add comprehensive mask reapplication functions
+    window.forceReapplyAllMasks = async () => {
+      console.log('Force reapplying all masks...')
+      
+      // Wait a bit for DOM to be ready
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // Try to find and reapply masks to all relevant fields
+      const cnicInput = findInputField('cnic')
+      const contactInput = findInputField('contact_no')
+      
+      if (cnicInput && document.doc?.identification_type) {
+        console.log('Reapplying CNIC mask...')
+        applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+      }
+      
+      if (contactInput && document.doc?.country) {
+        console.log('Reapplying phone masks...')
+        await applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+      }
+      
+      console.log('Force mask reapplication completed')
+    }
+    
+    // Add function specifically for Activities component
+    window.reapplyMasksForActivities = async () => {
+      console.log('Activities component requesting mask reapplication...')
+      
+      // Wait for DOM to be ready
+      await nextTick()
+      
+      // Try multiple times with increasing delays
+      setTimeout(reapplyAllMasksNow, 100)
+      setTimeout(reapplyAllMasksNow, 300)
+      setTimeout(reapplyAllMasksNow, 500)
+      setTimeout(reapplyAllMasksNow, 1000)
+      
+      // Also run aggressive monitoring
+      if (window.aggressiveMaskMonitor) {
+        window.aggressiveMaskMonitor()
+      }
+    }
+    
+    // Add function for immediate mask reapplication
+    window.reapplyMasksImmediately = async () => {
+      console.log('Immediate mask reapplication requested...')
+      
+      // Run aggressive monitoring immediately
+      if (window.aggressiveMaskMonitor) {
+        window.aggressiveMaskMonitor()
+      }
+      
+      // Also try to reapply all masks
+      await reapplyAllMasksNow()
+      
+      // Set up a more aggressive monitoring for the next few seconds
+      for (let i = 1; i <= 10; i++) {
+        setTimeout(() => {
+          if (window.aggressiveMaskMonitor) {
+            window.aggressiveMaskMonitor()
+          }
+        }, i * 200)
+      }
+    }
+    
+    // Add comprehensive debugging function
+    window.debugDonorMasks = () => {
+      console.log('=== Donor Mask Debugging ===')
+      
+      const cnicInput = findInputField('cnic')
+      const contactInput = findInputField('contact_no')
+      
+      console.log('CNIC Input:', cnicInput)
+      if (cnicInput) {
+        console.log('CNIC Mask Handler:', cnicInput._maskHandler)
+        console.log('CNIC Mask Applied:', cnicInput._maskApplied)
+        console.log('CNIC Value:', cnicInput.value)
+      }
+      
+      console.log('Contact Input:', contactInput)
+      if (contactInput) {
+        console.log('Pakistan Handler:', contactInput._pakistanHandler)
+        console.log('Other Country Handler:', contactInput._otherCountryHandler)
+        console.log('Phone Mask Applied:', contactInput._phoneMaskApplied)
+        console.log('Contact Value:', contactInput.value)
+      }
+      
+      console.log('Document Data:', {
+        identification_type: document.doc?.identification_type,
+        country: document.doc?.country,
+        cnic: document.doc?.cnic,
+        contact_no: document.doc?.contact_no
+      })
+      
+      console.log('Available Functions:', {
+        reapplyAllMasksNow: typeof reapplyAllMasksNow,
+        applyCnicMaskToInput: typeof applyCnicMaskToInput,
+        applyPhoneMasksForCountry: typeof applyPhoneMasksForCountry,
+        findInputField: typeof findInputField
+      })
+    }
+    
+    // Add a simple test function to check if masking is working
+    window.testMasks = () => {
+      console.log('Testing masks...')
+      
+      // Check if we can find the input fields
+      const cnicInput = findInputField('cnic')
+      const contactInput = findInputField('contact_no')
+      
+      if (cnicInput) {
+        console.log('✅ CNIC input found')
+        if (cnicInput._maskHandler) {
+          console.log('✅ CNIC mask handler present')
+        } else {
+          console.log('❌ CNIC mask handler missing')
+        }
+      } else {
+        console.log('❌ CNIC input not found')
+      }
+      
+      if (contactInput) {
+        console.log('✅ Contact input found')
+        if (contactInput._pakistanHandler || contactInput._otherCountryHandler) {
+          console.log('✅ Phone mask handlers present')
+        } else {
+          console.log('❌ Phone mask handlers missing')
+        }
+      } else {
+        console.log('❌ Contact input not found')
+      }
+      
+      // Try to reapply masks
+      console.log('Attempting to reapply masks...')
+      reapplyAllMasksNow()
+    }
+    
+    const endTime = performance.now()
+    console.log(`onMounted: Initialization completed in ${(endTime - startTime).toFixed(2)}ms`)
+  }, 500)
+  
+})
+
+// Clean up observers and intervals when component unmounts
+onUnmounted(() => {
+  // Clean up field layout observer
+  if (window.fieldLayoutObserver) {
+    window.fieldLayoutObserver.disconnect()
+    window.fieldLayoutObserver = null
+  }
+  
+  // Clean up modal observer
+  if (window.modalObserver) {
+    window.modalObserver.disconnect()
+    window.modalObserver = null
+  }
+  
+  // Clean up mask check interval
+  if (window.maskCheckInterval) {
+    clearInterval(window.maskCheckInterval)
+    window.maskCheckInterval = null
+  }
+  
+  // Clean up aggressive mask monitoring
+  if (window.aggressiveMaskInterval) {
+    clearInterval(window.aggressiveMaskInterval)
+    window.aggressiveMaskInterval = null
+  }
+  
+  if (window.aggressiveMaskObserver) {
+    window.aggressiveMaskObserver.disconnect()
+    window.aggressiveMaskObserver = null
+  }
+  
+  if (window.aggressiveMaskTimeout) {
+    clearTimeout(window.aggressiveMaskTimeout)
+    window.aggressiveMaskTimeout = null
+  }
+  
+  // Clean up save check interval
+  if (window.saveCheckInterval) {
+    clearInterval(window.saveCheckInterval)
+    window.saveCheckInterval = null
+  }
+  
+  // Restore original form submit method
+  if (window.originalFormSubmit) {
+    HTMLFormElement.prototype.submit = window.originalFormSubmit
+    window.originalFormSubmit = null
+  }
+  
+  // Remove submit event listener
+  if (window.submitEventListener) {
+    document.removeEventListener('submit', window.submitEventListener, true)
+    window.submitEventListener = null
+  }
+  
+  // Remove keyboard event listener
+  if (window.keyboardEventListener) {
+    document.removeEventListener('keydown', window.keyboardEventListener, true)
+    window.keyboardEventListener = null
+  }
+  
+  // Disconnect save observer
+  if (window.saveObserver) {
+    window.saveObserver.disconnect()
+    window.saveObserver = null
+  }
+  
+  // Remove beforeunload handler
+  if (window.beforeUnloadHandler) {
+    window.removeEventListener('beforeunload', window.beforeUnloadHandler)
+    window.beforeUnloadHandler = null
+  }
+  
+  // Clean up tab change observers
+  if (window.tabChangeObservers) {
+    window.tabChangeObservers.forEach(observer => {
+      if (observer) {
+        observer.disconnect()
+      }
+    })
+    window.tabChangeObservers = []
+  }
+  
+  // Clean up field layout event listeners
+  if (window.fieldLayoutEventListeners) {
+    window.fieldLayoutEventListeners.forEach(({ event, handler }) => {
+      document.removeEventListener(event, handler)
+    })
+    window.fieldLayoutEventListeners = []
+  }
+})
+
+
+function interceptSave() {
+  // Find all possible save buttons
+  const saveSelectors = [
+    'button[data-action="save"]',
+    'button[data-action="Save"]',
+    'button[data-action="submit"]',
+    'button[data-action="Submit"]',
+    'button[type="submit"]',
+    '.btn-save',
+    '.btn-submit',
+    '[data-testid="save-button"]',
+    '[data-testid="submit-button"]'
+  ]
+  
+  let saveButton = null
+  for (const selector of saveSelectors) {
+    saveButton = document.querySelector(selector)
+    if (saveButton) break
+  }
+  
+  if (saveButton) {
+    console.log('interceptSave: Found save button, adding interceptor')
+    
+    // Remove existing listeners to prevent duplicates
+    const newSaveButton = saveButton.cloneNode(true)
+    saveButton.parentNode.replaceChild(newSaveButton, saveButton)
+    
+    newSaveButton.addEventListener('click', async (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      
+      console.log('interceptSave: Save button clicked, validating form')
+      
+      // Validate before allowing save
+      const isValid = await validateBeforeSave()
+      if (!isValid) {
+        console.log('interceptSave: Validation failed, preventing save')
+        return
+      }
+      
+      console.log('interceptSave: Save allowed')
+      
+      const originalClickEvent = new Event('click', { bubbles: true })
+      newSaveButton.dispatchEvent(originalClickEvent)
+    })
+  } else {
+    console.log('interceptSave: Save button not found, will retry')
+    setTimeout(interceptSave, 1000)
+  }
+}
+
+</script>

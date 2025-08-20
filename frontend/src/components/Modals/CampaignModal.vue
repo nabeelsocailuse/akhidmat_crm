@@ -1,0 +1,152 @@
+<template>
+  <Dialog v-model="show" :options="{ size: '3xl' }">
+    <template #body>
+      <AppStyling type="modal-styling" modalType="header">
+        <div class="mb-5 flex items-center justify-between">
+          <div>
+            <h3 class="text-2xl font-semibold leading-6 text-ink-gray-9">
+              {{ __('Create Campaign') }}
+            </h3>
+          </div>
+          <div class="flex items-center gap-1">
+            <Button
+              v-if="isManager() && !isMobileView"
+              variant="ghost"
+              class="w-7"
+              @click="openQuickEntryModal"
+            >
+              <template #icon>
+                <EditIcon />
+              </template>
+            </Button>
+            <Button variant="ghost" class="w-7" @click="show = false">
+              <template #icon>
+                <FeatherIcon name="x" class="size-4" />
+              </template>
+            </Button>
+          </div>
+        </div>
+        <div>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-ink-gray-7 mb-2">
+                {{ __('Campaign Name') }} *
+              </label>
+              <FormControl
+                v-model="campaign.doc.campaign_name"
+                type="text"
+                :placeholder="__('Enter campaign name')"
+                class="w-full"
+                required
+              />
+            </div>
+          </div>
+          <ErrorMessage class="mt-4" v-if="error" :message="__(error)" />
+        </div>
+      </AppStyling>
+      <AppStyling type="modal-styling" modalType="footer">
+        <div class="flex flex-row-reverse gap-2">
+          <AppStyling
+            type="button"
+            buttonType="create"
+            buttonLabel="Create"
+            :buttonLoading="isCampaignCreating"
+            @click="createNewCampaign"
+          />
+        </div>
+      </AppStyling>
+    </template>
+  </Dialog>
+</template>
+
+<script setup>
+import EditIcon from '@/components/Icons/EditIcon.vue'
+import AppStyling from '@/components/AppStyling.vue'
+import { usersStore } from '@/stores/users'
+import { sessionStore } from '@/stores/session'
+import { isMobileView } from '@/composables/settings'
+import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
+import { capture } from '@/telemetry'
+import { createResource, call, FormControl } from 'frappe-ui'
+import { useOnboarding } from 'frappe-ui/frappe'
+import { useDocument } from '@/data/document'
+import { computed, onMounted, ref, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
+
+const props = defineProps({
+  defaults: Object,
+})
+
+const { user } = sessionStore()
+const { getUser, isManager, users } = usersStore()
+const { updateOnboardingStep } = useOnboarding('frappecrm')
+
+const show = defineModel()
+const router = useRouter()
+const error = ref(null)
+const isCampaignCreating = ref(false)
+
+const { document: campaign, triggerOnBeforeCreate } = useDocument('CRM Campaign')
+
+
+
+const createCampaign = createResource({
+  url: 'frappe.client.insert',
+})
+
+async function createNewCampaign() {
+  await triggerOnBeforeCreate?.()
+
+  createCampaign.submit(
+    {
+      doc: {
+        doctype: 'CRM Campaign',
+        ...campaign.doc,
+      },
+    },
+    {
+      validate() {
+        error.value = null
+        if (!campaign.doc.campaign_name) {
+          error.value = __('Campaign Name is mandatory')
+          return error.value
+        }
+        isCampaignCreating.value = true
+      },
+      onSuccess(data) {
+        capture('campaign_created')
+        isCampaignCreating.value = false
+        show.value = false
+        router.push({ name: 'Campaign', params: { campaignId: data.name } })
+        updateOnboardingStep('create_first_campaign', true, false, () => {
+          localStorage.setItem('firstCampaign' + user, data.name)
+        })
+      },
+      onError(err) {
+        isCampaignCreating.value = false
+        if (!err.messages) {
+          error.value = err.message
+          return
+        }
+        error.value = err.messages.join('\n')
+      },
+    },
+  )
+}
+
+function openQuickEntryModal() {
+  showQuickEntryModal.value = true
+  quickEntryProps.value = { doctype: 'CRM Campaign' }
+  nextTick(() => (show.value = false))
+}
+
+onMounted(() => {
+  campaign.doc = {}
+  Object.assign(campaign.doc, props.defaults)
+
+  if (!campaign.doc?.campaign_owner) {
+    campaign.doc.campaign_owner = getUser().name
+  }
+})
+
+</script>
