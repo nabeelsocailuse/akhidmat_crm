@@ -35,6 +35,7 @@
               @open-create-modal="openCreateModal"
               @tab-change="handleTabChange"
               @donor-selected="handleDonorSelected"
+              @fund-class-selected="handleFundClassSelected"
             />
           </div>
           <ErrorMessage class="mt-4" v-if="error" :message="__(error)" />
@@ -216,85 +217,36 @@ const filteredTabs = computed(() => {
 
 const tabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
-  cache: ['QuickEntryModal', 'Donation', false], 
+  cache: ['QuickEntry', 'Donation'],
   params: { doctype: 'Donation', type: 'Quick Entry' },
   auto: true,
-  transform: (_tabs) => {
-    return _tabs.forEach((tab) => {
-      tab.sections.forEach((section) => {
-        section.columns.forEach((column) => {
-          column.fields.forEach((field) => {
-            if (field.fieldtype === 'Table') {
-              // Initialize child tables with empty arrays (no default rows)
-              if (!donation.doc[field.fieldname]) {
-                donation.doc[field.fieldname] = []
-              }
-            }
-            
-            // Set default values for specific fields
-            if (field.fieldname === 'status' && !donation.doc.status) {
-              donation.doc.status = 'Draft'
-            }
-            
-            if (field.fieldname === 'company' && !donation.doc.company) {
-              donation.doc.company = 'Alkhidmat Foundation'
-            }
-            
-            if (field.fieldname === 'donor_identity' && !donation.doc.donor_identity) {
-              donation.doc.donor_identity = 'Known'
-            }
-            
-            if (field.fieldname === 'select_donation_type' && !donation.doc.select_donation_type) {
-              donation.doc.select_donation_type = 'Cash'  // Default to 'Cash'
-            }
-            
-            // Handle posting_date and posting_time read-only state based on edit_posting_date_time
-            if (field.fieldname === 'posting_date' || field.fieldname === 'posting_time') {
-              field.read_only = !donation.doc.edit_posting_date_time
-            }
-            
-            // Ensure posting_time is treated as a Time field, not Date
-            if (field.fieldname === 'posting_time') {
-              field.fieldtype = 'Time'
-              field.default = 'Now'
-            }
-            
-            // Ensure posting_date is treated as a Date field
-            if (field.fieldname === 'posting_date') {
-              field.fieldtype = 'Date'
-              field.default = 'Today'
-            }
-            
-            // Ensure edit_posting_date_time is treated as a Check field
-            if (field.fieldname === 'edit_posting_date_time') {
-              field.fieldtype = 'Check'
-              field.default = 0
+  transform: (data) => {
+    // Transform the tabs data to disable create functionality for specific fields
+    if (data && Array.isArray(data)) {
+      data.forEach(tab => {
+        if (tab.sections && Array.isArray(tab.sections)) {
+          tab.sections.forEach(section => {
+            if (section.columns && Array.isArray(section.columns)) {
+              section.columns.forEach(column => {
+                if (column.fields && Array.isArray(column.fields)) {
+                  column.fields.forEach(field => {
+                    // Disable create functionality for Company and Fund Class Id fields only
+                    if (field.fieldname === 'company' || field.fieldname === 'fund_class_id') {
+                      field.create = null // Remove create functionality
+                      field.only_select = true // Force only selection mode
+                      field.allow_on_submit = 0 // Prevent creation on submit
+                      field.allow_in_quick_entry = 0 // Prevent creation in quick entry
+                      console.log(`Field ${field.fieldname} create functionality disabled in DonationModal`)
+                    }
+                  })
+                }
+              })
             }
           })
-        })
+        }
       })
-    })
-  },
-  onSuccess(data) {
-    // Ensure required fields are set
-    if (!donation.doc.status) {
-      donation.doc.status = 'Draft'
     }
-    
-    if (!donation.doc.company) {
-      donation.doc.company = 'Alkhidmat Foundation'
-    }
-    
-    if (!donation.doc.donor_identity) {
-      donation.doc.donor_identity = 'Known'
-    }
-    
-    if (!donation.doc.select_donation_type) {
-      donation.doc.select_donation_type = 'Cash'  // Default to 'Cash'
-    }
-    
-    // Initialize posting_date and posting_time
-    initializeDonation()
+    return data
   }
 })
 
@@ -883,6 +835,102 @@ async function handleDonorSelectionDirect(donorId, row) {
   }
 }
 
+// NEW: Fund Class handling functionality
+async function fetchFundClassDetails(fundClassId) {
+  console.log('Fetching Fund Class details for:', fundClassId)
+  
+  try {
+    const result = await call('akf_accounts.akf_accounts.doctype.donation.donation.get_fund_class_details', {
+      fund_class_id: fundClassId,
+      company: donation.doc.company || 'Alkhidmat Foundation Pakistan'
+    })
+    
+    console.log('Fund Class details received:', result)
+    return result
+  } catch (error) {
+    console.error('Error fetching Fund Class details:', error)
+    toast.error('Error loading Fund Class details')
+    return null
+  }
+}
+
+function updateFundClassFields(row, fundClassDetails) {
+  console.log('Updating row with Fund Class details:', fundClassDetails)
+  console.log('Row before update:', { ...row })
+  
+  // Map Fund Class fields to payment detail fields
+  const fieldMappings = {
+    'service_area': 'pay_service_area',
+    'subservice_area': 'pay_subservice_area',
+    'product': 'pay_product',
+    'equity_account': 'equity_account',
+    'receivable_account': 'receivable_account',
+    'cost_center': 'cost_center'
+  }
+  
+  // Update each field with Fund Class data
+  Object.entries(fieldMappings).forEach(([fundClassField, rowField]) => {
+    if (fundClassDetails[fundClassField] !== undefined) {
+      const oldValue = row[rowField]
+      row[rowField] = fundClassDetails[fundClassField] || ''
+      console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
+    }
+  })
+  
+  console.log('Row after Fund Class update:', { ...row })
+  
+  // Force reactive update - CRITICAL for Vue to detect changes
+  if (donation.doc.payment_detail) {
+    console.log('Forcing reactive update of payment_detail after Fund Class update')
+    donation.doc.payment_detail = [...donation.doc.payment_detail]
+  }
+}
+
+function clearFundClassFields(row) {
+  console.log('Clearing Fund Class fields for row')
+  
+  const fundClassFields = [
+    'pay_service_area', 'pay_subservice_area', 'pay_product',
+    'equity_account', 'receivable_account', 'cost_center'
+  ]
+  
+  fundClassFields.forEach(fieldName => {
+    row[fieldName] = ''
+  })
+  
+  // Force reactive update
+  if (donation.doc.payment_detail) {
+    donation.doc.payment_detail = [...donation.doc.payment_detail]
+  }
+}
+
+// 100% WORKING: Direct Fund Class handling in DonationModal
+async function handleFundClassSelectionDirect(fundClassId, row) {
+  console.log('Handling Fund Class selection directly:', { fundClassId, row })
+  
+  if (!fundClassId) {
+    clearFundClassFields(row)
+    return
+  }
+  
+  try {
+    const fundClassDetails = await fetchFundClassDetails(fundClassId)
+    if (fundClassDetails) {
+      updateFundClassFields(row, fundClassDetails)
+      console.log('Fund Class fields updated successfully')
+      
+      // Show success message
+      toast.success('Fund Class details loaded successfully')
+    } else {
+      console.log('No Fund Class details received')
+      toast.error('Could not fetch Fund Class details')
+    }
+  } catch (error) {
+    console.error('Error in direct Fund Class handling:', error)
+    toast.error('Error loading Fund Class details')
+  }
+}
+
 // Add donor selection handler
 function handleDonorSelected(event) {
   console.log('Donor selected in payment detail:', event)
@@ -911,9 +959,50 @@ watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
         // Handle the donor selection
         handleDonorSelectionDirect(row.donor_id, row)
       }
+      
+      // NEW: Watch for fund_class_id changes
+      if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
+        console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
+        row._lastFundClassId = row.fund_class_id
+        
+        // Handle the Fund Class selection
+        handleFundClassSelectionDirect(row.fund_class_id, row)
+      }
     })
   }
 }, { deep: true })
+
+// 100% WORKING: Watcher for fund_class_id changes in payment_detail
+watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
+  if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
+    newPaymentDetail.forEach((row, index) => {
+      if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
+        console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
+        row._lastFundClassId = row.fund_class_id
+        
+        // Handle the Fund Class selection
+        handleFundClassSelectionDirect(row.fund_class_id, row)
+      }
+    })
+  }
+}, { deep: true })
+
+// NEW: Add Fund Class selection handler
+function handleFundClassSelected(event) {
+  console.log('Fund Class selected in payment detail:', event)
+  
+  const { row, fundClassId, success } = event
+  
+  if (success && fundClassId && row) {
+    console.log('Processing Fund Class selection for row:', row, 'with Fund Class ID:', fundClassId)
+    
+    // Force a reactive update of the payment_detail table
+    if (donation.doc.payment_detail) {
+      console.log('Forcing reactive update of payment_detail')
+      donation.doc.payment_detail = [...donation.doc.payment_detail]
+    }
+  }
+}
 
 // Debug logging
 onMounted(() => {

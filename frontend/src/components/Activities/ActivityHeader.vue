@@ -32,6 +32,7 @@
       v-else-if="title == 'Calls'"
       variant="solid"
       :options="callActions"
+      class="!bg-[#7c3aed] hover:!bg-[#6d28d9] !text-white !rounded-lg"
     />
     <AppStyling
       v-else-if="title == 'Notes'"

@@ -359,23 +359,23 @@ const tabs = createResource({
       })
       
       // If owner_id field doesn't exist, add it to the first section
-      if (!ownerIdFieldExists) {
-        const ownerIdField = {
-          fieldname: 'owner_id',
-          label: 'Owner Id',
-          fieldtype: 'Link',
-          options: 'User',
-          read_only: true,
-          tooltip: 'This field is read only and cannot be edited.',
-          hidden: false,
-          reqd: false
-        }
+      // if (!ownerIdFieldExists) {
+      //   const ownerIdField = {
+      //     fieldname: 'owner_id',
+      //     label: 'Owner Id',
+      //     fieldtype: 'Link',
+      //     options: 'User',
+      //     read_only: true,
+      //     tooltip: 'This field is read only and cannot be edited.',
+      //     hidden: false,
+      //     reqd: false
+      //   }
         
-        // Add to the first available section
-        if (data[0] && data[0].sections[0] && data[0].sections[0].columns[0]) {
-          data[0].sections[0].columns[0].fields.unshift(ownerIdField)
-        }
-      }
+      //   // Add to the first available section
+      //   if (data[0] && data[0].sections[0] && data[0].sections[0].columns[0]) {
+      //     data[0].sections[0].columns[0].fields.unshift(ownerIdField)
+      //   }
+      // }
       
       // Check if status field exists and add it if it doesn't
       // let statusFieldExists = false
@@ -391,27 +391,27 @@ const tabs = createResource({
       //   })
       // })
       
-      if (!statusFieldExists) {
-        const statusField = {
-          fieldname: 'status',
-          label: 'Status',
-          fieldtype: 'Select',
-          options: 'Active\nBlocked',
-          default: 'Active',
-          read_only: true,
-          tooltip: 'This field is read only and cannot be edited.',
-          hidden: false,
-          reqd: false
-        }
+//       if (!statusFieldExists) {
+//         const statusField = {
+//           fieldname: 'status',
+//           label: 'Status',
+//           fieldtype: 'Select',
+//           options: 'Active\nBlocked',
+//           default: 'Active',
+//           read_only: true,
+//           tooltip: 'This field is read only and cannot be edited.',
+//           hidden: false,
+//           reqd: false
+//         }
         
-        // Add status field to the first section
-        if (data[0] && data[0].sections[0] && data[0].sections[0].columns[0]) {
-          data[0].sections[0].columns[0].fields.unshift(statusField)
-        }
-      }
+//         // Add status field to the first section
+//         if (data[0] && data[0].sections[0] && data[0].sections[0].columns[0]) {
+//           data[0].sections[0].columns[0].fields.unshift(statusField)
+//         }
+//       }
       
-      // Set up field change listeners after processing all fields
-      setupFieldChangeListeners()
+//       // Set up field change listeners after processing all fields
+//       setupFieldChangeListeners()
     }
   }
 })
@@ -1741,7 +1741,7 @@ async function createNewDonor() {
   
   // Email validation
   if (!donor.doc.email || donor.doc.email.trim() === '') {
-    validationErrors.push('Email is required')
+    validationErrors.push('Donor Email is required')
   } else {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(donor.doc.email.trim())) {

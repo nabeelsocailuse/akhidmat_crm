@@ -544,7 +544,7 @@ const emit = defineEmits(['donor-selected'])
 
 const { fetchDonorDetails, updateDonorFields, clearDonorFields } = useDonorSelection()
 
-// Enhanced fieldChange function with donor_id handling
+// Enhanced fieldChange function with donor_id and fund_class_id handling
 async function fieldChange(value, field, row) {
   console.log('Grid fieldChange called:', { value, field: field.fieldname, row })
   
@@ -580,6 +580,35 @@ async function fieldChange(value, field, row) {
     return
   }
   
+  // NEW: Special handling for fund_class_id field in payment detail table
+  if (field.fieldname === 'fund_class_id' && props.parentFieldname === 'payment_detail') {
+    console.log('Processing fund_class_id change in Grid:', { value, row })
+    
+    // Update the fund_class_id in the row
+    row.fund_class_id = value
+    
+    // Handle Fund Class selection immediately
+    if (value) {
+      console.log('Fetching Fund Class details for:', value)
+      const fundClassDetails = await fetchFundClassDetails(value)
+      if (fundClassDetails) {
+        updateFundClassFields(row, fundClassDetails)
+        console.log('Fund Class fields updated successfully')
+      }
+    } else {
+      console.log('Clearing Fund Class fields')
+      clearFundClassFields(row)
+    }
+    
+    // Force reactive update
+    forceReactiveUpdate()
+    
+    // Call the original triggerOnChange
+    triggerOnChange(field.fieldname, value, row)
+    
+    return
+  }
+  
   // Regular field change handling
   triggerOnChange(field.fieldname, value, row)
 }
@@ -592,14 +621,14 @@ function forceReactiveUpdate() {
   }
 }
 
-// Add watcher for donor_id changes as backup
+// Add watcher for donor_id and fund_class_id changes as backup
 watch(rows, (newRows) => {
   if (!newRows) {
     rows.value = []
     return
   }
   
-  // Monitor donor_id changes in each row
+  // Monitor donor_id and fund_class_id changes in each row
   newRows.forEach((row, index) => {
     if (row.donor_id && row.donor_id !== row._lastDonorId) {
       console.log(`Watcher detected donor_id change in row ${index}:`, row.donor_id)
@@ -607,6 +636,15 @@ watch(rows, (newRows) => {
       
       // Handle the donor selection
       handleDonorSelectionFromWatcher(row.donor_id, row)
+    }
+    
+    // NEW: Monitor fund_class_id changes
+    if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
+      console.log(`Watcher detected fund_class_id change in row ${index}:`, row.fund_class_id)
+      row._lastFundClassId = row.fund_class_id
+      
+      // Handle the Fund Class selection
+      handleFundClassSelectionFromWatcher(row.fund_class_id, row)
     }
   })
 }, { deep: true })
@@ -624,6 +662,85 @@ async function handleDonorSelectionFromWatcher(donorId, row) {
   } else {
     clearDonorFields(row)
     forceReactiveUpdate()
+  }
+}
+
+// NEW: Fund Class handling functions
+async function fetchFundClassDetails(fundClassId) {
+  console.log('Fetching Fund Class details for:', fundClassId)
+  
+  try {
+    const result = await call('akf_accounts.akf_accounts.doctype.donation.donation.get_fund_class_details', {
+      fund_class_id: fundClassId,
+      company: parentDoc.value?.company || 'Alkhidmat Foundation Pakistan'
+    })
+    
+    console.log('Fund Class details received:', result)
+    return result
+  } catch (error) {
+    console.error('Error fetching Fund Class details:', error)
+    return null
+  }
+}
+
+function updateFundClassFields(row, fundClassDetails) {
+  console.log('Updating row with Fund Class details:', fundClassDetails)
+  console.log('Row before update:', { ...row })
+  
+  // Map Fund Class fields to payment detail fields
+  const fieldMappings = {
+    'service_area': 'pay_service_area',
+    'subservice_area': 'pay_subservice_area',
+    'product': 'pay_product',
+    'equity_account': 'equity_account',
+    'receivable_account': 'receivable_account',
+    'cost_center': 'cost_center'
+  }
+  
+  // Update each field with Fund Class data
+  Object.entries(fieldMappings).forEach(([fundClassField, rowField]) => {
+    if (fundClassDetails[fundClassField] !== undefined) {
+      const oldValue = row[rowField]
+      row[rowField] = fundClassDetails[fundClassField] || ''
+      console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
+    }
+  })
+  
+  console.log('Row after Fund Class update:', { ...row })
+}
+
+function clearFundClassFields(row) {
+  console.log('Clearing Fund Class fields for row')
+  
+  const fundClassFields = [
+    'pay_service_area', 'pay_subservice_area', 'pay_product',
+    'equity_account', 'receivable_account', 'cost_center'
+  ]
+  
+  fundClassFields.forEach(fieldName => {
+    row[fieldName] = ''
+  })
+}
+
+// NEW: Handle Fund Class selection from watcher
+async function handleFundClassSelectionFromWatcher(fundClassId, row) {
+  console.log('Handling Fund Class selection from watcher:', { fundClassId, row })
+  
+  if (!fundClassId) {
+    clearFundClassFields(row)
+    return
+  }
+  
+  try {
+    const fundClassDetails = await fetchFundClassDetails(fundClassId)
+    if (fundClassDetails) {
+      updateFundClassFields(row, fundClassDetails)
+      console.log('Fund Class fields updated successfully from watcher')
+    } else {
+      console.log('No Fund Class details received from watcher')
+    }
+  } catch (error) {
+    console.error('Error in Fund Class selection from watcher:', error)
   }
 }
 

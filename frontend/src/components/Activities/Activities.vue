@@ -382,7 +382,13 @@
     >
       <component :is="emptyTextIcon" class="h-10 w-10" />
       <span>{{ __(emptyText) }}</span>
-      <MultiActionButton v-if="title == 'Calls'" :options="callActions" />
+      <AppStyling
+        v-if="title == 'Calls'"
+        type="button"
+        buttonType="create"
+        buttonLabel="Log a Call"
+        @click="modalRef.createCallLog()"
+      />
       <AppStyling
         v-else-if="title == 'Notes'"
         type="button"
@@ -467,6 +473,7 @@
 import ActivityHeader from '@/components/Activities/ActivityHeader.vue'
 import EmailArea from '@/components/Activities/EmailArea.vue'
 import CommentArea from '@/components/Activities/CommentArea.vue'
+import AppStyling from '@/components/AppStyling.vue'
 import CallArea from '@/components/Activities/CallArea.vue'
 import NoteArea from '@/components/Activities/NoteArea.vue'
 import TaskArea from '@/components/Activities/TaskArea.vue'
@@ -506,7 +513,6 @@ import { whatsappEnabled, callEnabled } from '@/composables/settings'
 import { useDocument } from '@/data/document'
 import { capture } from '@/telemetry'
 import { Button, Tooltip, createResource } from 'frappe-ui'
-import AppStyling from '@/components/AppStyling.vue'
 import { useElementVisibility } from '@vueuse/core'
 import {
   ref,

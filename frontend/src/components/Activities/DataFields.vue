@@ -20,10 +20,11 @@
           <EditIcon />
         </template>
       </Button>
-      <Button
-        label="Save"
+      <AppStyling
+        type="button"
+        buttonType="create"
+        buttonLabel="Save"
         :disabled="!document?.isDirty"
-        variant="solid"
         :loading="document?.save?.loading"
         @click="saveChanges"
       />
@@ -61,6 +62,7 @@
 import EditIcon from '@/components/Icons/EditIcon.vue'
 import DataFieldsModal from '@/components/Modals/DataFieldsModal.vue'
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
+import AppStyling from '@/components/AppStyling.vue'
 import { Badge, createResource } from 'frappe-ui'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import { usersStore } from '@/stores/users'
