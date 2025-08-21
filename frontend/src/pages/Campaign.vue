@@ -338,7 +338,7 @@ async function triggerStatusChange(value) {
 }
 
 const campaign = createResource({
-  url: 'akf_crm.akf_crm.doctype.fcrm_campaign.api.get_campaign',
+  url: 'akfp_crm.akfp_crm.doctype.fcrm_campaign.api.get_campaign',
   params: { name: props.campaignId },
   cache: ['campaign', props.campaignId],
   onSuccess: (data) => {
