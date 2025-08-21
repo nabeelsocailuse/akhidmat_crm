@@ -232,6 +232,11 @@ const allViews = computed(() => {
       icon: ContactsIcon,
       to: 'Contacts',
     },
+    {
+      label: 'Addresses',
+      icon: DonorIcon,
+      to: 'Addresses',
+    },
     // {
     //   label: 'Organizations',
     //   icon: OrganizationsIcon,
@@ -267,11 +272,7 @@ const allViews = computed(() => {
     icon: DonationIcon,
     to: 'Donations',
     },
-    {
-      label: 'Addresses',
-      icon: DonorIcon,
-      to: 'Addresses',
-    }
+
   ]
 
   let _views = [

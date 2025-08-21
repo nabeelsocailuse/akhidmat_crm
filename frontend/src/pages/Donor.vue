@@ -154,12 +154,16 @@ function parseRows(rows, columns = []) {
   // Define the fields we want to display - matching the backend controller's default_list_data
   const displayFields = [
     'name',
+    'identification_type',
+    'contact_no',
     'donor_name', 
     'organization',
     'status',
     'email',
     'mobile_no',
     'donor_owner',
+    'donor_type',
+    'department',
     'first_name',
     'sla_status',
     'response_by',

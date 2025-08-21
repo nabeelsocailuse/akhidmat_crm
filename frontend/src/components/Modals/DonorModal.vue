@@ -1774,9 +1774,9 @@ async function createNewDonor() {
     validationErrors.push('Default Currency is required')
   }
   
-  if (!donor.doc.company || donor.doc.company.trim() === '') {
-    validationErrors.push('Company is required')
-  }
+  // if (!donor.doc.company || donor.doc.company.trim() === '') {
+  //   validationErrors.push('Company is required')
+  // }
   
   // if (!donor.doc.citytown || donor.doc.citytown.trim() === '') {
   //   validationErrors.push('City/Town is required')
