@@ -40,6 +40,18 @@
                 required
               />
             </div>
+            <div>
+              <label class="block text-sm font-medium text-ink-gray-7 mb-2">
+                {{ __('Description') }}
+              </label>
+              <FormControl
+                v-model="campaign.doc.description"
+                type="textarea"
+                :placeholder="__('Enter campaign description')"
+                class="w-full"
+                rows="3"
+              />
+            </div>
           </div>
           <ErrorMessage class="mt-4" v-if="error" :message="__(error)" />
         </div>
@@ -86,7 +98,7 @@ const router = useRouter()
 const error = ref(null)
 const isCampaignCreating = ref(false)
 
-const { document: campaign, triggerOnBeforeCreate } = useDocument('CRM Campaign')
+const { document: campaign, triggerOnBeforeCreate } = useDocument('FCRM Campaign')
 
 
 
@@ -100,7 +112,7 @@ async function createNewCampaign() {
   createCampaign.submit(
     {
       doc: {
-        doctype: 'CRM Campaign',
+        doctype: 'FCRM Campaign',
         ...campaign.doc,
       },
     },
@@ -136,7 +148,7 @@ async function createNewCampaign() {
 
 function openQuickEntryModal() {
   showQuickEntryModal.value = true
-  quickEntryProps.value = { doctype: 'CRM Campaign' }
+  quickEntryProps.value = { doctype: 'FCRM Campaign' }
   nextTick(() => (show.value = false))
 }
 

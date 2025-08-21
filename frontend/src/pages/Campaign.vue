@@ -20,7 +20,7 @@
         <AssignTo
           v-model="assignees.data"
           :data="document.doc"
-          doctype="CRM Campaign"
+          doctype="FCRM Campaign"
         />
       </template>
     </LayoutHeader>
@@ -31,7 +31,7 @@
           <template #tab-panel>
             <Activities
               ref="activities"
-              doctype="CRM Campaign"
+              doctype="FCRM Campaign"
               :tabs="tabs"
               v-model:reload="reload"
               v-model:tabIndex="tabIndex"
@@ -179,7 +179,7 @@
       >
         <SidePanelLayout
           :sections="sections.data"
-          doctype="CRM Campaign"
+          doctype="FCRM Campaign"
           :docname="campaign.data.name"
           @reload="sections.reload"
           @afterFieldChange="reloadAssignees"
@@ -203,6 +203,10 @@
               <div v-if="campaign.data.campaign_name">
                 <label class="text-sm font-medium text-ink-gray-7">{{ __('Campaign Name') }}</label>
                 <p class="text-sm text-ink-gray-9">{{ campaign.data.campaign_name }}</p>
+              </div>
+              <div v-if="campaign.data.description">
+                <label class="text-sm font-medium text-ink-gray-7">{{ __('Description') }}</label>
+                <p class="text-sm text-ink-gray-9">{{ campaign.data.description }}</p>
               </div>
               <div v-if="campaign.data.owner">
                 <label class="text-sm font-medium text-ink-gray-7">{{ __('Owner') }}</label>
@@ -231,7 +235,7 @@
   <FilesUploader
     v-if="campaign.data?.name"
     v-model="showFilesUploader"
-    doctype="CRM Campaign"
+    doctype="FCRM Campaign"
     :docname="props.campaignId"
     @after="
       () => {
@@ -243,7 +247,7 @@
   <DeleteLinkedDocModal
     v-if="showDeleteLinkedDocModal"
     v-model="showDeleteLinkedDocModal"
-    :doctype="'CRM Campaign'"
+    :doctype="'FCRM Campaign'"
     :docname="props.campaignId"
     name="Campaigns"
   />
@@ -307,7 +311,7 @@ import { useActiveTabManager } from '@/composables/useActiveTabManager'
 const { brand } = getSettings()
 const { $dialog, $socket, makeCall } = globalStore()
 const { statusOptions } = statusesStore
-const { doctypeMeta } = getMeta('CRM Campaign')
+const { doctypeMeta } = getMeta('FCRM Campaign')
 
 const route = useRoute()
 const router = useRouter()
@@ -324,7 +328,7 @@ const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
 
 const { triggerOnChange, assignees, document } = useDocument(
-  'CRM Campaign',
+  'FCRM Campaign',
   props.campaignId,
 )
 
@@ -334,7 +338,7 @@ async function triggerStatusChange(value) {
 }
 
 const campaign = createResource({
-  url: 'crm.fcrm.doctype.crm_campaign.api.get_campaign',
+  url: 'akf_crm.akf_crm.doctype.fcrm_campaign.api.get_campaign',
   params: { name: props.campaignId },
   cache: ['campaign', props.campaignId],
   onSuccess: (data) => {
@@ -380,7 +384,7 @@ function updateCampaign(fieldname, value, callback) {
   createResource({
     url: 'frappe.client.set_value',
     params: {
-      doctype: 'CRM Campaign',
+      doctype: 'FCRM Campaign',
       name: props.campaignId,
       fieldname,
       value,
@@ -411,7 +415,7 @@ const breadcrumbs = computed(() => {
   let items = [{ label: __('Campaigns'), route: { name: 'Campaigns' } }]
 
   if (route.query.view || route.query.viewType) {
-    let view = getView(route.query.view, route.query.viewType, 'CRM Campaign')
+            let view = getView(route.query.view, route.query.viewType, 'FCRM Campaign')
     if (view) {
       items.push({
         label: __(view.label),
@@ -433,7 +437,7 @@ const breadcrumbs = computed(() => {
 })
 
 const title = computed(() => {
-  // For CRM Campaign, use campaign_name as the title field
+  // For FCRM Campaign, use campaign_name as the title field
   let t = 'campaign_name'
   return campaign.data?.[t] || props.campaignId
 })
@@ -512,8 +516,8 @@ watch(tabs, (value) => {
 
 const sections = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
-  cache: ['sidePanelSections', 'CRM Campaign'],
-  params: { doctype: 'CRM Campaign' },
+  cache: ['sidePanelSections', 'FCRM Campaign'],
+  params: { doctype: 'FCRM Campaign' },
   auto: true,
   onSuccess: (data) => {
     console.log('Sections loaded:', data)
@@ -532,7 +536,7 @@ function updateField(name, value, callback) {
 
 async function deleteCampaign(name) {
   await call('frappe.client.delete', {
-    doctype: 'CRM Campaign',
+    doctype: 'FCRM Campaign',
     name,
   })
   router.push({ name: 'Campaigns' })

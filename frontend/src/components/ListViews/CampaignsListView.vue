@@ -34,12 +34,12 @@
           </Button>
         </ListHeaderItem>
       </AppStyling>
-      <ListRows
-        class="mx-3 sm:mx-5"
-        :rows="rows"
-        v-slot="{ idx, column, item }"
-        doctype="CRM Campaign"
-      >
+              <ListRows
+          class="mx-3 sm:mx-5"
+          :rows="rows"
+          v-slot="{ idx, column, item }"
+          doctype="FCRM Campaign"
+        >
         <ListRowItem :item="item" :align="column.align">
           <template #prefix>
             <div v-if="column.key === 'full_name'">
@@ -81,6 +81,24 @@
             >
               <Tooltip :text="item.label">
                 <div>{{ item.timeAgo }}</div>
+              </Tooltip>
+            </div>
+            <div
+              v-else-if="column.key === 'description'"
+              class="truncate text-base"
+              @click="
+                (event) =>
+                  emit('applyFilter', {
+                    event,
+                    idx,
+                    column,
+                    item,
+                    firstColumn: columns[0],
+                  })
+              "
+            >
+              <Tooltip :text="item.label">
+                <div class="truncate">{{ item.label }}</div>
               </Tooltip>
             </div>
             <div v-else-if="column.type === 'Check'">
@@ -144,7 +162,7 @@
     <ListBulkActions
       ref="listBulkActionsRef"
       v-model="list"
-      doctype="Contact"
+      doctype="FCRM Campaign"
       :options="{
         hideAssign: true,
       }"

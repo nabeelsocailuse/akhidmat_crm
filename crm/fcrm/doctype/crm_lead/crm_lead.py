@@ -373,8 +373,9 @@ class CRMLead(Document):
 
 		if donor:
 			new_donor.update(donor)
-
-		new_donor.insert(ignore_permissions=True)
+		new_donor.flags.ignore_mandatory = True
+		new_donor.flags.ignore_permissions = True
+		new_donor.insert()
 		return new_donor.name
 
 	def set_sla(self):

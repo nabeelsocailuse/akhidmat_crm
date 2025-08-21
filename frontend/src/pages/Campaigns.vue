@@ -25,7 +25,7 @@
       v-model:loadMore="loadMore"
       v-model:resizeColumn="triggerResize"
       v-model:updatedPageCount="updatedPageCount"
-      doctype="CRM Campaign"
+      doctype="FCRM Campaign"
       :filters="{}"
       :options="{
         allowedViews: ['list', 'group_by', 'kanban'],
@@ -102,6 +102,11 @@
               :avatars="getRow(itemName, fieldName).label"
               size="xs"
             />
+          </div>
+          <div v-else-if="fieldName === 'description'" class="truncate text-base">
+            <Tooltip :text="getRow(itemName, fieldName).label">
+              <div class="truncate">{{ getRow(itemName, fieldName).label }}</div>
+            </Tooltip>
           </div>
           <div v-else class="truncate text-base">
             {{ getRow(itemName, fieldName).label }}
@@ -185,14 +190,14 @@
       v-if="showNoteModal"
       v-model="showNoteModal"
       :note="note"
-      doctype="CRM Campaign"
+      doctype="FCRM Campaign"
       :doc="docname"
     />
     <TaskModal
       v-if="showTaskModal"
       v-model="showTaskModal"
       :task="task"
-      doctype="CRM Campaign"
+      doctype="FCRM Campaign"
       :doc="docname"
     />
   </AppStyling>
@@ -227,7 +232,7 @@ import { ref, computed, reactive, h } from 'vue'
 import AppStyling from '@/components/AppStyling.vue'
 
 const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
-  getMeta('CRM Campaign')
+  getMeta('FCRM Campaign')
 const { makeCall } = globalStore()
 const { getUser, users } = usersStore()
 const caseofficerUsers = computed(() =>
@@ -344,6 +349,11 @@ function parseRows(dataRows, columns = [], rowKeys = []) {
         }
       } else if (col.key === "campaign_name" && value) {
         // CampaignsListView expects campaign_name to have a label property
+        _rows[key] = {
+          label: value,
+        }
+      } else if (col.key === "description" && value) {
+        // Handle description field with truncation
         _rows[key] = {
           label: value,
         }
