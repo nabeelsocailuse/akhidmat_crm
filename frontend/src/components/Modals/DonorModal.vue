@@ -1506,10 +1506,10 @@ onMounted(() => {
 
   }
   
-  if (!donor.doc.company) {
-    donor.doc.company = 'Alkhidmat Foundation'
+  // if (!donor.doc.company) {
+  //   donor.doc.company = 'Alkhidmat Foundation'
 
-  }
+  // }
   
   if (!donor.doc.default_currency) {
     donor.doc.default_currency = 'PKR'
