@@ -353,9 +353,10 @@ def get_data(
 			columns = frappe.parse_json(list_view_settings.columns)
 			rows = frappe.parse_json(list_view_settings.rows)
 			is_default = False
-		elif not custom_view or (is_default and hasattr(_list, "default_list_data")):
+		elif not custom_view or (is_default and hasattr(_list, "default_list_data") and _list.default_list_data):
 			rows = default_rows
-			columns = _list.default_list_data().get("columns")
+			if hasattr(_list, "default_list_data") and _list.default_list_data:
+				columns = _list.default_list_data().get("columns")
 
 		# check if rows has all keys from columns if not add them
 		for column in columns:

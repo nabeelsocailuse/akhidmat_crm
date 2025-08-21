@@ -1,11 +1,11 @@
 <template>
-  <Dialog v-model="show" :options="dialogOptions">
+  <Dialog v-model="show" :options="{ size: 'xl' }">
     <template #body>
-      <div class="bg-surface-modal px-4 pb-6 pt-5 sm:px-6">
+      <AppStyling type="modal-styling" modalType="header">
         <div class="mb-5 flex items-center justify-between">
           <div>
             <h3 class="text-2xl font-semibold leading-6 text-ink-gray-9">
-              {{ __(dialogOptions.title) || __('Untitled') }}
+              {{ __('New Address') }}
             </h3>
           </div>
           <div class="flex items-center gap-1">
@@ -26,27 +26,25 @@
             </Button>
           </div>
         </div>
-        <div v-if="tabs.data && _address.doc">
-          <FieldLayout
-            :tabs="tabs.data"
-            :data="_address.doc"
-            doctype="Address"
-          />
-          <ErrorMessage class="mt-2" :message="error" />
-        </div>
-      </div>
-      <div class="px-4 pb-7 pt-4 sm:px-6">
+        <FieldLayout
+          v-if="tabs.data?.length"
+          :tabs="tabs.data"
+          :data="_address.doc"
+          doctype="Address"
+        />
+      </AppStyling>
+      <AppStyling type="modal-styling" modalType="footer">
         <div class="space-y-2">
-          <Button
+          <AppStyling
+            type="button"
+            buttonType="create"
+            buttonLabel="Create"
+            :buttonLoading="loading"
+            @click="createAddress"
             class="w-full"
-            v-for="action in dialogOptions.actions"
-            :key="action.label"
-            v-bind="action"
-            :label="__(action.label)"
-            :loading="loading"
           />
         </div>
-      </div>
+      </AppStyling>
     </template>
   </Dialog>
 </template>
@@ -54,22 +52,28 @@
 <script setup>
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import EditIcon from '@/components/Icons/EditIcon.vue'
+import AppStyling from '@/components/AppStyling.vue'
 import { usersStore } from '@/stores/users'
 import { isMobileView } from '@/composables/settings'
-import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
+import {
+  showQuickEntryModal,
+  quickEntryProps,
+} from '@/composables/modals'
 import { useDocument } from '@/data/document'
 import { capture } from '@/telemetry'
-import { FeatherIcon, createResource, ErrorMessage } from 'frappe-ui'
-import { ref, nextTick, computed, onMounted } from 'vue'
+import { Button, call, createResource, FeatherIcon } from 'frappe-ui'
+import { ref, nextTick, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 
 const props = defineProps({
   address: {
-    type: String,
-    default: '',
+    type: Object,
+    default: {},
   },
   options: {
     type: Object,
     default: {
+      redirect: true,
       afterInsert: () => {},
     },
   },
@@ -77,114 +81,74 @@ const props = defineProps({
 
 const { isManager } = usersStore()
 
+const router = useRouter()
 const show = defineModel()
 
 const loading = ref(false)
-const error = ref(null)
-const title = ref(null)
-const editMode = ref(false)
 
-const { document: _address, triggerOnBeforeCreate } = useDocument(
-  'Address',
-  props.address || '',
-)
+const { document: _address, triggerOnBeforeCreate } = useDocument('Address')
 
-const dialogOptions = computed(() => {
-  let title = !editMode.value
-    ? __('New Address')
-    : __(_address.doc?.address_title)
-  let size = 'xl'
-  let actions = [
-    {
-      label: editMode.value ? __('Save') : __('Create'),
-      variant: 'solid',
-      onClick: () => (editMode.value ? updateAddress() : createAddress()),
+async function createAddress() {
+  await triggerOnBeforeCreate?.()
+
+  const doc = await call('frappe.client.insert', {
+    doc: {
+      doctype: 'Address',
+      ..._address.doc,
     },
-  ]
+  })
+  if (doc.name) {
+    capture('address_created')
+    handleAddressUpdate(doc)
+  }
+}
 
-  return { title, size, actions }
-})
+function handleAddressUpdate(doc) {
+  props.address?.reload?.()
+  if (doc.name && props.options.redirect) {
+    router.push({
+      name: 'Address',
+      params: { addressId: doc.name },
+    })
+  }
+  show.value = false
+  props.options.afterInsert && props.options.afterInsert(doc)
+}
 
 const tabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
   cache: ['QuickEntry', 'Address'],
   params: { doctype: 'Address', type: 'Quick Entry' },
   auto: true,
-})
-
-const callBacks = {
-  onSuccess: (doc) => {
-    loading.value = false
-    handleAddressUpdate(doc)
-  },
-  onError: (err) => {
-    loading.value = false
-    if (err.exc_type == 'MandatoryError') {
-      const errorMessage = err.messages
-        .map((msg) => {
-          let arr = msg.split(': ')
-          return arr[arr.length - 1].trim()
+  transform: (_tabs) => {
+    return _tabs.forEach((tab) => {
+      tab.sections.forEach((section) => {
+        section.columns.forEach((column) => {
+          column.fields.forEach((field) => {
+            if (field.fieldtype === 'Table') {
+              _address.doc[field.fieldname] = []
+            }
+          })
         })
-        .join(', ')
-      error.value = __('These fields are required: {0}', [errorMessage])
-      return
-    }
-    error.value = err
-  },
-}
-
-async function updateAddress() {
-  loading.value = true
-  await _address.save.submit(null, callBacks)
-}
-
-async function createAddress() {
-  loading.value = true
-  error.value = null
-
-  await triggerOnBeforeCreate?.()
-
-  await _createAddress.submit({
-    doc: {
-      doctype: 'Address',
-      ..._address.doc,
-    },
-  })
-}
-
-const _createAddress = createResource({
-  url: 'frappe.client.insert',
-  onSuccess(doc) {
-    loading.value = false
-    if (doc.name) {
-      capture('address_created')
-      handleAddressUpdate(doc)
-    }
-  },
-  onError(err) {
-    loading.value = false
-    error.value = err
+      })
+    })
   },
 })
-
-function handleAddressUpdate(doc) {
-  show.value = false
-  props.options.afterInsert && props.options.afterInsert(doc)
-}
 
 onMounted(() => {
-  editMode.value = props.address ? true : false
-
-  if (!props.address) {
-    _address.doc = { address_type: 'Billing' }
-  }
+  _address.doc = {}
+  Object.assign(_address.doc, props.address.data || props.address)
 })
 
 function openQuickEntryModal() {
   showQuickEntryModal.value = true
   quickEntryProps.value = { doctype: 'Address' }
-  nextTick(() => {
-    show.value = false
-  })
+  nextTick(() => (show.value = false))
 }
 </script>
+
+<style scoped>
+:deep(:has(> .dropdown-button)) {
+  width: 100%;
+}
+</style>

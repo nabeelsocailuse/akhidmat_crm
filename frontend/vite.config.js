@@ -4,7 +4,7 @@ import vueJsx from '@vitejs/plugin-vue-jsx'
 import path from 'path'
 import fs from 'fs'
 import frappeui from 'frappe-ui/vite'
-import { VitePWA } from 'vite-plugin-pwa'
+// import { VitePWA } from 'vite-plugin-pwa'
 
 function appPath(app) {
   const root = path.resolve(__dirname, '../..') // points to apps
@@ -81,46 +81,46 @@ export default defineConfig({
     }),
     vue(),
     vueJsx(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      devOptions: {
-        enabled: true,
-      },
-      manifest: {
-        display: 'standalone',
-        name: 'Frappe CRM',
-        short_name: 'Frappe CRM',
-        start_url: '/crm',
-        description:
-          'Modern & 100% Open-source CRM tool to supercharge your sales operations',
-        icons: [
-          {
-            src: '/assets/crm/manifest/manifest-icon-192.maskable.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any',
-          },
-          {
-            src: '/assets/crm/manifest/manifest-icon-192.maskable.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
-          {
-            src: '/assets/crm/manifest/manifest-icon-512.maskable.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any',
-          },
-          {
-            src: '/assets/crm/manifest/manifest-icon-512.maskable.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
-        ],
-      },
-    }),
+    // VitePWA({
+    //   registerType: 'autoUpdate',
+    //   devOptions: {
+    //     enabled: true,
+    //   },
+    //   manifest: {
+    //     display: 'standalone',
+    //     name: 'Frappe CRM',
+    //     short_name: 'Frappe CRM',
+    //     start_url: '/crm',
+    //     description:
+    //       'Modern & 100% Open-source CRM tool to supercharge your sales operations',
+    //     icons: [
+    //       {
+    //         src: '/assets/crm/manifest/manifest-icon-192.maskable.png',
+    //         sizes: '192x192',
+    //         type: 'image/png',
+    //         purpose: 'any',
+    //       },
+    //       {
+    //         src: '/assets/crm/manifest/manifest-icon-192.maskable.png',
+    //         sizes: '192x192',
+    //         type: 'image/png',
+    //         purpose: 'maskable',
+    //       },
+    //       {
+    //         src: '/assets/crm/manifest/manifest-icon-512.maskable.png',
+    //         sizes: '512x512',
+    //         type: 'image/png',
+    //         purpose: 'any',
+    //       },
+    //       {
+    //         src: '/assets/crm/manifest/manifest-icon-512.maskable.png',
+    //         sizes: '512x512',
+    //         type: 'image/png',
+    //         purpose: 'maskable',
+    //       },
+    //     ],
+    //   },
+    // }),
     virtualStubPlugin,
   ],
   resolve: { alias },

@@ -71,6 +71,18 @@ const routes = [
     component: () => import(`@/pages/${handleMobileView('Contact')}.vue`),
     props: true,
   },
+  {
+    alias: '/addresses',
+    path: '/addresses/view/:viewType?',
+    name: 'Addresses',
+    component: () => import('@/pages/Addresses.vue'),
+  },
+  {
+    path: '/addresses/:addressId',
+    name: 'Address',
+    component: () => import('@/pages/Address.vue'),
+    props: true,
+  },
   // {
   //   alias: '/organizations',
   //   path: '/organizations/view/:viewType?',
@@ -123,18 +135,18 @@ const routes = [
     component: () => import('@/pages/DonorDetail.vue'),
     props: true,
   },
-  // {
-  //   alias: '/donations',
-  //   path: '/donations/view/:viewType?',
-  //   name: 'Donations',
-  //   component: () => import('@/pages/Donation.vue'),
-  // },
-  // {
-  //   path: '/donations/:donationId',
-  //   name: 'DonationDetail',
-  //   component: () => import('@/pages/DonationDetail.vue'),
-  //   props: true,
-  // },
+  {
+    alias: '/donations',
+    path: '/donations/view/:viewType?',
+    name: 'Donations',
+    component: () => import('@/pages/Donation.vue'),
+  },
+  {
+    path: '/donations/:donationId',
+    name: 'DonationDetail',
+    component: () => import('@/pages/DonationDetail.vue'),
+    props: true,
+  },
   
 ]
 

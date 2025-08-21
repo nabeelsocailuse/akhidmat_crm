@@ -50,6 +50,7 @@
 </template>
 
 <script>
+const __ = (text) => text
 import { createPopper } from '@popperjs/core'
 
 export default {

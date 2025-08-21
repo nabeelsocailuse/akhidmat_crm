@@ -75,29 +75,17 @@
       class="flex gap-1"
       v-else-if="['Link', 'Dynamic Link'].includes(field.fieldtype)"
     >
-      <!-- Special handling for Company and Fund Class Id fields - no create functionality -->
       <Link
-        v-if="field.fieldname === 'company' || field.fieldname === 'fund_class_id'"
         class="form-control flex-1 truncate"
         v-model="data[field.fieldname]"
-        :doctype="field.fieldtype == 'Link' ? field.options : data[field.options]"
+        :doctype="
+          field.fieldtype == 'Link' ? field.options : data[field.options]
+        "
         :filters="field.filters"
-        :placeholder="getPlaceholder(field)"
-        :onCreate="null"
-        :only_select="true"
-      />
-      <!-- Regular Link component for other fields -->
-      <Link
-        v-else
-        class="form-control flex-1 truncate"
-        v-model="data[field.fieldname]"
-        :doctype="field.fieldtype == 'Link' ? field.options : data[field.options]"
-        :filters="field.filters"
+        @change="(v) => fieldChange(v, field)"
         :placeholder="getPlaceholder(field)"
         :onCreate="field.create"
       />
-      
-      <!-- Edit button for existing values -->
       <Button
         v-if="data[field.fieldname] && field.edit"
         class="shrink-0"
@@ -105,7 +93,7 @@
         @click="field.edit(data[field.fieldname])"
       >
         <template #prefix>
-          <EditIcon class="h-4 w-4" />
+          <EditIcon name="edit" class="h-4 w-4" />
         </template>
       </Button>
     </div>
@@ -288,7 +276,6 @@ if (!isGridRow) {
 
 const field = computed(() => {
   let field = props.field
-  
   if (field.fieldtype == 'Select' && typeof field.options === 'string') {
     field.options = field.options.split('\n').map((option) => {
       return { label: option, value: option }
@@ -307,29 +294,13 @@ const field = computed(() => {
     })
   }
 
-  // NEW: Disable create functionality for Company and Fund Class Id fields only
-  if (field.fieldtype === 'Link' && (field.fieldname === 'company' || field.fieldname === 'fund_class_id')) {
-    field.create = null // Remove create functionality
-    field.only_select = true // Force only selection mode
-    field.allow_on_submit = 0 // Prevent creation on submit
-    field.allow_in_quick_entry = 0 // Prevent creation in quick entry
-    console.log(`Field ${field.fieldname} create functionality disabled in Field component`)
-  }
-  // Keep existing logic for other Link fields
-  else if (field.fieldtype === 'Link' && field.options !== 'User') {
+  if (field.fieldtype === 'Link' && field.options !== 'User') {
     if (!field.create) {
       field.create = (value, close) => {
-        // Close the dropdown immediately when "Create New" is clicked
-        close?.()
-        
-        // Emit the open-create-modal event to the parent instead of using global createDocument
-        emit('open-create-modal', {
-          doctype: field.options,
-          initialValue: value,
-          onSuccess: (doc) => {
-            if (doc) fieldChange(doc.name, field)
-          }
-        })
+        const callback = (d) => {
+          if (d) fieldChange(d.name, field)
+        }
+        createDocument(field.options, value, close, callback)
       }
     }
   }

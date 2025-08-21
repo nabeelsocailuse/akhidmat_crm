@@ -94,6 +94,7 @@ function close() {
 }
 </script>
 <script>
+const __ = (text) => text
 export default {
   inheritAttrs: false,
 }
