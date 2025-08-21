@@ -354,8 +354,16 @@ class CRMLead(Document):
 			{
 				"lead": self.name,
 				"contacts": [{"contact": contact}],
-				"donor_type": "Individual Donors",
+				"donor_type": "Individual",
 				"donor_name": donor_name,
+				"custom_campaign": self.custom_campaign,
+				"owner_id": self.lead_owner,
+				"identification_type": self.custom_identification_type,
+				"cnic": self.custom_identification_value,
+				"address": self.custom_address,
+				"city": self.custom_city,
+				"stateprovince": self.custom_state_province,
+				"contact_no": self.mobile_no,
 			}
 		)
 
