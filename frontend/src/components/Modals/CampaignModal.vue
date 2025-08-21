@@ -27,31 +27,14 @@
           </div>
         </div>
         <div>
-          <div class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-ink-gray-7 mb-2">
-                {{ __('Campaign Name') }} *
-              </label>
-              <FormControl
-                v-model="campaign.doc.campaign_name"
-                type="text"
-                :placeholder="__('Enter campaign name')"
-                class="w-full"
-                required
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-ink-gray-7 mb-2">
-                {{ __('Description') }}
-              </label>
-              <FormControl
-                v-model="campaign.doc.description"
-                type="textarea"
-                :placeholder="__('Enter campaign description')"
-                class="w-full"
-                rows="3"
-              />
-            </div>
+          <div class="field-layout-wrapper">
+            <FieldLayout 
+              v-if="tabs.data" 
+              :tabs="tabs.data" 
+              :data="campaign.doc" 
+              :doctype="'FCRM Campaign'" 
+              @field-change="onFieldChange"
+            />
           </div>
           <ErrorMessage class="mt-4" v-if="error" :message="__(error)" />
         </div>
@@ -74,6 +57,7 @@
 <script setup>
 import EditIcon from '@/components/Icons/EditIcon.vue'
 import AppStyling from '@/components/AppStyling.vue'
+import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import { usersStore } from '@/stores/users'
 import { sessionStore } from '@/stores/session'
 import { isMobileView } from '@/composables/settings'
@@ -100,7 +84,19 @@ const isCampaignCreating = ref(false)
 
 const { document: campaign, triggerOnBeforeCreate } = useDocument('FCRM Campaign')
 
+// Add tabs resource for field layout
+const tabs = createResource({
+  url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
+  cache: ['QuickEntryModal', 'FCRM Campaign', false], 
+  params: { doctype: 'FCRM Campaign', type: 'Quick Entry' },
+  auto: true,
+})
 
+// Field change handler
+const onFieldChange = (fieldname, value) => {
+  console.log(`Campaign field changed: ${fieldname} = ${value}`)
+  // The FieldLayout component will automatically update campaign.doc[fieldname]
+}
 
 const createCampaign = createResource({
   url: 'frappe.client.insert',

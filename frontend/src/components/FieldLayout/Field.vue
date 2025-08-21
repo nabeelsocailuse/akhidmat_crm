@@ -295,7 +295,11 @@ const field = computed(() => {
   }
 
   if (field.fieldtype === 'Link' && field.options !== 'User') {
-    if (!field.create) {
+    // Disable "Create New" functionality for Company and Fund Class Id fields
+    if (field.fieldname === 'company' || field.fieldname === 'fund_class_id') {
+      // Remove the create function to disable "Create New" button
+      field.create = undefined
+    } else if (!field.create) {
       field.create = (value, close) => {
         const callback = (d) => {
           if (d) fieldChange(d.name, field)

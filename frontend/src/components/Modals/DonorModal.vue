@@ -185,7 +185,7 @@ function openQuickEntryModal() {
   })
 }
 
-const { document: donor, triggerOnBeforeCreate, triggerOnChange } = useDocument('Donor')
+const { document: donor, triggerOnBeforeCreate } = useDocument('Donor')
 
 // Debug: Watch for changes to the entire donor.doc object
 watch(
@@ -234,21 +234,10 @@ const setupFieldChangeListeners = () => {
 
 
 
-// Field change handler that properly updates the donor document
-const onFieldChange = async (fieldname, value) => {
-  // Handle special field changes
+// Simple field change handler
+const onFieldChange = (fieldname, value) => {
   if (fieldname === 'department') {
     handleDepartmentChange(value)
-  }
-  
-  // Use the triggerOnChange function to properly update the field
-  if (triggerOnChange) {
-    await triggerOnChange(fieldname, value)
-  }
-  
-  // Also update the local donor.doc for immediate UI updates
-  if (donor.doc) {
-    donor.doc[fieldname] = value
   }
 }
 
@@ -430,7 +419,6 @@ const tabs = createResource({
 defineExpose({
   donorDeskResource,
   onFieldChange,
-  triggerOnChange,
   reloadDonorDeskData: () => donorDeskResource.reload()
 })
 
