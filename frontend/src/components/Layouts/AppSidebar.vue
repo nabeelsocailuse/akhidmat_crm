@@ -149,7 +149,7 @@
 
 <script setup>
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
-import DonationIcon from '@/components/Icons/DonationIcon.vue'
+// import DonationIcon from '@/components/Icons/DonationIcon.vue'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
 import InviteIcon from '@/components/Icons/InviteIcon.vue'
 import ConvertIcon from '@/components/Icons/ConvertIcon.vue'
@@ -262,11 +262,11 @@ const allViews = computed(() => {
       icon: DonorIcon,
       to: 'Donor',
     },  
-    {
-    label: 'Donation',
-    icon: DonationIcon,
-    to: 'Donations',
-    },
+    // {
+    // label: 'Donation',
+    // icon: DonationIcon,
+    // to: 'Donations',
+    // },
   ]
 
   let _views = [
@@ -334,8 +334,8 @@ function getIcon(routeName, icon) {
       return CampaignIcon
     case 'Donor':
       return DonorIcon
-    case 'Donation':
-    return DonationIcon
+    // case 'Donation':
+    // return DonationIcon
     default:
       return PinIcon
   }

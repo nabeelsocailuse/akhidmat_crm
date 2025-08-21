@@ -123,18 +123,18 @@ const routes = [
     component: () => import('@/pages/DonorDetail.vue'),
     props: true,
   },
-  {
-    alias: '/donations',
-    path: '/donations/view/:viewType?',
-    name: 'Donations',
-    component: () => import('@/pages/Donation.vue'),
-  },
-  {
-    path: '/donations/:donationId',
-    name: 'DonationDetail',
-    component: () => import('@/pages/DonationDetail.vue'),
-    props: true,
-  },
+  // {
+  //   alias: '/donations',
+  //   path: '/donations/view/:viewType?',
+  //   name: 'Donations',
+  //   component: () => import('@/pages/Donation.vue'),
+  // },
+  // {
+  //   path: '/donations/:donationId',
+  //   name: 'DonationDetail',
+  //   component: () => import('@/pages/DonationDetail.vue'),
+  //   props: true,
+  // },
   
 ]
 
