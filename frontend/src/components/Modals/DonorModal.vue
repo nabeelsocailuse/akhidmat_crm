@@ -1854,9 +1854,9 @@ async function createNewDonor() {
     }
   }
   
-  if (donor.doc.default_currency && (!donor.doc.default_account || donor.doc.default_account.trim() === '')) {
-    validationErrors.push('Default Account is required when Default Currency is selected')
-  }
+  // if (donor.doc.default_currency && (!donor.doc.default_account || donor.doc.default_account.trim() === '')) {
+  //   validationErrors.push('Default Account is required when Default Currency is selected')
+  // }
 
   if (donor.doc.company_contact_number && donor.doc.company_contact_number.trim() !== '' && donor.doc.country) {  
     const companyContactValidation = await validatePhoneNumber(donor.doc.company_contact_number.trim(), donor.doc.country)
