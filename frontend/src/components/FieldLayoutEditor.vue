@@ -157,25 +157,59 @@
                       </template>
                     </Draggable>
                     
-                    <!-- Field Selection Dropdown -->
-                    <div class="mt-2">
-                      <Dropdown
-                        :options="getFieldOptions(column)"
-                        placement="bottom-start"
-                        class="w-full"
+                    <!-- Field Selection Dropdown with Scrolling -->
+                    <div class="mt-2 relative">
+                      <Button
+                        class="w-full !h-8 !bg-surface-modal"
+                        variant="outline"
+                        :label="__('Add Field')"
+                        @click="toggleFieldDropdown(column)"
                       >
-                        <template #default>
-                          <Button
-                            class="w-full !h-8 !bg-surface-modal"
-                            variant="outline"
-                            :label="__('Add Field')"
-                          >
-                            <template #prefix>
-                              <FeatherIcon name="plus" class="h-4" />
-                            </template>
-                          </Button>
+                        <template #prefix>
+                          <FeatherIcon name="plus" class="h-4" />
                         </template>
-                      </Dropdown>
+                      </Button>
+                      
+                      <!-- Custom Dropdown with Scrolling -->
+                      <div 
+                        v-if="activeDropdown === column.name"
+                        class="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-hidden"
+                      >
+                        <!-- Search Input -->
+                        <div class="p-2 border-b border-gray-200">
+                          <Input
+                            :value="getSearchQuery(column)"
+                            :placeholder="__('Search fields...')"
+                            class="w-full"
+                            @input="(value) => updateSearchQuery(column, value)"
+                            @keydown.enter="filterFields(column)"
+                            @keyup="filterFields(column)"
+                          />
+                        </div>
+                        
+                        <!-- Fields List with Scrolling -->
+                        <div class="max-h-48 overflow-y-auto">
+                          <div 
+                            v-for="field in getFilteredFieldOptions(column)"
+                            :key="field.fieldname"
+                            class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            @click="selectField(column, field)"
+                          >
+                            <div class="flex flex-col">
+                              <div class="font-medium text-gray-900">{{ field.label }}</div>
+                              <div class="text-sm text-gray-500">{{ field.fieldname }} - {{ field.fieldtype }}</div>
+                            </div>
+                          </div>
+                          
+                          <!-- No Fields Message -->
+                          <div 
+                            v-if="getFilteredFieldOptions(column).length === 0"
+                            class="px-3 py-4 text-center text-gray-500"
+                          >
+                            {{ __('No fields found') }}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </template>
@@ -211,7 +245,7 @@ import DragVerticalIcon from '@/components/Icons/DragVerticalIcon.vue'
 import Draggable from 'vuedraggable'
 import { getRandom } from '@/utils'
 import { Dropdown, createResource, Input, Button, FeatherIcon } from 'frappe-ui'
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 
 const props = defineProps({
   tabs: Object,
@@ -266,9 +300,122 @@ const fields = createResource({
   }
 })
 
+// Add these new reactive variables
+const activeDropdown = ref(null)
+const fieldSearchQueries = ref({})
+const filteredFieldOptions = ref({})
+
+// Function to get search query for a specific column
+function getSearchQuery(column) {
+  return fieldSearchQueries.value[column.name] || ''
+}
+
+// Function to update search query for a specific column
+function updateSearchQuery(column, value) {
+  fieldSearchQueries.value[column.name] = value
+  console.log('Search query updated for column', column.name, ':', value)
+  
+  // Immediately filter fields when search query changes
+  filterFields(column)
+}
+
+// Function to toggle dropdown
+function toggleFieldDropdown(column) {
+  if (activeDropdown.value === column.name) {
+    activeDropdown.value = null
+  } else {
+    activeDropdown.value = column.name
+    // Initialize search query for this column if not exists
+    if (!fieldSearchQueries.value[column.name]) {
+      fieldSearchQueries.value[column.name] = ''
+    }
+    // Initialize filtered options for this column
+    filteredFieldOptions.value[column.name] = getFieldOptions(column)
+  }
+}
+
+// Function to filter fields based on search query
+function filterFields(column) {
+  const query = fieldSearchQueries.value[column.name] || ''
+  const queryLower = query.toLowerCase().trim()
+  
+  console.log('Filtering fields for column:', column.name, 'Query:', query)
+  
+  const allOptions = getFieldOptions(column)
+  console.log('All options before filtering:', allOptions.length)
+  
+  if (!query || query.trim() === '') {
+    filteredFieldOptions.value[column.name] = allOptions
+    console.log('No query, showing all options:', filteredFieldOptions.value[column.name].length)
+  } else {
+    const filtered = allOptions.filter(field => {
+      const labelMatch = field.label.toLowerCase().includes(queryLower)
+      const fieldnameMatch = field.fieldname.toLowerCase().includes(queryLower)
+      const fieldtypeMatch = field.fieldtype.toLowerCase().includes(queryLower)
+      
+      return labelMatch || fieldnameMatch || fieldtypeMatch
+    })
+    
+    filteredFieldOptions.value[column.name] = filtered
+    console.log('Filtered options:', filtered.length, 'Query:', query)
+  }
+  
+  // Force reactive update
+  nextTick(() => {
+    filteredFieldOptions.value = { ...filteredFieldOptions.value }
+  })
+}
+
+// Function to get filtered field options for a specific column
+function getFilteredFieldOptions(column) {
+  if (!filteredFieldOptions.value[column.name]) {
+    filteredFieldOptions.value[column.name] = getFieldOptions(column)
+  }
+  return filteredFieldOptions.value[column.name] || []
+}
+
+// Function to select a field and add it to the column
+function selectField(column, field) {
+  console.log('Adding field to column:', field)
+  
+  // Add the field to the column
+  addField(column, field)
+  
+  // Close the dropdown
+  activeDropdown.value = null
+  
+  // Clear search query for this column
+  fieldSearchQueries.value[column.name] = ''
+  
+  // Reset filtered options for this column
+  filteredFieldOptions.value[column.name] = getFieldOptions(column)
+}
+
+// Close dropdown when clicking outside
+function closeDropdown() {
+  activeDropdown.value = null
+}
+
+// Add click outside listener with improved logic
+onMounted(() => {
+  document.addEventListener('click', (event) => {
+    // Don't close if clicking inside the search input or dropdown
+    const target = event.target
+    const isSearchInput = target.closest('input[placeholder="Search fields..."]')
+    const isDropdown = target.closest('.relative')
+    
+    if (isSearchInput || isDropdown) {
+      return
+    }
+    
+    closeDropdown()
+  })
+})
+
 // Get available fields for a specific column
 function getFieldOptions(column) {
   if (!fields.data || !Array.isArray(fields.data)) {
+    console.log('No fields data available')
     return []
   }
 
@@ -294,11 +441,15 @@ function getFieldOptions(column) {
            !existingFieldnames.includes(field.fieldname)
   })
 
-  // Convert to dropdown options format
+  console.log('Available fields for column:', availableFields.length)
+
+  // Return fields in the correct format for the template
   return availableFields.map(field => ({
-    label: `${field.label} (${field.fieldname})`,
-    icon: 'plus',
-    onClick: () => addField(column, field)
+    fieldname: field.fieldname,
+    label: field.label,
+    fieldtype: field.fieldtype,
+    // Add any other required properties from the original field
+    ...field
   }))
 }
 
@@ -316,31 +467,39 @@ function addTab() {
   tabIndex.value = props.tabs.length ? props.tabs.length - 1 : 0
 }
 
+// Update the addField function to properly add fields
 function addField(column, field) {
-  console.log('=== addField called ===')
-  console.log('Field parameter:', field)
-  console.log('Column:', column)
-
-  if (!field) {
-    console.log('addField: No field provided')
-    return
-  }
-
-  // Check for duplicates
+  console.log('addField called with:', { column, field })
+  
+  // Check if field is already added
   const existingField = column.fields.find(f => f.fieldname === field.fieldname)
   if (existingField) {
-    console.log('Field already exists in this column:', field.fieldname)
+    console.log('Field already exists:', field.fieldname)
     return
   }
-
-  // Add the field
-  column.fields.push(field)
-
+  
+  // Add the field to the column with proper structure
+  const newField = {
+    fieldname: field.fieldname,
+    label: field.label,
+    fieldtype: field.fieldtype,
+    // Copy all properties from the original field
+    ...field
+  }
+  
+  column.fields.push(newField)
+  
+  console.log('Field added successfully. Column fields now:', column.fields)
+  
   // Force reactivity update
-  column.fields = [...column.fields]
-
-  console.log('Field added successfully:', field)
-  console.log('Column fields after adding:', column.fields)
+  nextTick(() => {
+    column.fields = [...column.fields]
+  })
+  
+  // Mark as dirty to show "Not Saved" indicator
+  if (props.tabs && props.tabs.dirty !== undefined) {
+    props.tabs.dirty = true
+  }
 }
 
 function getTabOptions(tab) {
@@ -456,3 +615,19 @@ watch(
   { immediate: true }
 )
 </script>
+
+<style scoped>
+:deep(.dropdown-menu) {
+  max-height: 300px !important;
+  overflow-y: auto !important;
+}
+
+:deep(.dropdown-item) {
+  padding: 8px 12px !important;
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
+:deep(.dropdown-item:hover) {
+  background-color: #f3f4f6 !important;
+}
+</style>

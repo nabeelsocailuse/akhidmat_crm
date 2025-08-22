@@ -157,7 +157,6 @@ const addPaymentDetailRow = () => {
     donor_type: '',
     contact_no: '',
     email: '',
-
     address: '',
     co_name: '',
     co_contact_no: '',
@@ -201,15 +200,41 @@ const initializeDonation = () => {
   }
 }
 
+// Add this function after initializeDonation()
+const resetDonationData = () => {
+  console.log('Resetting donation data to fresh state')
+  
+  // Reset to fresh document
+  donation.doc = {
+    doctype: 'Donation',
+    status: 'Draft',
+    company: 'Alkhidmat Foundation',
+    donor_identity: 'Known',
+    donation_type: 'Cash',
+    currency: 'PKR',
+    owner: user.value,
+    payment_detail: [],
+    deduction_breakeven: []
+  }
+  
+  // Initialize fresh data
+  initializeDonation()
+  
+  // Clear errors
+  error.value = null
+  
+  console.log('Donation data reset successfully')
+}
+
 // Filter tabs based on donation type
 const filteredTabs = computed(() => {
   if (!tabs.data || !Array.isArray(tabs.data)) return []
   
   return tabs.data.filter(tab => {
-    // If it's the "In Kind Donation" tab, only show when select_donation_type is "In-Kind Donation"
+    // If it's the "In Kind Donation" tab, only show when donation_type is "In Kind Donation"
     if (tab.label === 'In Kind Donation' || tab.name === 'in_kind_donation') {
-      // Note: Using exact match for "In-Kind Donation" (with hyphen)
-      return donation.doc.select_donation_type === 'In-Kind Donation'
+      // Use the correct field name: donation_type (not select_donation_type)
+      return donation.doc.donation_type === 'In Kind Donation'
     }
     return true
   })
@@ -217,7 +242,8 @@ const filteredTabs = computed(() => {
 
 const tabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
-  cache: ['QuickEntryModal', 'Donation', false], 
+  // FIX: Use unique cache key for DonationModal
+  cache: ['DonationModal', 'Donation', 'quick-entry'], 
   params: { doctype: 'Donation', type: 'Quick Entry' },
   auto: true,
   transform: (_tabs) => {
@@ -245,8 +271,9 @@ const tabs = createResource({
               donation.doc.donor_identity = 'Known'
             }
             
-            if (field.fieldname === 'select_donation_type' && !donation.doc.select_donation_type) {
-              donation.doc.select_donation_type = 'Cash'  // Default to 'Cash'
+            // FIX: Use donation_type instead of select_donation_type
+            if (field.fieldname === 'donation_type' && !donation.doc.donation_type) {
+              donation.doc.donation_type = 'Cash'  // Default to 'Cash'
             }
             
             // Handle posting_date and posting_time read-only state based on edit_posting_date_time
@@ -290,8 +317,9 @@ const tabs = createResource({
       donation.doc.donor_identity = 'Known'
     }
     
-    if (!donation.doc.select_donation_type) {
-      donation.doc.select_donation_type = 'Cash'  // Default to 'Cash'
+    // FIX: Use donation_type instead of select_donation_type
+    if (!donation.doc.donation_type) {
+      donation.doc.donation_type = 'Cash'  // Default to 'Cash'
     }
     
     // Initialize posting_date and posting_time
@@ -314,30 +342,11 @@ const createDonation = createResource({
 const { getUser, isManager } = usersStore()
 const { user } = sessionStore()
 
+// Add this watcher to force refresh when modal opens
 watch(show, async (val) => {
   if (val && user.value) {
-    // Set owner when modal opens
-    donation.doc.owner = user.value
-    
-    // Set default values
-    if (!donation.doc.status) {
-      donation.doc.status = 'Draft'
-    }
-    
-    if (!donation.doc.company) {
-      donation.doc.company = 'Alkhidmat Foundation'
-    }
-    
-    if (!donation.doc.donor_identity) {
-      donation.doc.donor_identity = 'Known'
-    }
-    
-    if (!donation.doc.select_donation_type) {
-      donation.doc.select_donation_type = 'Cash'  // Default to 'Cash'
-    }
-    
-    // Initialize posting_date and posting_time
-    initializeDonation()
+    refreshTabs()
+    resetDonationData() // Use the reset function
   }
   
   // Prevent parent modal from closing when sub-modals are active
@@ -741,15 +750,142 @@ function createNewDonation() {
   })
 }
 
-function onQuickEntryClose() {
-  showQuickEntryModal.value = false
+// FIX: Enhanced refreshTabs function with proper cache clearing
+const refreshTabs = () => {
+  console.log('Refreshing tabs in DonationModal')
+  
+  // Clear the current component's cache
+  if (tabs.cache) {
+    tabs.cache.clear()
+  }
+  
+  // Clear all related caches
+  clearAllRelatedCaches()
+  
+  // Force reload with fresh data
+  nextTick(() => {
+    tabs.reload()
+    console.log('Tabs reloaded successfully')
+  })
 }
 
+// NEW: Function to clear all related caches
+function clearAllRelatedCaches() {
+  const cacheKeys = [
+    ['QuickEntryModal', 'Donation', 'layout-editor'],
+    ['DonationModal', 'Donation', 'quick-entry'],
+    ['FieldLayout', 'Donation', 'quick-entry'],
+    ['FieldLayout', 'Donation', 'required-fields']
+  ]
+  
+  cacheKeys.forEach(cacheKey => {
+    try {
+      const cache = createResource.cache.get(cacheKey)
+      if (cache) {
+        cache.clear()
+        console.log('Cleared cache for:', cacheKey)
+      }
+    } catch (error) {
+      console.log('Cache not found for:', cacheKey)
+    }
+  })
+  
+  // Force clear all caches for this doctype
+  try {
+    createResource.cache.clear()
+    console.log('Cleared all caches')
+  } catch (error) {
+    console.log('Could not clear all caches')
+  }
+}
+
+// FIX: Enhanced event listeners with immediate cache clearing
+onMounted(() => {
+  // Listen for all layout update events
+  const handleLayoutUpdate = (event) => {
+    console.log('Layout update event received:', event.detail)
+    
+    // Refresh if it's the same doctype or related
+    if (event.detail.doctype === 'Donation') {
+      console.log('Donation layout updated - refreshing tabs')
+      // Clear caches immediately
+      clearAllRelatedCaches()
+      // Then refresh
+      refreshTabs()
+    }
+  }
+  
+  // Listen for specific Quick Entry layout events
+  const handleQuickEntrySave = (event) => {
+    if (event.detail.doctype === 'Donation') {
+      console.log('Quick Entry layout updated - refreshing tabs')
+      // Clear caches immediately
+      clearAllRelatedCaches()
+      // Then refresh
+      refreshTabs()
+    }
+  }
+  
+  // Add event listeners
+  window.addEventListener('layout-updated', handleLayoutUpdate)
+  window.addEventListener('quick-entry-layout-saved', handleQuickEntrySave)
+  
+  // Cleanup on unmount
+  onUnmounted(() => {
+    window.removeEventListener('layout-updated', handleLayoutUpdate)
+    window.removeEventListener('quick-entry-layout-saved', handleQuickEntrySave)
+  })
+})
+
+// FIX: Enhanced QuickEntryModal event handlers with immediate cache clearing
 function onQuickEntrySaved() {
+  console.log('QuickEntryModal saved - immediately clearing caches and refreshing tabs')
+  showQuickEntryModal.value = false
+  
+  // Clear caches immediately
+  clearAllRelatedCaches()
+  
+  // Immediate refresh
+  refreshTabs()
+}
+
+function onQuickEntryClose() {
+  console.log('QuickEntryModal closed')
   showQuickEntryModal.value = false
 }
 
-function onQuickEntryReset() {}
+function onQuickEntryReset() {
+  console.log('QuickEntryModal reset - clearing caches and refreshing tabs')
+  clearAllRelatedCaches()
+  refreshTabs()
+}
+
+// Add event listeners for layout updates
+onMounted(() => {
+  // Listen for custom events that indicate layout has been updated
+  const handleLayoutUpdate = () => {
+    console.log('Layout update event received - reloading tabs')
+    refreshTabs()
+  }
+  
+  const handleQuickEntrySave = (event) => {
+    console.log('QuickEntryModal save event received:', event.detail)
+    if (event.detail.doctype === 'Donation') {
+      console.log('Donation layout updated - refreshing tabs')
+      refreshTabs()
+    }
+  }
+  
+  // Add event listeners
+  window.addEventListener('layout-updated', handleLayoutUpdate)
+  window.addEventListener('quick-entry-layout-saved', handleQuickEntrySave)
+  
+  // Cleanup on unmount
+  onUnmounted(() => {
+    window.removeEventListener('layout-updated', handleLayoutUpdate)
+    window.removeEventListener('quick-entry-layout-saved', handleQuickEntrySave)
+  })
+})
 
 function handleTabChange(tabIndex) {
   console.log('Tab changed to:', tabIndex)
@@ -1067,8 +1203,8 @@ watch(show, (newVal, oldVal) => {
 })
 
 // Watch for select_donation_type changes to update tabs
-watch(() => donation.doc.select_donation_type, (newType) => {
-  console.log('Select donation type changed to:', newType)
+watch(() => donation.doc.donation_type, (newType) => {
+  console.log('Donation type changed to:', newType)
   // Force re-render of tabs when select_donation_type changes
   nextTick(() => {
     // This will trigger the computed filteredTabs to update
@@ -1115,10 +1251,39 @@ watch(() => donation.doc.payment_detail?.length, (newLen, oldLen) => {
     }
   }
 })
+
+
+// FIX: Listen for the specific QuickEntryModal save event
+onMounted(() => {
+  // Listen for custom events that indicate layout has been updated
+  const handleLayoutUpdate = () => {
+    console.log('Layout update event received - reloading tabs')
+    refreshTabs()
+  }
+  
+  const handleQuickEntrySave = (event) => {
+    console.log('QuickEntryModal save event received:', event.detail)
+    if (event.detail.doctype === 'Donation') {
+      console.log('Donation layout updated - refreshing tabs')
+      refreshTabs()
+    }
+  }
+  
+  // Add event listeners
+  window.addEventListener('layout-updated', handleLayoutUpdate)
+  window.addEventListener('quick-entry-layout-saved', handleQuickEntrySave)
+  
+  // Cleanup on unmount
+  onUnmounted(() => {
+    window.removeEventListener('layout-updated', handleLayoutUpdate)
+    window.removeEventListener('quick-entry-layout-saved', handleQuickEntrySave)
+  })
+})
+
 </script>
 
 <style scoped>
-.field-layout-wrapper {
-  min-height: 400px;
+:deep(.form-control.prefix select) {
+  padding-left: 2rem;
 }
 </style>

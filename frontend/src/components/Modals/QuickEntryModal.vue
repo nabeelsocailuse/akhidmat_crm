@@ -77,11 +77,15 @@ function getParams() {
 
 const tabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
-  cache: ['QuickEntryModal', _doctype.value, props.onlyRequired],
+  // FIX: Use unique cache key for QuickEntryModal
+  cache: ['QuickEntryModal', props.doctype, 'layout-editor'], 
   params: getParams(),
+  auto: true,
+  // Remove the transform function that references undefined variables
   onSuccess(data) {
-    tabs.originalData = JSON.parse(JSON.stringify(data))
-  },
+    // Handle success without referencing undefined variables
+    console.log('Layout loaded successfully:', data)
+  }
 })
 
 watch(
@@ -115,6 +119,7 @@ function saveChanges() {
   })
   loading.value = true
   let type = props.onlyRequired ? 'Required Fields' : 'Quick Entry'
+  
   call(
     'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.save_fields_layout',
     {
@@ -125,7 +130,66 @@ function saveChanges() {
   ).then(() => {
     loading.value = false
     show.value = false
+    
+    // FIX: Clear ALL related caches before dispatching events
+    clearAllRelatedCaches()
+    
+    // FIX: Emit global event to notify other components about layout update
+    window.dispatchEvent(new CustomEvent('layout-updated', {
+      detail: {
+        doctype: _doctype.value,
+        type: type,
+        timestamp: Date.now()
+      }
+    }))
+    
+    // FIX: Emit specific event for Quick Entry layout updates
+    window.dispatchEvent(new CustomEvent('quick-entry-layout-saved', {
+      detail: {
+        doctype: _doctype.value,
+        type: type,
+        timestamp: Date.now()
+      }
+    }))
+    
     capture('quick_entry_layout_builder', { doctype: _doctype.value })
   })
+}
+
+// NEW: Function to clear all related caches
+function clearAllRelatedCaches() {
+  // Clear the current component's cache
+  if (tabs.cache) {
+    tabs.cache.clear()
+  }
+  
+  // Clear any other related caches that might exist
+  const cacheKeys = [
+    ['QuickEntryModal', props.doctype, 'layout-editor'],
+    ['DonationModal', props.doctype, 'quick-entry'],
+    ['FieldLayout', props.doctype, 'quick-entry'],
+    ['FieldLayout', props.doctype, 'required-fields']
+  ]
+  
+  cacheKeys.forEach(cacheKey => {
+    try {
+      // Try to clear cache if it exists
+      const cache = createResource.cache.get(cacheKey)
+      if (cache) {
+        cache.clear()
+        console.log('Cleared cache for:', cacheKey)
+      }
+    } catch (error) {
+      console.log('Cache not found for:', cacheKey)
+    }
+  })
+  
+  // Force clear all caches for this doctype
+  try {
+    createResource.cache.clear()
+    console.log('Cleared all caches')
+  } catch (error) {
+    console.log('Could not clear all caches')
+  }
 }
 </script>

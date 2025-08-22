@@ -9,13 +9,13 @@
         :actions="donor.data.actions"
       />
       <Dropdown
-        v-if="document.doc"
+        v-if="donorDocument.doc"
         :options="donorStatusOptions"
       >
         <template #default="{ open }">  
-          <Button :label="document.doc.status || 'Active'">
+          <Button :label="donorDocument.doc.status || 'Active'">
             <template #prefix>
-              <IndicatorIcon :class="getDonorStatus(document.doc.status).color" />
+              <IndicatorIcon :class="getDonorStatus(donorDocument.doc.status).color" />
             </template>
             <template #suffix>
               <FeatherIcon
@@ -28,7 +28,7 @@
       </Dropdown>
       <AssignTo
         v-model="assignees.data"
-        :data="document.doc"
+        :data="donorDocument.doc"
         doctype="Donor"
       />
     </template>
@@ -392,15 +392,15 @@ const donor = createResource({
 
 
 
-const { document, assignees, triggerOnchange } = useDocument('Donor', props.donorId)
+const { document: donorDocument, assignees, triggerOnchange } = useDocument('Donor', props.donorId)
 
 // Override the document save method to include validation
 const overrideDocumentSave = () => {
-  if (document && document.save && document.save.submit) {
+  if (donorDocument && donorDocument.save && donorDocument.save.submit) {
     // Only override if not already overridden
-    if (!document.save._validationOverridden) {
-      const originalSubmit = document.save.submit
-      document.save.submit = async function(data, options) {
+    if (!donorDocument.save._validationOverridden) {
+      const originalSubmit = donorDocument.save.submit
+      donorDocument.save.submit = async function(data, options) {
         // Validate before allowing save
         const isValid = await validateBeforeSave()
         if (!isValid) {
@@ -410,7 +410,7 @@ const overrideDocumentSave = () => {
         // Call the original submit method
         return originalSubmit.call(this, data, options)
       }
-      document.save._validationOverridden = true
+      donorDocument.save._validationOverridden = true
       console.log('Document save method overridden with validation')
     }
   }
@@ -436,20 +436,20 @@ async function validateField(fieldname, value) {
   }
   
   // CNIC validation
-  if (fieldname === 'cnic' && document.doc?.identification_type && document.doc?.identification_type !== 'Others') {
+  if (fieldname === 'cnic' && donorDocument.doc?.identification_type && donorDocument.doc?.identification_type !== 'Others') {
     if (!value || value.trim() === '') {
       toast.error('CNIC is required when identification type is set')
       return false
-    } else if (!validateCnicFormat(value, document.doc.identification_type)) {
-      toast.error(`Invalid ${document.doc.identification_type} format. Please enter a valid ${document.doc.identification_type} number.`)
+    } else if (!validateCnicFormat(value, donorDocument.doc.identification_type)) {
+      toast.error(`Invalid ${donorDocument.doc.identification_type} format. Please enter a valid ${donorDocument.doc.identification_type} number.`)
       return false
     }
   }
   
   // Contact number validation
-  if (['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person'].includes(fieldname) && document.doc?.country) {
+  if (['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person'].includes(fieldname) && donorDocument.doc?.country) {
     if (value && value.trim() !== '') {
-      const validation = await validatePhoneNumber(value, document.doc.country)
+      const validation = await validatePhoneNumber(value, donorDocument.doc.country)
       if (!validation.isValid) {
         const fieldLabels = {
           'contact_no': 'Contact Number',
@@ -471,13 +471,13 @@ async function reapplyAllMasksNow() {
   console.log('Reapplying all masks...')
   
   // Reapply CNIC mask if identification type is set
-  if (document.doc?.identification_type) {
-    applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+  if (donorDocument.doc?.identification_type) {
+    applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
   }
   
   // Reapply phone masks if country is set
-  if (document.doc?.country) {
-    await applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+  if (donorDocument.doc?.country) {
+    await applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
   }
   
   console.log('All masks reapplied')
@@ -496,14 +496,14 @@ window.forceReapplyAllMasks = async () => {
   const cnicInput = findInputField('cnic')
   const contactInput = findInputField('contact_no')
   
-  if (cnicInput && document.doc?.identification_type) {
+  if (cnicInput && donorDocument.doc?.identification_type) {
     console.log('Reapplying CNIC mask...')
-    applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+    applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
   }
   
-  if (contactInput && document.doc?.country) {
+  if (contactInput && donorDocument.doc?.country) {
     console.log('Reapplying phone masks...')
-    await applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+    await applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
   }
   
   console.log('Force mask reapplication completed')
@@ -576,10 +576,10 @@ window.debugDonorMasks = () => {
   }
   
   console.log('Document Data:', {
-    identification_type: document.doc?.identification_type,
-    country: document.doc?.country,
-    cnic: document.doc?.cnic,
-    contact_no: document.doc?.contact_no
+    identification_type: donorDocument.doc?.identification_type,
+    country: donorDocument.doc?.country,
+    cnic: donorDocument.doc?.cnic,
+    contact_no: donorDocument.doc?.contact_no
   })
   
   console.log('Available Functions:', {
@@ -595,7 +595,7 @@ const originalSave = window.save || window.Save
 if (originalSave && typeof originalSave === 'function') {
   window.save = async function(...args) {
     // Check if this is a donor-related save
-    if (document && document.doc && document.doc.doctype === 'Donor') {
+    if (donorDocument && donorDocument.doc && donorDocument.doc.doctype === 'Donor') {
       console.log('Global save function intercepted, validating...')
       const isValid = await validateBeforeSave()
       if (!isValid) {
@@ -614,14 +614,14 @@ if (originalSave && typeof originalSave === 'function') {
 overrideDocumentSave()
 
 // Watch for document changes to ensure save method is overridden
-watch(() => document, () => {
-  if (document && document.save) {
+watch(() => donorDocument, () => {
+  if (donorDocument && donorDocument.save) {
     setTimeout(overrideDocumentSave, 100)
   }
 }, { deep: true })
 
-watch(() => document.doc?.country, async (newCountry, oldCountry) => {
-  if (document.doc && newCountry && oldCountry && newCountry !== oldCountry) {
+watch(() => donorDocument.doc?.country, async (newCountry, oldCountry) => {
+  if (donorDocument.doc && newCountry && oldCountry && newCountry !== oldCountry) {
     const fieldsToClear = [
       'contact_no',
       'co_contact_no', 
@@ -636,8 +636,8 @@ watch(() => document.doc?.country, async (newCountry, oldCountry) => {
     ]
     
     fieldsToClear.forEach(field => {
-      if (document.doc && document.doc[field] !== undefined) {
-        document.doc[field] = ""
+      if (donorDocument.doc && donorDocument.doc[field] !== undefined) {
+        donorDocument.doc[field] = ""
       }
     })
     
@@ -791,23 +791,23 @@ function showEmailValidationFeedback(fieldName, isValid, message) {
 
 // Helper function to set field value based on field name
 function setFieldValue(fieldName, value) {
-  if (!document.doc) return
+  if (!donorDocument.doc) return
   
   switch (fieldName) {
     case 'cnic':
-      document.doc.cnic = value
+      donorDocument.doc.cnic = value
       break
     case 'contact_no':
-      document.doc.contact_no = value
+      donorDocument.doc.contact_no = value
       break
     case 'co_contact_no':
-      document.doc.co_contact_no = value
+      donorDocument.doc.co_contact_no = value
       break
     case 'company_contact_number':
-      document.doc.company_contact_number = value
+      donorDocument.doc.company_contact_number = value
       break
     case 'organization_contact_person':
-      document.doc.organization_contact_person = value
+      donorDocument.doc.organization_contact_person = value
       break
   }
 }
@@ -850,21 +850,21 @@ async function validateBeforeSave() {
   const errors = []
   
   // CNIC validation - this is the field mentioned in the user's issue
-  if (document.doc?.identification_type && document.doc?.identification_type !== 'Others') {
-    if (!document.doc?.cnic || document.doc.cnic.trim() === '') {
+  if (donorDocument.doc?.identification_type && donorDocument.doc?.identification_type !== 'Others') {
+    if (!donorDocument.doc?.cnic || donorDocument.doc.cnic.trim() === '') {
       errors.push('CNIC is required when identification type is set')
-    } else if (!validateCnicFormat(document.doc.cnic, document.doc.identification_type)) {
-      errors.push(`Invalid ${document.doc.identification_type} format. Please enter a valid ${document.doc.identification_type} number.`)
+    } else if (!validateCnicFormat(donorDocument.doc.cnic, donorDocument.doc.identification_type)) {
+      errors.push(`Invalid ${donorDocument.doc.identification_type} format. Please enter a valid ${donorDocument.doc.identification_type} number.`)
     }
   }
   
   // Contact number validation - this is the field mentioned in the user's issue
-  if (document.doc?.country) {
+  if (donorDocument.doc?.country) {
     const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person']
     
     for (const fieldName of phoneFields) {
-      if (document.doc[fieldName] && document.doc[fieldName].trim() !== '') {
-        const validation = await validatePhoneNumber(document.doc[fieldName], document.doc.country)
+      if (donorDocument.doc[fieldName] && donorDocument.doc[fieldName].trim() !== '') {
+        const validation = await validatePhoneNumber(donorDocument.doc[fieldName], donorDocument.doc.country)
         if (!validation.isValid) {
           const fieldLabels = {
             'contact_no': 'Contact Number',
@@ -908,7 +908,7 @@ async function validateBeforeSave() {
   // Check for required fields based on metadata - this ensures all required fields are validated
   if (donor.fields_meta) {
     for (const [fieldname, meta] of Object.entries(donor.fields_meta)) {
-      if (meta.reqd && document.doc && (!document.doc[fieldname] || document.doc[fieldname].toString().trim() === '')) {
+      if (meta.reqd && donorDocument.doc && (!donorDocument.doc[fieldname] || donorDocument.doc[fieldname].toString().trim() === '')) {
         errors.push(`${meta.label || fieldname} is a required field`)
       }
     }
@@ -917,7 +917,7 @@ async function validateBeforeSave() {
   // Additional validation for critical fields that should always be required
   const criticalFields = ['donor_name', 'email']
   for (const fieldname of criticalFields) {
-    if (document.doc && (!document.doc[fieldname] || document.doc[fieldname].toString().trim() === '')) {
+    if (donorDocument.doc && (!donorDocument.doc[fieldname] || donorDocument.doc[fieldname].toString().trim() === '')) {
       const fieldLabel = donor.fields_meta?.[fieldname]?.label || fieldname
       errors.push(`${fieldLabel} is a required field`)
     }
@@ -1256,12 +1256,12 @@ watch(() => reload.value, async (newReload, oldReload) => {
     
     // Reapply masks after a short delay to ensure DOM is ready
     setTimeout(async () => {
-      if (document.doc?.identification_type) {
-        applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+      if (donorDocument.doc?.identification_type) {
+        applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
       }
       
-      if (document.doc?.country) {
-        await applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+      if (donorDocument.doc?.country) {
+        await applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
       }
     }, 500)
   }
@@ -1327,7 +1327,7 @@ async function updateDonorStatus(newStatus) {
     
     if (result.success) {
       donor.data.status = newStatus
-      document.doc.status = newStatus
+      donorDocument.doc.status = newStatus
       toast.success(__('Status updated successfully'))
       
       // Refresh donor details after status update
@@ -1335,8 +1335,8 @@ async function updateDonorStatus(newStatus) {
       donor.reload()
       
       // Also reload document object
-      if (document && document.reload) {
-        document.reload()
+      if (donorDocument && donorDocument.reload) {
+        donorDocument.reload()
       }
     } else {
       toast.error(result.message || __('Failed to update status'))
@@ -1453,7 +1453,7 @@ async function saveChanges(data) {
     return // Don't save if validation fails
   }
   
-  document.save.submit(null, {
+  donorDocument.save.submit(null, {
     onSuccess: () => reloadAssignees(data),
   })
 }
@@ -1704,16 +1704,16 @@ const countryCurrencyMap = {
 
 function setCurrencyForCountry(country) {
   const code = countryCurrencyMap[country] || ''
-  document.doc.default_currency = code
+  donorDocument.doc.default_currency = code
   if (!code) {
-    document.doc._default_currency_readonly = false
+    donorDocument.doc._default_currency_readonly = false
   } else {
-    document.doc._default_currency_readonly = true
+    donorDocument.doc._default_currency_readonly = true
   }
 }
 
-watch(() => document.doc?.country, (newCountry) => {
-  if (newCountry && document.doc) {
+watch(() => donorDocument.doc?.country, (newCountry) => {
+  if (newCountry && donorDocument.doc) {
     setCurrencyForCountry(newCountry)
   }
 })
@@ -1740,8 +1740,8 @@ watch(() => route.query.refresh, (newRefresh) => {
 // Donor type change watcher for phone masks removed
 
 // Watch for email fields to provide real-time validation
-watch(() => document.doc?.email, (newEmail) => {
-  if (newEmail && newEmail.trim() !== '' && document.doc) {
+watch(() => donorDocument.doc?.email, (newEmail) => {
+  if (newEmail && newEmail.trim() !== '' && donorDocument.doc) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(newEmail.trim())) {
       showEmailValidationFeedback('email', false, 'Invalid email format. Please enter a valid email address.')
@@ -1753,8 +1753,8 @@ watch(() => document.doc?.email, (newEmail) => {
   }
 })
 
-watch(() => document.doc?.co_email, (newCoEmail) => {
-  if (newCoEmail && newCoEmail.trim() !== '' && document.doc) {
+watch(() => donorDocument.doc?.co_email, (newCoEmail) => {
+  if (newCoEmail && newCoEmail.trim() !== '' && donorDocument.doc) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(newCoEmail.trim())) {
       showEmailValidationFeedback('co_email', false, 'Invalid email format. Please enter a valid email address.')
@@ -1766,8 +1766,8 @@ watch(() => document.doc?.co_email, (newCoEmail) => {
   }
 })
 
-watch(() => document.doc?.company_email_address, (newCompanyEmail) => {
-  if (newCompanyEmail && newCompanyEmail.trim() !== '' && document.doc) {
+watch(() => donorDocument.doc?.company_email_address, (newCompanyEmail) => {
+  if (newCompanyEmail && newCompanyEmail.trim() !== '' && donorDocument.doc) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(newCompanyEmail.trim())) {
       showEmailValidationFeedback('company_email_address', false, 'Invalid email format. Please enter a valid email address.')
@@ -1779,8 +1779,8 @@ watch(() => document.doc?.company_email_address, (newCompanyEmail) => {
   }
 })
 
-watch(() => document.doc?.representative_email, (newRepresentativeEmail) => {
-  if (newRepresentativeEmail && newRepresentativeEmail.trim() !== '' && document.doc) {
+watch(() => donorDocument.doc?.representative_email, (newRepresentativeEmail) => {
+  if (newRepresentativeEmail && newRepresentativeEmail.trim() !== '' && donorDocument.doc) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(newRepresentativeEmail.trim())) {
       showEmailValidationFeedback('representative_email', false, 'Invalid email format. Please enter a valid email address.')
@@ -1792,8 +1792,8 @@ watch(() => document.doc?.representative_email, (newRepresentativeEmail) => {
   }
 })
 
-watch(() => document.doc?.org_email, (newOrgEmail) => {
-  if (newOrgEmail && newOrgEmail.trim() !== '' && document.doc) {
+watch(() => donorDocument.doc?.org_email, (newOrgEmail) => {
+  if (newOrgEmail && newOrgEmail.trim() !== '' && donorDocument.doc) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(newOrgEmail.trim())) {
       showEmailValidationFeedback('org_email', false, 'Invalid email format. Please enter a valid email address.')
@@ -1805,8 +1805,8 @@ watch(() => document.doc?.org_email, (newOrgEmail) => {
   }
 })
 
-watch(() => document.doc?.donor_email, (newDonorEmail) => {
-  if (newDonorEmail && newDonorEmail.trim() !== '' && document.doc) {
+watch(() => donorDocument.doc?.donor_email, (newDonorEmail) => {
+  if (newDonorEmail && newDonorEmail.trim() !== '' && donorDocument.doc) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(newDonorEmail.trim())) {
       showEmailValidationFeedback('donor_email', false, 'Invalid email format. Please enter a valid email address.')
@@ -1819,63 +1819,63 @@ watch(() => document.doc?.donor_email, (newDonorEmail) => {
 })
 
 // Watch for phone field changes to provide real-time validation
-watch(() => document.doc?.contact_no, async (newContactNo) => {
-  if (newContactNo && document.doc?.country && document.doc) {
-    const validation = await validatePhoneNumber(newContactNo, document.doc.country)
+watch(() => donorDocument.doc?.contact_no, async (newContactNo) => {
+  if (newContactNo && donorDocument.doc?.country && donorDocument.doc) {
+    const validation = await validatePhoneNumber(newContactNo, donorDocument.doc.country)
     if (validation && validation.isValid !== undefined) {
       showPhoneValidationFeedback('contact_no', validation.isValid, validation.message)
     }
-  } else if (document.doc?.country && document.doc.country !== 'Pakistan' && document.doc.country !== 'pakistan' && document.doc) {
-    const validation = await validatePhoneNumber('', document.doc.country)
+  } else if (donorDocument.doc?.country && donorDocument.doc.country !== 'Pakistan' && donorDocument.doc.country !== 'pakistan' && donorDocument.doc) {
+    const validation = await validatePhoneNumber('', donorDocument.doc.country)
     if (validation && validation.isValid !== undefined) {
       showPhoneValidationFeedback('contact_no', validation.isValid, validation.message)
     }
   }
 })
 
-watch(() => document.doc?.co_contact_no, async (newCoContactNo) => {
-  if (newCoContactNo && document.doc?.country && document.doc) {
-    const validation = await validatePhoneNumber(newCoContactNo, document.doc.country)
+watch(() => donorDocument.doc?.co_contact_no, async (newCoContactNo) => {
+  if (newCoContactNo && donorDocument.doc?.country && donorDocument.doc) {
+    const validation = await validatePhoneNumber(newCoContactNo, donorDocument.doc.country)
     if (validation && validation.isValid !== undefined) {
       showPhoneValidationFeedback('co_contact_no', validation.isValid, validation.message)
     }
-  } else if (document.doc?.country && document.doc.country !== 'Pakistan' && document.doc.country !== 'pakistan' && document.doc) {
-    const validation = await validatePhoneNumber('', document.doc.country)
+  } else if (donorDocument.doc?.country && donorDocument.doc.country !== 'Pakistan' && donorDocument.doc.country !== 'pakistan' && donorDocument.doc) {
+    const validation = await validatePhoneNumber('', donorDocument.doc.country)
     if (validation && validation.isValid !== undefined) {
       showPhoneValidationFeedback('co_contact_no', validation.isValid, validation.message)
     }
   }
 })
 
-watch(() => document.doc?.company_contact_number, async (newCompanyContact) => {
-  if (newCompanyContact && document.doc?.country && document.doc) {
-    const validation = await validatePhoneNumber(newCompanyContact, document.doc.country)
+watch(() => donorDocument.doc?.company_contact_number, async (newCompanyContact) => {
+  if (newCompanyContact && donorDocument.doc?.country && donorDocument.doc) {
+    const validation = await validatePhoneNumber(newCompanyContact, donorDocument.doc.country)
     if (validation && validation.isValid !== undefined) {
       showPhoneValidationFeedback('company_contact_number', validation.isValid, validation.message)
     }
-  } else if (document.doc?.country && document.doc.country !== 'Pakistan' && document.doc.country !== 'pakistan' && document.doc) {
-    const validation = await validatePhoneNumber('', document.doc.country)
+  } else if (donorDocument.doc?.country && donorDocument.doc.country !== 'Pakistan' && donorDocument.doc.country !== 'pakistan' && donorDocument.doc) {
+    const validation = await validatePhoneNumber('', donorDocument.doc.country)
     if (validation && validation.isValid !== undefined) {
       showPhoneValidationFeedback('company_contact_number', validation.isValid, validation.message)
     }
   }
 })
 
-watch(() => document.doc?.organization_contact_person, async (newOrgContact) => {
-  if (newOrgContact && document.doc?.country && document.doc) {
-    const validation = await validatePhoneNumber(newOrgContact, document.doc.country)
+watch(() => donorDocument.doc?.organization_contact_person, async (newOrgContact) => {
+  if (newOrgContact && donorDocument.doc?.country && donorDocument.doc) {
+    const validation = await validatePhoneNumber(newOrgContact, donorDocument.doc.country)
     if (validation && validation.isValid !== undefined) {
       showPhoneValidationFeedback('organization_contact_person', validation.isValid, validation.message)
     }
-  } else if (document.doc?.country && document.doc.country !== 'Pakistan' && document.doc.country !== 'pakistan' && document.doc) {
-    const validation = await validatePhoneNumber('', document.doc.country)
+  } else if (donorDocument.doc?.country && donorDocument.doc.country !== 'Pakistan' && donorDocument.doc.country !== 'pakistan' && donorDocument.doc) {
+    const validation = await validatePhoneNumber('', donorDocument.doc.country)
     if (validation && validation.isValid !== undefined) {
       showPhoneValidationFeedback('organization_contact_person', validation.isValid, validation.message)
     }
   }
 })
 
-watch(() => document.doc, (newDoc) => {
+watch(() => donorDocument.doc, (newDoc) => {
   if (newDoc) {
     setTimeout(async () => {
       if (newDoc.country) {
@@ -1889,12 +1889,12 @@ watch(() => document.doc, (newDoc) => {
 }, { immediate: true })
 
 // Watch for identification type changes to reapply CNIC masks
-watch(() => document.doc?.identification_type, (newType, oldType) => {
+watch(() => donorDocument.doc?.identification_type, (newType, oldType) => {
   if (newType && oldType && newType !== oldType) {
     // Only clear CNIC field if user actually changed the identification type
     // Don't clear on component initialization or re-renders
-    if (document.doc) {
-      document.doc.cnic = ""
+    if (donorDocument.doc) {
+      donorDocument.doc.cnic = ""
     }
     
     // Apply masking to CNIC field when identification type changes
@@ -1905,14 +1905,14 @@ watch(() => document.doc?.identification_type, (newType, oldType) => {
 }, { immediate: true })
 
 // Watch for country changes to reapply phone masks
-watch(() => document.doc?.country, async (newCountry, oldCountry) => {
+watch(() => donorDocument.doc?.country, async (newCountry, oldCountry) => {
   if (newCountry && oldCountry && newCountry !== oldCountry) {
     // Only clear phone fields if user actually changed the country
     // Don't clear on component initialization or re-renders
     const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person']
     phoneFields.forEach(field => {
-      if (document.doc && document.doc[field] !== undefined) {
-        document.doc[field] = ""
+      if (donorDocument.doc && donorDocument.doc[field] !== undefined) {
+        donorDocument.doc[field] = ""
       }
     })
     
@@ -1924,8 +1924,8 @@ watch(() => document.doc?.country, async (newCountry, oldCountry) => {
 }, { immediate: true })
 
 onMounted(() => {
-  if (document.doc?.country) {
-    setCurrencyForCountry(document.doc.country)
+  if (donorDocument.doc?.country) {
+    setCurrencyForCountry(donorDocument.doc.country)
   }
   
   if (route.query.refresh) {
@@ -1943,12 +1943,12 @@ onMounted(() => {
     console.log('onMounted: Starting validation initialization')
     
     // Initialize CNIC and phone masking
-    if (document.doc?.identification_type) {
-      applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+    if (donorDocument.doc?.identification_type) {
+      applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
     }
     
-    if (document.doc?.country) {
-      await applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+    if (donorDocument.doc?.country) {
+      await applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
     }
     
     interceptSave()
@@ -1962,13 +1962,13 @@ onMounted(() => {
           const contactInput = findInputField('contact_no')
           
           // Only reapply CNIC mask if it's missing
-          if (cnicInput && !cnicInput._maskHandler && document.doc?.identification_type) {
-            applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+          if (cnicInput && !cnicInput._maskHandler && donorDocument.doc?.identification_type) {
+            applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
           }
           
           // Only reapply phone masks if they're missing
-          if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && document.doc?.country) {
-            applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+          if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donorDocument.doc?.country) {
+            applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
           }
         }, 500) // Increased delay to reduce frequency
       })
@@ -1991,13 +1991,13 @@ onMounted(() => {
           const contactInput = findInputField('contact_no')
           
           // Only reapply CNIC mask if it's missing
-          if (cnicInput && !cnicInput._maskHandler && document.doc?.identification_type) {
-            applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+          if (cnicInput && !cnicInput._maskHandler && donorDocument.doc?.identification_type) {
+            applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
           }
           
           // Only reapply phone masks if they're missing
-          if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && document.doc?.country) {
-            applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+          if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donorDocument.doc?.country) {
+            applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
           }
         }, 500) // Increased delay to reduce frequency
       })
@@ -2017,13 +2017,13 @@ onMounted(() => {
       const contactInput = findInputField('contact_no')
       
       // Only reapply CNIC mask if it's missing
-      if (cnicInput && !cnicInput._maskHandler && document.doc?.identification_type) {
-        applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+      if (cnicInput && !cnicInput._maskHandler && donorDocument.doc?.identification_type) {
+        applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
       }
       
       // Only reapply phone masks if they're missing
-      if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && document.doc?.country) {
-        applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+      if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donorDocument.doc?.country) {
+        applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
       }
     }, 10000) // Check every 10 seconds to reduce performance impact
     
@@ -2034,22 +2034,22 @@ onMounted(() => {
     const aggressiveMaskMonitor = () => {
       // Check for CNIC field and apply mask if needed
       const cnicInput = findInputField('cnic')
-      if (cnicInput && document.doc?.identification_type) {
+      if (cnicInput && donorDocument.doc?.identification_type) {
         // Check if mask is missing or if the input has been recreated
         if (!cnicInput._maskHandler || !cnicInput._maskApplied) {
           console.log('Aggressive monitor: CNIC mask missing, reapplying...')
-          applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+          applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
           cnicInput._maskApplied = true
         }
       }
       
       // Check for contact number field and apply mask if needed
       const contactInput = findInputField('contact_no')
-      if (contactInput && document.doc?.country) {
+      if (contactInput && donorDocument.doc?.country) {
         // Check if phone masks are missing or if the input has been recreated
         if (!contactInput._pakistanHandler && !contactInput._otherCountryHandler || !contactInput._phoneMaskApplied) {
           console.log('Aggressive monitor: Phone masks missing, reapplying...')
-          applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+          applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
           contactInput._phoneMaskApplied = true
         }
       }
@@ -2193,8 +2193,8 @@ onMounted(() => {
           }
           
           // If validation passes, trigger the save manually
-          if (document && document.save && document.save.submit) {
-            document.save.submit()
+          if (donorDocument && donorDocument.save && donorDocument.save.submit) {
+            donorDocument.save.submit()
           }
         }
       }
@@ -2240,14 +2240,14 @@ onMounted(() => {
       const cnicInput = findInputField('cnic')
       const contactInput = findInputField('contact_no')
       
-      if (cnicInput && document.doc?.identification_type) {
+      if (cnicInput && donorDocument.doc?.identification_type) {
         console.log('Reapplying CNIC mask...')
-        applyCnicMaskToInput('cnic', document.doc.identification_type, setFieldValue)
+        applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
       }
       
-      if (contactInput && document.doc?.country) {
+      if (contactInput && donorDocument.doc?.country) {
         console.log('Reapplying phone masks...')
-        await applyPhoneMasksForCountry(document.doc.country, setFieldValue)
+        await applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
       }
       
       console.log('Force mask reapplication completed')

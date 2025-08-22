@@ -413,11 +413,14 @@ export function useDonorFieldValidation() {
             inputElement.addEventListener('paste', inputElement._pakistanPasteHandler)
             
           } else {
-            // Other countries - more flexible phone input
+            // Other countries - strict mask enforcement
             const dialCode = countryMask?.dialCode || ''
             const phoneMask = countryMask?.phoneMask || ''
             
-            // Set a simple placeholder for other countries
+            // Calculate required digits from mask
+            const requiredDigits = phoneMask ? phoneMask.replace(/\D/g, '').length : 0
+            
+            // Set placeholder based on mask
             if (phoneMask) {
               inputElement.placeholder = phoneMask
             } else {
@@ -428,21 +431,46 @@ export function useDonorFieldValidation() {
             if (inputElement.value && inputElement.value.startsWith('92')) {
               inputElement.value = inputElement.value.slice(2)
             }
-            // Don't clear the field if it has no value or doesn't start with 92
-            // This prevents data loss when masking is reapplied
             
-            // Add input handler for other countries - more flexible
+            // Add input handler for other countries with strict digit limit
             inputElement._otherCountryHandler = (e) => {
               let value = e.target.value
+              const cleanValue = value.replace(/\D/g, '')
               
-              // Store the value as-is for other countries
+              // If we have a mask, enforce the exact digit count
+              if (phoneMask && requiredDigits > 0) {
+                // Limit to required digits
+                if (cleanValue.length > requiredDigits) {
+                  value = cleanValue.slice(0, requiredDigits)
+                  e.target.value = value
+                }
+                
+                // Format according to mask if we have the full number
+                if (cleanValue.length === requiredDigits) {
+                  // Apply mask formatting
+                  let formattedValue = phoneMask
+                  let digitIndex = 0
+                  
+                  for (let i = 0; i < phoneMask.length && digitIndex < cleanValue.length; i++) {
+                    if (phoneMask[i] === '9' || phoneMask[i] === '0') {
+                      formattedValue = formattedValue.slice(0, i) + cleanValue[digitIndex] + formattedValue.slice(i + 1)
+                      digitIndex++
+                    }
+                  }
+                  
+                  e.target.value = formattedValue
+                  value = formattedValue
+                }
+              }
+              
+              // Store the formatted value
               if (setFieldValue) {
                 setFieldValue(fieldName, value)
               }
             }
             inputElement.addEventListener('input', inputElement._otherCountryHandler)
             
-            // Add keydown handler - more permissive for other countries
+            // Add keydown handler with strict digit limit
             inputElement._otherCountryKeydownHandler = (e) => {
               const currentValue = e.target.value.replace(/\D/g, '')
               
@@ -451,13 +479,44 @@ export function useDonorFieldValidation() {
                 return true
               }
               
-              // For other countries, allow up to 20 digits (reasonable international limit)
-              if (currentValue.length > 20) {
-                e.preventDefault()
-                return false
+              // If we have a mask, enforce the exact digit count
+              if (phoneMask && requiredDigits > 0) {
+                if (currentValue.length >= requiredDigits) {
+                  e.preventDefault()
+                  return false
+                }
+              } else {
+                // Fallback limit for countries without mask
+                if (currentValue.length > 15) {
+                  e.preventDefault()
+                  return false
+                }
               }
             }
             inputElement.addEventListener('keydown', inputElement._otherCountryKeydownHandler)
+            
+            // Add paste handler for other countries
+            inputElement._otherCountryPasteHandler = (e) => {
+              let paste = (e.originalEvent || e).clipboardData.getData('text')
+              paste = paste.replace(/\D/g, '')
+              
+              // If we have a mask, limit to required digits
+              if (phoneMask && requiredDigits > 0) {
+                paste = paste.slice(0, requiredDigits)
+              } else {
+                paste = paste.slice(0, 15) // Fallback limit
+              }
+              
+              e.target.value = paste
+              
+              // Store the value
+              if (setFieldValue) {
+                setFieldValue(fieldName, paste)
+              }
+              
+              e.preventDefault()
+            }
+            inputElement.addEventListener('paste', inputElement._otherCountryPasteHandler)
           }
         }
       }
@@ -471,7 +530,7 @@ export function useDonorFieldValidation() {
     // Wait for fields to be rendered
     await new Promise(resolve => setTimeout(resolve, 500))
     
-    const fields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile']
+    const fields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'phone_no', 'mobile_no', 'org_representative_contact_number', 'org_contact']
     
     for (const fieldName of fields) {
       const inputElement = findInputField(fieldName)
@@ -544,12 +603,13 @@ export function useDonorFieldValidation() {
         // Special validation for Algeria
         const dialCode = countryMask.dialCode || '213'
         const phoneMask = countryMask.phoneMask || '11097'
+        const requiredDigits = phoneMask ? phoneMask.replace(/\D/g, '').length : 5
         
         // If no phone number provided, show required message
         if (!phoneNumber) {
           return {
             isValid: false,
-            message: 'Algeria phone number is required. Expected format: 213-11097'
+            message: `Algeria phone number is required. Expected format: ${dialCode}-${phoneMask}`
           }
         }
         
@@ -563,7 +623,7 @@ export function useDonorFieldValidation() {
         if (!phoneToValidate.startsWith(dialCode)) {
           return {
             isValid: false,
-            message: 'Algeria phone number must start with country code 213. Expected format: 213-11097'
+            message: `Algeria phone number must start with country code ${dialCode}. Expected format: ${dialCode}-${phoneMask}`
           }
         }
         
@@ -571,42 +631,83 @@ export function useDonorFieldValidation() {
         const numberWithoutCode = phoneToValidate.slice(dialCode.length)
         const cleanNumber = numberWithoutCode.replace(/\D/g, '')
         
-        // Simple validation: check if user entered enough digits
-        if (cleanNumber.length < 5) {
+        // Strict validation: check exact digit count
+        if (cleanNumber.length !== requiredDigits) {
           return {
             isValid: false,
-            message: 'Algeria phone number must be 5 digits after country code. Expected format: 213-11097'
+            message: `Algeria phone number must be exactly ${requiredDigits} digits after country code. Expected format: ${dialCode}-${phoneMask}`
           }
         }
         
         // If we reach here, the number is valid
         return { isValid: true, message: '' }
       } else {
-        // For other countries, use more flexible validation
+        // For other countries, use strict mask validation
         if (!phoneNumber) {
-          return { isValid: true, message: '' } // Allow empty for other countries
+          // For countries with strict mask requirements, show required field message
+          const phoneMask = countryMask.phoneMask || ''
+          if (phoneMask) {
+            return {
+              isValid: false,
+              message: `${country} phone number is required. Expected format: ${phoneMask}`
+            }
+          }
+          return { isValid: true, message: '' } // Allow empty for countries without mask
         }
         
-        // Basic validation: ensure it's a reasonable phone number length
         const cleanNumber = phoneNumber.replace(/\D/g, '')
+        const phoneMask = countryMask.phoneMask || ''
+        const requiredDigits = phoneMask ? phoneMask.replace(/\D/g, '').length : 0
         
-        // Most international phone numbers are between 7-15 digits
-        if (cleanNumber.length < 7) {
-          return {
-            isValid: false,
-            message: `${country} phone number must be at least 7 digits.`
+        // If we have a specific mask, validate against it strictly
+        if (phoneMask && requiredDigits > 0) {
+          if (cleanNumber.length !== requiredDigits) {
+            return {
+              isValid: false,
+              message: `${country} phone number must be exactly ${requiredDigits} digits. Expected format: ${phoneMask}`
+            }
           }
-        }
-        
-        if (cleanNumber.length > 15) {
-          return {
-            isValid: false,
-            message: `${country} phone number cannot exceed 15 digits.`
+          
+          // Check if the number matches the mask format
+          let isValidFormat = true
+          let digitIndex = 0
+          
+          for (let i = 0; i < phoneMask.length; i++) {
+            if (phoneMask[i] === '9' || phoneMask[i] === '0') {
+              if (digitIndex >= cleanNumber.length || !/^\d$/.test(cleanNumber[digitIndex])) {
+                isValidFormat = false
+                break
+              }
+              digitIndex++
+            }
           }
+          
+          if (!isValidFormat) {
+            return {
+              isValid: false,
+              message: `${country} phone number format is invalid. Expected format: ${phoneMask}`
+            }
+          }
+          
+          return { isValid: true, message: '' }
+        } else {
+          // Fallback validation for countries without specific mask
+          if (cleanNumber.length < 7) {
+            return {
+              isValid: false,
+              message: `${country} phone number must be at least 7 digits.`
+            }
+          }
+          
+          if (cleanNumber.length > 15) {
+            return {
+              isValid: false,
+              message: `${country} phone number cannot exceed 15 digits.`
+            }
+          }
+          
+          return { isValid: true, message: '' }
         }
-        
-        // For other countries, be more permissive - just ensure it's a valid phone number format
-        return { isValid: true, message: '' }
       }
     } catch (error) {
       console.error('Error validating phone number:', error)
@@ -630,10 +731,29 @@ export function useDonorFieldValidation() {
         inputElement = document.querySelector(`[data-fieldname="${fieldName}"] input`)
       }
       
-      // Clear existing validation messages first
       if (inputElement) {
-        const existingMessages = inputElement.parentNode?.querySelectorAll('.phone-error-message')
-        existingMessages?.forEach(msg => msg.remove())
+        // Clear ALL existing validation messages for this field - search more broadly
+        const fieldContainer = inputElement.closest('.field') || inputElement.parentNode
+        if (fieldContainer) {
+          // Remove all error messages within the field container
+          const existingMessages = fieldContainer.querySelectorAll('.phone-error-message')
+          existingMessages?.forEach(msg => msg.remove())
+          
+          // Also search in parent containers to catch any messages that might have been appended elsewhere
+          const parentField = fieldContainer.parentNode
+          if (parentField) {
+            const parentMessages = parentField.querySelectorAll('.phone-error-message')
+            parentMessages?.forEach(msg => msg.remove())
+          }
+          
+          // Search in the entire form/document for any orphaned messages with this field name
+          const allMessages = document.querySelectorAll('.phone-error-message')
+          allMessages?.forEach(msg => {
+            if (msg.textContent.includes(fieldName) || msg.textContent.includes(message)) {
+              msg.remove()
+            }
+          })
+        }
         
         // Remove error styling
         inputElement.classList.remove('border-red-500', 'border-red-300')
@@ -648,6 +768,7 @@ export function useDonorFieldValidation() {
           const errorMessage = document.createElement('div')
           errorMessage.className = 'phone-error-message text-red-500 text-sm mt-1'
           errorMessage.textContent = message
+          errorMessage.setAttribute('data-field', fieldName) // Add data attribute for easier identification
           
           // Insert after the input field
           const fieldContainer = inputElement.closest('.field') || inputElement.parentNode

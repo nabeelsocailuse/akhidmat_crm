@@ -42,7 +42,7 @@
         >
         <ListRowItem :item="item" :align="column.align">
           <template #prefix>
-            <div v-if="column.key === 'full_name'">
+            <div v-if="column.key === 'campaign_name'">
               <Avatar
                 v-if="item.label"
                 class="flex items-center"
@@ -51,7 +51,7 @@
                 size="sm"
               />
             </div>
-            <div v-else-if="column.key === 'company_name'">
+            <div v-else-if="column.key === 'name'">
               <Avatar
                 v-if="item.label"
                 class="flex items-center"

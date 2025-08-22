@@ -50,7 +50,7 @@
 </template>
 
 <script>
-const __ = (text) => text
+// const __ = (text) => text  // Commented out to allow global localization to work
 import { createPopper } from '@popperjs/core'
 
 export default {

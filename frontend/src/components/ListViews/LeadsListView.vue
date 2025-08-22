@@ -129,6 +129,16 @@
       </ListRowItem>
     </ListRows>
   </ListView>
+  <ListFooter
+    v-if="options.rowCount || options.totalCount"
+    class="border-t px-3 py-2 sm:px-5"
+    v-model="pageLengthCount"
+    :options="{
+      rowCount: options.rowCount,
+      totalCount: options.totalCount,
+    }"
+    @loadMore="emit('loadMore')"
+  />
 </template>
 
 <script setup>
@@ -145,6 +155,7 @@ import {
   ListHeader,
   ListHeaderItem,
   ListRowItem,
+  ListFooter,
   Button,
 } from 'frappe-ui'
 import { useRoute } from 'vue-router'
@@ -186,7 +197,13 @@ const props = defineProps({
   },
   options: {
     type: Object,
-    default: () => ({}),
+    default: () => ({
+      selectable: true,
+      showTooltip: true,
+      resizeColumn: false,
+      totalCount: 0,
+      rowCount: 0,
+    }),
   },
   isLikeFilterApplied: {
     type: Boolean,
@@ -199,5 +216,9 @@ const emit = defineEmits([
   'columnWidthUpdated',
   'applyFilter',
   'applyLikeFilter',
+  'loadMore',
+  'updatePageCount',
 ])
+
+const pageLengthCount = defineModel()
 </script>

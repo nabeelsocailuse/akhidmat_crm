@@ -79,7 +79,6 @@
 </template>
 
 <script>
-const __ = (text) => text
 export default {
   name: "Donor"
 }
@@ -93,14 +92,15 @@ import ViewControls from '@/components/ViewControls.vue'
 import ViewBreadcrumbs from '@/components/ViewBreadcrumbs.vue'
 import FeatherIcon from '@/components/Icons/FeatherIcon.vue'
 import CustomActions from '@/components/CustomActions.vue'
-import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
 import FieldLayoutEditor from '@/components/FieldLayoutEditor.vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { formatDate, timeAgo } from '@/utils'
 import { getMeta } from '@/stores/meta'
 import { usersStore } from '@/stores/users'
 import AppStyling from '@/components/AppStyling.vue'
+import { Button } from 'frappe-ui'
 
 const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
   getMeta('Donor')
@@ -124,6 +124,13 @@ const handleDonorCreated = () => {
 const handleDonorDeleted = () => {
   if (donors.reload) {
     donors.reload()
+  }
+}
+
+// Function to refresh the donors list - can be called from ViewControls
+const refreshDonorsList = () => {
+  if (viewControls.value && viewControls.value.reload) {
+    viewControls.value.reload()
   }
 }
 
@@ -216,6 +223,20 @@ function parseRows(rows, columns = []) {
 }
 
 const route = useRoute()
+const router = useRouter()
+
+// Watch for refresh parameter and reload the list if present
+watch(() => route.query.refresh, (newRefresh) => {
+  if (newRefresh) {
+    // Refresh the donors list
+    refreshDonorsList()
+    // Clear the refresh parameter from URL
+    router.replace({ 
+      name: 'Donor',
+      query: {} 
+    })
+  }
+}, { immediate: true })
 
 const breadcrumbs = computed(() => {
   // If on detail view, show Donor/Donor Name

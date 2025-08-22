@@ -94,7 +94,7 @@ function close() {
 }
 </script>
 <script>
-const __ = (text) => text
+// const __ = (text) => text  // Commented out to allow global localization to work
 export default {
   inheritAttrs: false,
 }

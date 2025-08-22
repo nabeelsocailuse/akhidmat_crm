@@ -549,12 +549,20 @@ const forceParentModalVisible = () => {
   }
 }
 
+// Function to clear all phone error messages
+const clearAllPhoneErrorMessages = () => {
+  const allPhoneErrorMessages = document.querySelectorAll('.phone-error-message')
+  allPhoneErrorMessages?.forEach(msg => msg.remove())
+}
+
 // Handle close button click
 const handleCloseButton = () => {
   if (hasActiveSubModals.value) {
     // Don't allow closing when sub-modals are active
     return
   }
+  // Clear all phone error messages when closing
+  clearAllPhoneErrorMessages()
   show.value = false
 }
 
@@ -783,11 +791,15 @@ function createPhoneFieldWatcher(fieldName) {
       if (validation && validation.isValid !== undefined) {
         showPhoneValidationFeedback(fieldName, validation.isValid, validation.message)
       }
-      } else if (donor.doc.country && donor.doc.country !== 'Pakistan' && donor.doc.country !== 'pakistan') {
-    const validation = await validatePhoneNumber('', donor.doc.country)
+    } else if (donor.doc.country) {
+      // Always validate, even for empty values, to show required field messages
+      const validation = await validatePhoneNumber('', donor.doc.country)
       if (validation && validation.isValid !== undefined) {
         showPhoneValidationFeedback(fieldName, validation.isValid, validation.message)
       }
+    } else {
+      // Clear error message when no country selected
+      showPhoneValidationFeedback(fieldName, true, '')
     }
   }
 }
@@ -810,8 +822,23 @@ function setFieldValue(fieldName, value) {
     case 'organization_contact_person':
       donor.doc.organization_contact_person = value
       break
+    case 'org_representative_contact_number':
+      donor.doc.org_representative_contact_number = value
+      break
+    case 'org_contact':
+      donor.doc.org_contact = value
+      break
+    case 'representative_mobile':
+      donor.doc.representative_mobile = value
+      break
   }
 }
+
+// Watch for contact_no changes and validate
+watch(
+  () => donor.doc.contact_no,
+  createPhoneFieldWatcher('contact_no')
+)
 
 // Watch for co_contact_no changes and validate
 watch(
@@ -829,6 +856,24 @@ watch(
 watch(
   () => donor.doc.organization_contact_person,
   createPhoneFieldWatcher('organization_contact_person')
+)
+
+// Watch for org_representative_contact_number changes and validate
+watch(
+  () => donor.doc.org_representative_contact_number,
+  createPhoneFieldWatcher('org_representative_contact_number')
+)
+
+// Watch for org_contact changes and validate
+watch(
+  () => donor.doc.org_contact,
+  createPhoneFieldWatcher('org_contact')
+)
+
+// Watch for representative_mobile changes and validate
+watch(
+  () => donor.doc.representative_mobile,
+  createPhoneFieldWatcher('representative_mobile')
 )
 
 // Watch for donor_type changes to reapply phone masks when conditional fields become visible
@@ -1038,6 +1083,11 @@ const setupObservers = () => {
     const cnicInput = findInputField('cnic')
     const contactInput = findInputField('contact_no')
     const coContactInput = findInputField('co_contact_no')
+    const companyContactInput = findInputField('company_contact_number')
+    const orgContactInput = findInputField('organization_contact_person')
+    const orgRepContactInput = findInputField('org_representative_contact_number')
+    const orgContactInput2 = findInputField('org_contact')
+    const representativeMobileInput = findInputField('representative_mobile')
     
     // Only reapply CNIC mask if it's missing and identification type is set
     if (cnicInput && !cnicInput._maskHandler && donor.doc.identification_type) {
@@ -1051,6 +1101,26 @@ const setupObservers = () => {
     
     if (coContactInput && !coContactInput._pakistanHandler && !coContactInput._otherCountryHandler && donor.doc.country) {
       applyPhoneMaskToInput('co_contact_no', donor.doc.country, setFieldValue)
+    }
+    
+    if (companyContactInput && !companyContactInput._pakistanHandler && !companyContactInput._otherCountryHandler && donor.doc.country) {
+      applyPhoneMaskToInput('company_contact_number', donor.doc.country, setFieldValue)
+    }
+    
+    if (orgContactInput && !orgContactInput._pakistanHandler && !orgContactInput._otherCountryHandler && donor.doc.country) {
+      applyPhoneMaskToInput('organization_contact_person', donor.doc.country, setFieldValue)
+    }
+    
+    if (orgRepContactInput && !orgRepContactInput._pakistanHandler && !orgRepContactInput._otherCountryHandler && donor.doc.country) {
+      applyPhoneMaskToInput('org_representative_contact_number', donor.doc.country, setFieldValue)
+    }
+    
+    if (orgContactInput2 && !orgContactInput2._pakistanHandler && !orgContactInput2._otherCountryHandler && donor.doc.country) {
+      applyPhoneMaskToInput('org_contact', donor.doc.country, setFieldValue)
+    }
+    
+    if (representativeMobileInput && !representativeMobileInput._pakistanHandler && !representativeMobileInput._otherCountryHandler && donor.doc.country) {
+      applyPhoneMaskToInput('representative_mobile', donor.doc.country, setFieldValue)
     }
   }, 5000)
 }
@@ -1343,10 +1413,17 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
     
           // Clean up any existing prefixes immediately when country changes
       if (oldCountry && oldCountry !== newCountry) {
+        // Clear all phone error messages when country changes
+        const allPhoneErrorMessages = document.querySelectorAll('.phone-error-message')
+        allPhoneErrorMessages?.forEach(msg => msg.remove())
+        
         const contactInput = findInputField('contact_no')
         const coContactInput = findInputField('co_contact_no')
         const companyContactInput = findInputField('company_contact_number')
         const orgContactInput = findInputField('organization_contact_person')
+        const orgRepContactInput = findInputField('org_representative_contact_number')
+        const ContactInput = findInputField('org_contact')
+        const representative_mobileInput = findInputField('representative_mobile')
         
         if (contactInput) {
           const existingPrefixes = contactInput.parentNode?.querySelectorAll('.country-prefix')
@@ -1357,9 +1434,19 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
             contactInput.parentNode.style.position = ''
           }
           
-          // Clear validation messages
-          const existingMessages = contactInput.parentNode?.querySelectorAll('.phone-error-message')
-          existingMessages?.forEach(msg => msg.remove())
+          // Clear validation messages more comprehensively
+          const fieldContainer = contactInput.closest('.field') || contactInput.parentNode
+          if (fieldContainer) {
+            const existingMessages = fieldContainer.querySelectorAll('.phone-error-message')
+            existingMessages?.forEach(msg => msg.remove())
+            
+            // Also search in parent containers
+            const parentField = fieldContainer.parentNode
+            if (parentField) {
+              const parentMessages = parentField.querySelectorAll('.phone-error-message')
+              parentMessages?.forEach(msg => msg.remove())
+            }
+          }
           contactInput.classList.remove('border-red-500', 'border-green-500')
         }
         
@@ -1372,9 +1459,19 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
             coContactInput.parentNode.style.position = ''
           }
           
-          // Clear validation messages
-          const existingMessages = coContactInput.parentNode?.querySelectorAll('.phone-error-message')
-          existingMessages?.forEach(msg => msg.remove())
+          // Clear validation messages more comprehensively
+          const fieldContainer = coContactInput.closest('.field') || coContactInput.parentNode
+          if (fieldContainer) {
+            const existingMessages = fieldContainer.querySelectorAll('.phone-error-message')
+            existingMessages?.forEach(msg => msg.remove())
+            
+            // Also search in parent containers
+            const parentField = fieldContainer.parentNode
+            if (parentField) {
+              const parentMessages = parentField.querySelectorAll('.phone-error-message')
+              parentMessages?.forEach(msg => msg.remove())
+            }
+          }
           coContactInput.classList.remove('border-red-500', 'border-green-500')
         }
         
@@ -1407,11 +1504,56 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
           existingMessages?.forEach(msg => msg.remove())
           orgContactInput.classList.remove('border-red-500', 'border-green-500')
         }
+
+        if (orgRepContactInput) {
+          const existingPrefixes = orgRepContactInput.parentNode?.querySelectorAll('.country-prefix')
+          existingPrefixes?.forEach(prefix => prefix.remove())
+          orgRepContactInput.style.paddingLeft = ''
+          orgRepContactInput.style.position = ''
+          if (orgRepContactInput.parentNode) {
+            orgRepContactInput.parentNode.style.position = ''
+          }
+          
+          // Clear validation messages
+          const existingMessages = orgRepContactInput.parentNode?.querySelectorAll('.phone-error-message')
+          existingMessages?.forEach(msg => msg.remove())
+          orgRepContactInput.classList.remove('border-red-500', 'border-green-500')
+        }
+
+        if (ContactInput) {
+          const existingPrefixes = ContactInput.parentNode?.querySelectorAll('.country-prefix')
+          existingPrefixes?.forEach(prefix => prefix.remove())
+          ContactInput.style.paddingLeft = ''
+          ContactInput.style.position = ''
+          if (ContactInput.parentNode) {
+            ContactInput.parentNode.style.position = ''
+          }
+          
+          // Clear validation messages
+          const existingMessages = ContactInput.parentNode?.querySelectorAll('.phone-error-message')
+          existingMessages?.forEach(msg => msg.remove())
+          ContactInput.classList.remove('border-red-500', 'border-green-500')
+        }
+
+        if (representative_mobileInput) {
+          const existingPrefixes = representative_mobileInput.parentNode?.querySelectorAll('.country-prefix')
+          existingPrefixes?.forEach(prefix => prefix.remove())
+          representative_mobileInput.style.paddingLeft = ''
+          representative_mobileInput.style.position = ''
+          if (representative_mobileInput.parentNode) {
+            representative_mobileInput.parentNode.style.position = ''
+          }
+          
+          // Clear validation messages
+          const existingMessages = representative_mobileInput.parentNode?.querySelectorAll('.phone-error-message')
+          existingMessages?.forEach(msg => msg.remove())
+          representative_mobileInput.classList.remove('border-red-500', 'border-green-500')
+        }
       }
     
     // Apply phone masks for the new country
     setTimeout(async () => {
-      await applyPhoneMasksForCountry(newCountry)
+      await applyPhoneMasksForCountry(newCountry, setFieldValue)
       
       // Don't show validation errors when switching countries - only validate existing values
       if (donor.doc.contact_no) {
@@ -1438,55 +1580,47 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
           showPhoneValidationFeedback('organization_contact_person', false, orgContactValidation.message)
         }
       }
+      if (donor.doc.org_representative_contact_number) {
+        const orgRepContactValidation = await validatePhoneNumber(donor.doc.org_representative_contact_number, newCountry)
+        if (!orgRepContactValidation.isValid) {
+          showPhoneValidationFeedback('org_representative_contact_number', false, orgRepContactValidation.message)
+        }
+      }
+      if (donor.doc.org_contact) {
+        const orgContactValidation = await validatePhoneNumber(donor.doc.org_contact, newCountry)
+        if (!orgContactValidation.isValid) {
+          showPhoneValidationFeedback('org_contact', false, orgContactValidation.message)
+        }
+      }
+      if (donor.doc.representative_mobile) {
+        const representativeMobileValidation = await validatePhoneNumber(donor.doc.representative_mobile, newCountry)
+        if (!representativeMobileValidation.isValid) {
+          showPhoneValidationFeedback('representative_mobile', false, representativeMobileValidation.message)
+        }
+      }
     }, 500)
   }
 })
 
-// CNIC masking functions moved to useDonorFieldValidation composable
 
-// Phone masking functionality - moved to useDonorFieldValidation composable
-// const { createMask, removeMask, applyMaskToInput, cleanupMasks } = useInputMask()
-
-// Phone masking functions moved to useDonorFieldValidation composable
-
-// Phone masking functions moved to useDonorFieldValidation composable
-
-// Phone masking functions moved to useDonorFieldValidation composable
-
-// findInputField function moved to useDonorFieldValidation composable
-
-
-
-// reapplyAllMasks function moved to useDonorFieldValidation composable
-
-// Function to handle tab changes specifically
-function handleTabChange() {
-  // Only reapply masks if they're actually missing
-  setTimeout(() => {
-    const cnicInput = findInputField('cnic')
-    const contactInput = findInputField('contact_no')
+// function handleTabChange() {
+//   setTimeout(() => {
+//     const cnicInput = findInputField('cnic')
+//     const contactInput = findInputField('contact_no')
     
-    // Only reapply CNIC mask if it's missing
-    if (cnicInput && !cnicInput._maskHandler && donor.doc.identification_type) {
-      applyCnicMaskToInput('cnic', donor.doc.identification_type, setFieldValue)
-    }
+//     // Only reapply CNIC mask if it's missing
+//     if (cnicInput && !cnicInput._maskHandler && donor.doc.identification_type) {
+//       applyCnicMaskToInput('cnic', donor.doc.identification_type, setFieldValue)
+//     }
     
-    // Only reapply phone masks if they're missing
-    if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donor.doc.country) {
-      applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
-    }
-  }, 300)
-}
+//     // Only reapply phone masks if they're missing
+//     if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donor.doc.country) {
+//       applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
+//     }
+//   }, 300)
+// }
 
-// Phone validation functions moved to useDonorFieldValidation composable
 
-// Phone validation feedback functions moved to useDonorFieldValidation composable
-
-// CNIC masking functions moved to useDonorFieldValidation composable
-
-// Validation functions moved to useDonorFieldValidation composable
-
-// Apply masking to CNIC field when modal opens
 onMounted(() => {
 
   
@@ -1591,8 +1725,7 @@ watch(
       return
     }
     
-  // Only clear CNIC field if user actually changed the identification type
-  // Don't clear on component initialization or re-renders
+
   if (oldType && oldType !== newType && oldType !== undefined) {
       donor.doc.cnic = ""
       donor.doc.others = ""
@@ -1765,6 +1898,13 @@ async function createNewDonor() {
       validationErrors.push('Invalid Representative Email format. Please enter a valid email address.')
     }
   }
+  // //Company email validation 
+  // if (donor.doc.donor_type === 'Corporate Donors' && donor.doc.company_email_address && donor.doc.company_email_address.trim() !== '') {
+  //   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  //   if (!emailRegex.test(donor.doc.company_email_address.trim())) {
+  //     validationErrors.push('Invalid Company Email Address format. Please enter a valid email address.')
+  //   }
+  // }
   
   if (!donor.doc.donor_identity || donor.doc.donor_identity.trim() === '') {
     validationErrors.push('Donor Identity is required')
@@ -1774,6 +1914,7 @@ async function createNewDonor() {
     validationErrors.push('Default Currency is required')
   }
   
+ 
   // if (!donor.doc.company || donor.doc.company.trim() === '') {
   //   validationErrors.push('Company is required')
   // }
@@ -1807,6 +1948,7 @@ async function createNewDonor() {
       }
     }
   }
+
   
   // Organizational donor specific validations
   if (donor.doc.donor_type === 'Organizational') {
@@ -1880,7 +2022,26 @@ async function createNewDonor() {
     }
   }
 
+  if (donor.doc.org_representative_contact_number && donor.doc.org_representative_contact_number.trim() !== '' && donor.doc.country) {
+    const orgRepContactValidation = await validatePhoneNumber(donor.doc.org_representative_contact_number.trim(), donor.doc.country)
+    if (!orgRepContactValidation.isValid) {
+      validationErrors.push(`Organization Representative Contact Number: ${orgRepContactValidation.message}`)
+    }
+  }
 
+  if (donor.doc.org_contact && donor.doc.org_contact.trim() !== '' && donor.doc.country) {
+    const orgContactValidation = await validatePhoneNumber(donor.doc.org_contact.trim(), donor.doc.country)
+    if (!orgContactValidation.isValid) {
+      validationErrors.push(`Organization Contact Number: ${orgContactValidation.message}`)
+    }
+  }
+
+  if (donor.doc.representative_mobile && donor.doc.representative_mobile.trim() !== '' && donor.doc.country) {
+    const representativeMobileValidation = await validatePhoneNumber(donor.doc.representative_mobile.trim(), donor.doc.country)
+    if (!representativeMobileValidation.isValid) {
+      validationErrors.push(`Representative Mobile Number: ${representativeMobileValidation.message}`)
+    }
+  }
 
   if (donor.doc.identification_type && 
       donor.doc.identification_type !== 'Others' && 
@@ -1952,6 +2113,8 @@ async function createNewDonor() {
         return
       }
       
+      // Clear all phone error messages on successful creation
+      clearAllPhoneErrorMessages()
       show.value = false
       emit('donor-created')
       toast.success(__('Donor created successfully'))
@@ -2119,6 +2282,8 @@ function onQuickEntryClose() {
 function onQuickEntryReset() {
   showQuickEntryModal.value = false
   show.value = true
+  // Clear all phone error messages when resetting
+  clearAllPhoneErrorMessages()
 }
 
 function onQuickEntrySaved() {

@@ -93,7 +93,6 @@
 </template>
 
 <script>
-const __ = (text) => text
 export default {
   name: "Donation"
 }
