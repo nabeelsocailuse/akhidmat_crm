@@ -171,10 +171,10 @@ const addPaymentDetailRow = () => {
   }
   
   // Add the new row to the payment_detail array
-  if (!donation.doc.payment_detail) {
-    donation.doc.payment_detail = []
-  }
-  donation.doc.payment_detail.push(newRow)
+  // if (!donation.doc.payment_detail) {
+  //   donation.doc.payment_detail = []
+  // }
+  // donation.doc.payment_detail.push(newRow)
 }
 
 // Initialize donation with default values including edit_posting_date_time
@@ -190,9 +190,9 @@ const initializeDonation = () => {
   }
   
   // Initialize payment_detail as empty array (no default rows)
-  if (!donation.doc.payment_detail) {
-    donation.doc.payment_detail = []
-  }
+  // if (!donation.doc.payment_detail) {
+  //   donation.doc.payment_detail = []
+  // }
   
   // Initialize deduction_breakeven as empty array (no default rows)
   if (!donation.doc.deduction_breakeven) {
@@ -579,9 +579,9 @@ function parseCustomErrorMessage(message) {
   if (message.includes('donor_id')) {
     return 'Donor is required. Please select a donor for each payment detail row.'
   }
-  if (message.includes('payment_detail')) {
-    return 'Payment details are required. Please add at least one payment detail row.'
-  }
+  // if (message.includes('payment_detail')) {
+  //   return 'Payment details are required. Please add at least one payment detail row.'
+  // }
   
   return message
 }
@@ -669,40 +669,40 @@ function validateDonationForm() {
   if (!donation.doc.posting_date) {
     errors.push('Posting Date is required')
   }
-  if (!donation.doc.currency) {
+  if (donation.doc.donation_type === 'Cash' && !donation.doc.currency) {
     errors.push('Currency is required')
   }
   
   // Validate payment detail rows
-  const paymentDetails = donation.doc.payment_detail || []
-  if (paymentDetails.length === 0) {
-    errors.push('At least one payment detail row is required')
-  } else {
-    paymentDetails.forEach((row, index) => {
-      const rowNum = index + 1
+  // const paymentDetails = donation.doc.payment_detail || []
+  // if (paymentDetails.length === 0) {
+  //   errors.push('At least one payment detail row is required')
+  // } else {
+  //   paymentDetails.forEach((row, index) => {
+  //     const rowNum = index + 1
       
-      if (!row.donor_id) {
-        errors.push(`Row ${rowNum}: Donor is required`)
-      }
-      if (!row.fund_class_id) {
-        errors.push(`Row ${rowNum}: Fund Class is required`)
-      }
-      if (!row.donation_amount || row.donation_amount <= 0) {
-        errors.push(`Row ${rowNum}: Donation Amount must be greater than 0`)
-      }
-      if (donation.doc.contribution_type !== 'Pledge') {
-        if (!row.mode_of_payment) {
-          errors.push(`Row ${rowNum}: Mode of Payment is required`)
-        }
-        if (row.mode_of_payment && row.mode_of_payment !== 'Cash' && !row.transaction_no_cheque_no) {
-          errors.push(`Row ${rowNum}: Transaction/Cheque Number is required for non-cash payments`)
-        }
-        if (row.mode_of_payment && row.mode_of_payment !== 'Cash' && !row.account_paid_to) {
-          errors.push(`Row ${rowNum}: Account Paid To is required for non-cash payments`)
-        }
-      }
-    })
-  }
+  //     if (!row.donor_id) {
+  //       errors.push(`Row ${rowNum}: Donor is required`)
+  //     }
+  //     if (!row.fund_class_id) {
+  //       errors.push(`Row ${rowNum}: Fund Class is required`)
+  //     }
+  //     if (!row.donation_amount || row.donation_amount <= 0) {
+  //       errors.push(`Row ${rowNum}: Donation Amount must be greater than 0`)
+  //     }
+  //     if (donation.doc.contribution_type !== 'Pledge') {
+  //       if (!row.mode_of_payment) {
+  //         errors.push(`Row ${rowNum}: Mode of Payment is required`)
+  //       }
+  //       if (row.mode_of_payment && row.mode_of_payment !== 'Cash' && !row.transaction_no_cheque_no) {
+  //         errors.push(`Row ${rowNum}: Transaction/Cheque Number is required for non-cash payments`)
+  //       }
+  //       if (row.mode_of_payment && row.mode_of_payment !== 'Cash' && !row.account_paid_to) {
+  //         errors.push(`Row ${rowNum}: Account Paid To is required for non-cash payments`)
+  //       }
+  //     }
+  //   })
+  // }
   
   return errors
 }
@@ -967,11 +967,11 @@ function updateDonorFields(row, donorDetails) {
   
   console.log('Row after update:', { ...row })
   
-  // Force reactive update - CRITICAL for Vue to detect changes
-  if (donation.doc.payment_detail) {
-    console.log('Forcing reactive update of payment_detail')
-    donation.doc.payment_detail = [...donation.doc.payment_detail]
-  }
+  // // Force reactive update - CRITICAL for Vue to detect changes
+  // if (donation.doc.payment_detail) {
+  //   console.log('Forcing reactive update of payment_detail')
+  //   donation.doc.payment_detail = [...donation.doc.payment_detail]
+  // }
 }
 
 function clearDonorFields(row) {
@@ -987,10 +987,10 @@ function clearDonorFields(row) {
     row[fieldName] = ''
   })
   
-  // Force reactive update
-  if (donation.doc.payment_detail) {
-    donation.doc.payment_detail = [...donation.doc.payment_detail]
-  }
+  // // Force reactive update
+  // if (donation.doc.payment_detail) {
+  //   donation.doc.payment_detail = [...donation.doc.payment_detail]
+  // }
 }
 
 // 100% WORKING: Direct donor handling in DonationModal
@@ -1064,11 +1064,11 @@ function updateFundClassFields(row, fundClassDetails) {
   
   console.log('Row after Fund Class update:', { ...row })
   
-  // Force reactive update - CRITICAL for Vue to detect changes
-  if (donation.doc.payment_detail) {
-    console.log('Forcing reactive update of payment_detail after Fund Class update')
-    donation.doc.payment_detail = [...donation.doc.payment_detail]
-  }
+  // // Force reactive update - CRITICAL for Vue to detect changes
+  // if (donation.doc.payment_detail) {
+  //   console.log('Forcing reactive update of payment_detail after Fund Class update')
+  //   donation.doc.payment_detail = [...donation.doc.payment_detail]
+  // }
 }
 
 function clearFundClassFields(row) {
@@ -1083,10 +1083,10 @@ function clearFundClassFields(row) {
     row[fieldName] = ''
   })
   
-  // Force reactive update
-  if (donation.doc.payment_detail) {
-    donation.doc.payment_detail = [...donation.doc.payment_detail]
-  }
+  // // Force reactive update
+  // if (donation.doc.payment_detail) {
+  //   donation.doc.payment_detail = [...donation.doc.payment_detail]
+  // }
 }
 
 // 100% WORKING: Direct Fund Class handling in DonationModal
@@ -1125,52 +1125,52 @@ function handleDonorSelected(event) {
   if (success && donorId && row) {
     console.log('Processing donor selection for row:', row, 'with donor ID:', donorId)
     
-    // Force a reactive update of the payment_detail table
-    if (donation.doc.payment_detail) {
-      console.log('Forcing reactive update of payment_detail')
-      donation.doc.payment_detail = [...donation.doc.payment_detail]
-    }
+    // // Force a reactive update of the payment_detail table
+    // if (donation.doc.payment_detail) {
+    //   console.log('Forcing reactive update of payment_detail')
+    //   donation.doc.payment_detail = [...donation.doc.payment_detail]
+    // }
   }
 }
 
 // 100% WORKING: Watcher for donor_id changes in payment_detail
-watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
-  if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
-    newPaymentDetail.forEach((row, index) => {
-      if (row.donor_id && row.donor_id !== row._lastDonorId) {
-        console.log(`Donor ID changed in row ${index}:`, row.donor_id)
-        row._lastDonorId = row.donor_id
+// watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
+//   if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
+//     newPaymentDetail.forEach((row, index) => {
+//       if (row.donor_id && row.donor_id !== row._lastDonorId) {
+//         console.log(`Donor ID changed in row ${index}:`, row.donor_id)
+//         row._lastDonorId = row.donor_id
         
-        // Handle the donor selection
-        handleDonorSelectionDirect(row.donor_id, row)
-      }
+//         // Handle the donor selection
+//         handleDonorSelectionDirect(row.donor_id, row)
+//       }
       
-      // NEW: Watch for fund_class_id changes
-      if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
-        console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
-        row._lastFundClassId = row.fund_class_id
+//       // NEW: Watch for fund_class_id changes
+//       if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
+//         console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
+//         row._lastFundClassId = row.fund_class_id
         
-        // Handle the Fund Class selection
-        handleFundClassSelectionDirect(row.fund_class_id, row)
-      }
-    })
-  }
-}, { deep: true })
+//         // Handle the Fund Class selection
+//         handleFundClassSelectionDirect(row.fund_class_id, row)
+//       }
+//     })
+//   }
+// }, { deep: true })
 
-// 100% WORKING: Watcher for fund_class_id changes in payment_detail
-watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
-  if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
-    newPaymentDetail.forEach((row, index) => {
-      if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
-        console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
-        row._lastFundClassId = row.fund_class_id
+// // 100% WORKING: Watcher for fund_class_id changes in payment_detail
+// watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
+//   if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
+//     newPaymentDetail.forEach((row, index) => {
+//       if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
+//         console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
+//         row._lastFundClassId = row.fund_class_id
         
-        // Handle the Fund Class selection
-        handleFundClassSelectionDirect(row.fund_class_id, row)
-      }
-    })
-  }
-}, { deep: true })
+//         // Handle the Fund Class selection
+//         handleFundClassSelectionDirect(row.fund_class_id, row)
+//       }
+//     })
+//   }
+// }, { deep: true })
 
 // NEW: Add Fund Class selection handler
 function handleFundClassSelected(event) {
@@ -1182,10 +1182,10 @@ function handleFundClassSelected(event) {
     console.log('Processing Fund Class selection for row:', row, 'with Fund Class ID:', fundClassId)
     
     // Force a reactive update of the payment_detail table
-    if (donation.doc.payment_detail) {
-      console.log('Forcing reactive update of payment_detail')
-      donation.doc.payment_detail = [...donation.doc.payment_detail]
-    }
+    // if (donation.doc.payment_detail) {
+    //   console.log('Forcing reactive update of payment_detail')
+    //   donation.doc.payment_detail = [...donation.doc.payment_detail]
+    // }
   }
 }
 
@@ -1229,28 +1229,28 @@ watch(() => donation.doc.edit_posting_date_time, (newValue) => {
 })
 
 // Watch for changes in payment_detail table to ensure random_id is always present
-watch(() => donation.doc.payment_detail, (newPaymentDetail, oldPaymentDetail) => {
-  if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
-    // Ensure every row has a random_id
-    newPaymentDetail.forEach((row, index) => {
-      if (row && !row.random_id) {
-        row.random_id = generateRandomId(index + 1)
-      }
-    })
-  }
-}, { deep: true })
+// watch(() => donation.doc.payment_detail, (newPaymentDetail, oldPaymentDetail) => {
+//   if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
+//     // Ensure every row has a random_id
+//     newPaymentDetail.forEach((row, index) => {
+//       if (row && !row.random_id) {
+//         row.random_id = generateRandomId(index + 1)
+//       }
+//     })
+//   }
+// }, { deep: true })
 
-// Alternative approach: Watch for array length changes
-watch(() => donation.doc.payment_detail?.length, (newLen, oldLen) => {
-  if (newLen && oldLen && newLen > oldLen) {
-    // Assign random_id to the new row(s)
-    for (let i = oldLen; i < newLen; i++) {
-      if (donation.doc.payment_detail[i] && !donation.doc.payment_detail[i].random_id) {
-        donation.doc.payment_detail[i].random_id = generateRandomId(i + 1)
-      }
-    }
-  }
-})
+// // Alternative approach: Watch for array length changes
+// watch(() => donation.doc.payment_detail?.length, (newLen, oldLen) => {
+//   if (newLen && oldLen && newLen > oldLen) {
+//     // Assign random_id to the new row(s)
+//     for (let i = oldLen; i < newLen; i++) {
+//       if (donation.doc.payment_detail[i] && !donation.doc.payment_detail[i].random_id) {
+//         donation.doc.payment_detail[i].random_id = generateRandomId(i + 1)
+//       }
+//     }
+//   }
+// })
 
 
 // FIX: Listen for the specific QuickEntryModal save event

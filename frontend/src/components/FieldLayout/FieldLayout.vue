@@ -42,6 +42,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  parentFieldname: {
+    type: String,
+    default: '',
+  },
 })
 
 const tabIndex = ref(0)
@@ -68,6 +72,7 @@ provide('hasTabs', hasTabs)
 provide('doctype', props.doctype)
 provide('preview', props.preview)
 provide('isGridRow', props.isGridRow)
+provide('parentFieldname', props.parentFieldname)
 
 // Add fallback for missing data
 onMounted(() => {

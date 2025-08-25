@@ -644,15 +644,7 @@ export function useDonorFieldValidation() {
       } else {
         // For other countries, use strict mask validation
         if (!phoneNumber) {
-          // For countries with strict mask requirements, show required field message
-          const phoneMask = countryMask.phoneMask || ''
-          if (phoneMask) {
-            return {
-              isValid: false,
-              message: `${country} phone number is required. Expected format: ${phoneMask}`
-            }
-          }
-          return { isValid: true, message: '' } // Allow empty for countries without mask
+          return { isValid: true, message: '' } // Allow empty for other countries
         }
         
         const cleanNumber = phoneNumber.replace(/\D/g, '')
@@ -731,51 +723,82 @@ export function useDonorFieldValidation() {
         inputElement = document.querySelector(`[data-fieldname="${fieldName}"] input`)
       }
       
+      // Try to find by label text as fallback
+      if (!inputElement) {
+        const labels = document.querySelectorAll('label, .text-sm')
+        for (let label of labels) {
+          if (label.textContent.includes('Contact No') || label.textContent.includes('Contact Number')) {
+            const fieldContainer = label.closest('.field')
+            if (fieldContainer) {
+              inputElement = fieldContainer.querySelector('input')
+              if (inputElement) break
+            }
+          }
+        }
+      }
+      
+      // Clear existing validation messages first - search more broadly
       if (inputElement) {
-        // Clear ALL existing validation messages for this field - search more broadly
+        // Clear messages from the input's parent and also from the field container
         const fieldContainer = inputElement.closest('.field') || inputElement.parentNode
         if (fieldContainer) {
-          // Remove all error messages within the field container
           const existingMessages = fieldContainer.querySelectorAll('.phone-error-message')
           existingMessages?.forEach(msg => msg.remove())
           
-          // Also search in parent containers to catch any messages that might have been appended elsewhere
-          const parentField = fieldContainer.parentNode
-          if (parentField) {
-            const parentMessages = parentField.querySelectorAll('.phone-error-message')
+          // Also clear any duplicate messages that might be in the parent
+          const parentContainer = fieldContainer.parentNode
+          if (parentContainer) {
+            const parentMessages = parentContainer.querySelectorAll('.phone-error-message')
             parentMessages?.forEach(msg => msg.remove())
           }
-          
-          // Search in the entire form/document for any orphaned messages with this field name
-          const allMessages = document.querySelectorAll('.phone-error-message')
-          allMessages?.forEach(msg => {
-            if (msg.textContent.includes(fieldName) || msg.textContent.includes(message)) {
-              msg.remove()
-            }
-          })
         }
         
         // Remove error styling
         inputElement.classList.remove('border-red-500', 'border-red-300')
         inputElement.classList.add('border-gray-300')
         
+        // If the field is valid, ensure any existing error messages are cleared
+        if (isValid) {
+          // Clear any error messages that might exist for this field
+          const allErrorMessages = document.querySelectorAll('.phone-error-message')
+          allErrorMessages?.forEach(msg => {
+            if (msg.getAttribute('data-field') === fieldName) {
+              msg.remove()
+            }
+          })
+        }
+        
         if (!isValid && message) {
-          // Add error styling
-          inputElement.classList.remove('border-gray-300')
-          inputElement.classList.add('border-red-500')
-          
-          // Create and show error message
-          const errorMessage = document.createElement('div')
-          errorMessage.className = 'phone-error-message text-red-500 text-sm mt-1'
-          errorMessage.textContent = message
-          errorMessage.setAttribute('data-field', fieldName) // Add data attribute for easier identification
-          
-          // Insert after the input field
-          const fieldContainer = inputElement.closest('.field') || inputElement.parentNode
-          if (fieldContainer) {
-            fieldContainer.appendChild(errorMessage)
+          // Check if error message already exists for this field
+          const existingError = fieldContainer?.querySelector(`.phone-error-message[data-field="${fieldName}"]`)
+          if (existingError) {
+            // Update existing error message instead of creating a new one
+            existingError.textContent = message
+          } else {
+            // Add error styling
+            inputElement.classList.remove('border-gray-300')
+            inputElement.classList.add('border-red-500')
+            
+            // Create and show error message
+            const errorMessage = document.createElement('div')
+            errorMessage.className = 'phone-error-message text-red-500 text-sm mt-1'
+            errorMessage.textContent = message
+            errorMessage.setAttribute('data-field', fieldName) // Add data attribute to identify the field
+            
+            // Insert after the input field
+            if (fieldContainer) {
+              fieldContainer.appendChild(errorMessage)
+            }
           }
         }
+      } else {
+        // If we can't find the input, try to clear messages by field name
+        const allErrorMessages = document.querySelectorAll('.phone-error-message')
+        allErrorMessages?.forEach(msg => {
+          if (msg.getAttribute('data-field') === fieldName) {
+            msg.remove()
+          }
+        })
       }
     })
   }

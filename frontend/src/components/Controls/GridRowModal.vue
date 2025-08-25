@@ -33,6 +33,7 @@
             :data="data"
             :doctype="doctype"
             :isGridRow="true"
+            :parentFieldname="parentFieldname"
           />
         </div>
       </div>
@@ -52,6 +53,7 @@ const props = defineProps({
   data: Object,
   doctype: String,
   parentDoctype: String,
+  parentFieldname: String,
 })
 
 const { isManager } = usersStore()

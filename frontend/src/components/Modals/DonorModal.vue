@@ -187,14 +187,36 @@ function openQuickEntryModal() {
 
 const { document: donor, triggerOnBeforeCreate } = useDocument('Donor')
 
-// Debug: Watch for changes to the entire donor.doc object
-watch(
-  () => donor.doc,
-  (newDoc, oldDoc) => {
+// Function to reset donor form data
+function resetDonorForm() {
+  // Reset to default values
+  donor.doc = {
+    status: 'Active',
+    identification_type: 'CNIC',
+    identification_value: '99999-9999999-9',
+    donor_identity: 'Known',
+    country: 'Pakistan',
+    contact_numbers: [{
+      phone: '',
+      is_primary_phone: false,
+      is_primary_mobile_no: false
+    }],
+    email_ids: [{
+      email_id: '',
+      is_primary: false
+    }]
+  }
   
-  },
-  { deep: true }
-)
+  // Set owner_id if user is available
+  if (user.value) {
+    donor.doc.owner_id = user.value
+  }
+  
+  // Clear donor desk resource data
+  donorDeskResource.data = []
+}
+
+
 
 const donorDeskResource = createListResource({
   doctype: 'Donor Desk',
@@ -206,9 +228,17 @@ const donorDeskResource = createListResource({
   auto: false
 })
 
-// Computed property to get donor desk options for the field
 const donorDeskOptions = computed(() => {
-  if (!donorDeskResource.data || !donor.doc?.department) {
+  if (!donor.doc?.department) {
+    return []
+  }
+  
+  if (!donorDeskResource.data) {
+    return []
+  }
+  
+
+  if (donorDeskResource.data.length === 0) {
     return []
   }
   
@@ -219,25 +249,12 @@ const donorDeskOptions = computed(() => {
 })
 
 
-
-
-
-
-
-
-const handleDepartmentChange = (newValue) => {
-  donor.doc.donor_desk = ''
-}
-
-const setupFieldChangeListeners = () => {
-}
-
-
-
-// Simple field change handler
 const onFieldChange = (fieldname, value) => {
   if (fieldname === 'department') {
-    handleDepartmentChange(value)
+    donor.doc.donor_desk = ''
+    if (value) {
+      donorDeskResource.reload()
+    }
   }
 }
 
@@ -258,7 +275,6 @@ const tabs = createResource({
       tab.sections.forEach((section) => {
         section.columns.forEach((column) => {
           column.fields.forEach((field) => {
-            // Check if field is an object before setting properties
             if (typeof field === 'object' && field !== null) {
             if (field.fieldtype === 'Table') {
               donor.doc[field.fieldname] = []
@@ -267,25 +283,18 @@ const tabs = createResource({
             // Make owner_id field readonly
             if (field.fieldname === 'owner_id') {
               field.read_only = true
-              field.tooltip = 'This field is read only and cannot be edited.'
-              // Ensure the field is always visible even when read-only
-              field.hidden = false
-              // Set a default value if not already set
               if (!donor.doc.owner_id) {
                 donor.doc.owner_id = user.value || ''
               }
             }
             
-              // Make status field readonly
-              if (field.fieldname === 'status') {
-                field.read_only = true
-                field.tooltip = 'This field is read only and cannot be edited.'
-                field.hidden = false
-              }
+              // if (field.fieldname === 'status') {
+              //   field.read_only = true
+              //   field.tooltip = 'This field is read only and cannot be edited.'
+              //   field.hidden = false
+              // }
               
-              // Ensure the field is visible but preserve readonly settings
               field.hidden = false
-              // Only set read_only to false if it's not already set to true
               if (field.read_only !== true) {
                 field.read_only = false
               }
@@ -296,7 +305,6 @@ const tabs = createResource({
     })
   },
   onSuccess(data) {
-    // Initialize child tables with default data
     if (!donor.doc.contact_numbers || donor.doc.contact_numbers.length === 0) {
       donor.doc.contact_numbers = [{
       phone: '',
@@ -312,26 +320,22 @@ const tabs = createResource({
     }]
   }
   
-    // Ensure country is set
     if (!donor.doc.country) {
       donor.doc.country = 'Pakistan'
     }
     
     // Ensure owner_id field is always present and visible
     if (data && data.length > 0) {
-      // Check if owner_id field exists in any section
       let ownerIdFieldExists = false
       data.forEach(tab => {
         tab.sections.forEach(section => {
           section.columns.forEach(column => {
             column.fields.forEach(field => {
-              // Check if field is an object before setting properties
               if (typeof field === 'object' && field !== null) {
               if (field.fieldname === 'owner_id') {
                 ownerIdFieldExists = true
               }
               
-                // Configure donor_desk field to use filtered data
               if (field.fieldname === 'donor_desk') {
                   field.options = 'Donor Desk'
                 field.get_query = () => {
@@ -343,12 +347,32 @@ const tabs = createResource({
                   }
                   field.data = computed(() => donorDeskOptions.value)
                   field.fieldtype = 'Select'
-                  field.options = donorDeskOptions.value.map(option => option.value).join('\n')
+                  field.options = computed(() => donorDeskOptions.value)
+                  field.placeholder = computed(() => {
+                    if (!donor.doc?.department) {
+                      return 'Please select a department first'
+                    }
+                    if (donorDeskResource.data && donorDeskResource.data.length === 0) {
+                      return 'No donor desks available'
+                    }
+                    return 'Select Donor Desk'
+                  })
+                  field.description = computed(() => {
+                    if (!donor.doc?.department) {
+                    }
+                    if (donorDeskResource.data && donorDeskResource.data.length === 0) {
+                      return 'No donor desks found for the selected department'
+                    }
+                    return ''
+                  })
+                  field.read_only = false
+                  field.hidden = false
+                  if (!donor.doc[field.fieldname]) {
+                    donor.doc[field.fieldname] = ''
+                  }
                 }
                 
-                // Ensure the field is visible but preserve readonly settings
                 field.hidden = false
-                // Only set read_only to false if it's not already set to true
                 if (field.read_only !== true) {
                 field.read_only = false
                 }
@@ -357,61 +381,6 @@ const tabs = createResource({
           })
         })
       })
-      
-      // If owner_id field doesn't exist, add it to the first section
-      // if (!ownerIdFieldExists) {
-      //   const ownerIdField = {
-      //     fieldname: 'owner_id',
-      //     label: 'Owner Id',
-      //     fieldtype: 'Link',
-      //     options: 'User',
-      //     read_only: true,
-      //     tooltip: 'This field is read only and cannot be edited.',
-      //     hidden: false,
-      //     reqd: false
-      //   }
-        
-      //   // Add to the first available section
-      //   if (data[0] && data[0].sections[0] && data[0].sections[0].columns[0]) {
-      //     data[0].sections[0].columns[0].fields.unshift(ownerIdField)
-      //   }
-      // }
-      
-      // Check if status field exists and add it if it doesn't
-      // let statusFieldExists = false
-      // data.forEach(tab => {
-      //   tab.sections.forEach(section => {
-      //     section.columns.forEach(column => {
-      //       column.fields.forEach(field => {
-      //         if (field.fieldname === 'status') {
-      //           statusFieldExists = true
-      //         }
-      //       })
-      //     })
-      //   })
-      // })
-      
-//       if (!statusFieldExists) {
-//         const statusField = {
-//           fieldname: 'status',
-//           label: 'Status',
-//           fieldtype: 'Select',
-//           options: 'Active\nBlocked',
-//           default: 'Active',
-//           read_only: true,
-//           tooltip: 'This field is read only and cannot be edited.',
-//           hidden: false,
-//           reqd: false
-//         }
-        
-//         // Add status field to the first section
-//         if (data[0] && data[0].sections[0] && data[0].sections[0].columns[0]) {
-//           data[0].sections[0].columns[0].fields.unshift(statusField)
-//         }
-//       }
-      
-//       // Set up field change listeners after processing all fields
-//       setupFieldChangeListeners()
     }
   }
 })
@@ -422,7 +391,6 @@ defineExpose({
   reloadDonorDeskData: () => donorDeskResource.reload()
 })
 
-// Reload donor desk data when department changes
 watch(() => donor.doc.department, (newDepartment, oldDepartment) => {
   if (newDepartment !== oldDepartment) {
     donor.doc.donor_desk = ''
@@ -432,7 +400,12 @@ watch(() => donor.doc.department, (newDepartment, oldDepartment) => {
   }
 })
 
-// Update donor desk field options when data changes
+watch(() => donorDeskOptions.value, (newOptions) => {
+  if (!newOptions || newOptions.length === 0) {
+    donor.doc.donor_desk = ''
+  }
+})
+
 watch(() => donorDeskResource.data, (newData) => {
   if (newData && tabs.data) {
     tabs.data.forEach(tab => {
@@ -440,8 +413,31 @@ watch(() => donorDeskResource.data, (newData) => {
         section.columns.forEach(column => {
           column.fields.forEach(field => {
             if (field.fieldname === 'donor_desk') {
-              field.options = donorDeskOptions.value.map(option => option.value).join('\n')
+              field.options = computed(() => donorDeskOptions.value)
               field.fieldtype = 'Select'
+              field.placeholder = computed(() => {
+                if (!donor.doc?.department) {
+                  return 'Please select a department first'
+                }
+                if (donorDeskResource.data && donorDeskResource.data.length === 0) {
+                  return 'No donor desks available'
+                }
+                return 'Select Donor Desk'
+              })
+              field.description = computed(() => {
+                if (!donor.doc?.department) {
+                  return 'Please select a department to see available donor desks'
+                }
+                if (donorDeskResource.data && donorDeskResource.data.length === 0) {
+                  return 'No donor desks found for the selected department'
+                }
+                return ''
+              })
+              field.read_only = false
+              field.hidden = false
+              if (!donor.doc[field.fieldname]) {
+                donor.doc[field.fieldname] = ''
+              }
             }
           })
         })
@@ -453,7 +449,6 @@ watch(() => donorDeskResource.data, (newData) => {
 const createDonor = createResource({
   url: 'crm.fcrm.doctype.donor.api.create_donor',
   makeParams(values) {
-    // Filter out the commented-out address fields that are no longer available
     const { citytown, stateprovince, address_type, address_line_1, address_line_2, ...filteredValues } = values
     
     return {
@@ -467,9 +462,7 @@ const createDonor = createResource({
 
 watch(show, async (val) => {
   if (val && user.value) {
-    if (!donor.doc.owner_id) {
-    donor.doc.owner_id = user.value
-    }
+    resetDonorForm()
     
     if (donor.doc.department) {
       donorDeskResource.reload()
@@ -500,7 +493,38 @@ watch(show, async (val) => {
                       }
                       field.data = computed(() => donorDeskOptions.value)
                       field.fieldtype = 'Select'
-                      field.options = donorDeskOptions.value.map(option => option.value).join('\n')
+                      // Use the computed options directly instead of converting to string
+                      field.options = computed(() => donorDeskOptions.value)
+                      // Set placeholder based on department selection
+                      field.placeholder = computed(() => {
+                        if (!donor.doc?.department) {
+                          return 'Please select a department first'
+                        }
+                        // If department is selected but no donor desks available, show appropriate message
+                        if (donorDeskResource.data && donorDeskResource.data.length === 0) {
+                          return 'No donor desks available'
+                        }
+                        return 'Select Donor Desk'
+                      })
+                      // Set description to show helper text when no department is selected
+                      field.description = computed(() => {
+                        if (!donor.doc?.department) {
+                          return 'Please select a department to see available donor desks'
+                        }
+                        // Show "No records found" message in description when department has no donor desks
+                        if (donorDeskResource.data && donorDeskResource.data.length === 0) {
+                          return 'No donor desks found for the selected department'
+                        }
+                        return ''
+                      })
+                      // Keep field enabled but show appropriate state
+                      field.read_only = false
+                      // Ensure field is always visible
+                      field.hidden = false
+                      // Ensure field always has a value to prevent hiding
+                      if (!donor.doc[field.fieldname]) {
+                        donor.doc[field.fieldname] = ''
+                      }
                     }
                   })
                 })
@@ -516,6 +540,14 @@ watch(show, async (val) => {
   }
 })
 
+// Reset form when modal is closed
+watch(() => show.value, (newVal, oldVal) => {
+  if (oldVal === true && newVal === false) {
+    // Modal was closed, reset form data
+    resetDonorForm()
+  }
+})
+
 // Add a more aggressive watcher to prevent modal from closing
 watch(() => show.value, (newVal, oldVal) => {
   if (oldVal === true && newVal === false && hasActiveSubModals.value) {
@@ -528,31 +560,11 @@ watch(() => show.value, (newVal, oldVal) => {
 
 
 
-// Ensure main modal stays visible during sub-modal interactions
-const ensureMainModalVisible = () => {
-  if (modalStack.value.length > 0 && !show.value) {
-    show.value = true
-  }
-}
-
 // Ensure parent modal stays visible when sub-modal becomes active
 const ensureParentModalVisible = (modalIdx) => {
   if (!show.value) {
     show.value = true
   }
-}
-
-// Force parent modal to stay visible and prevent any interference
-const forceParentModalVisible = () => {
-  if (hasActiveSubModals.value && !show.value) {
-    show.value = true
-  }
-}
-
-// Function to clear all phone error messages
-const clearAllPhoneErrorMessages = () => {
-  const allPhoneErrorMessages = document.querySelectorAll('.phone-error-message')
-  allPhoneErrorMessages?.forEach(msg => msg.remove())
 }
 
 // Handle close button click
@@ -561,167 +573,18 @@ const handleCloseButton = () => {
     // Don't allow closing when sub-modals are active
     return
   }
-  // Clear all phone error messages when closing
-  clearAllPhoneErrorMessages()
   show.value = false
+  // Reset form data when modal is manually closed
+  resetDonorForm()
 }
 
-// Manage parent modal state when sub-modals are active
-const manageParentModalState = () => {
-  if (hasActiveSubModals.value) {
-    // Ensure parent modal stays visible
-    if (!show.value) {
-      show.value = true
-    }
-    
-    // Prevent parent modal from being affected by outside interactions
-    nextTick(() => {
-      const parentModal = document.querySelector('[data-modal="parent"]')
-      if (parentModal) {
-        // Make parent modal non-interactive but visible
-        parentModal.style.pointerEvents = 'none'
-        parentModal.style.zIndex = '1000'
-        
-        // Ensure backdrop doesn't interfere
-        const backdrop = parentModal.querySelector('.modal-backdrop')
-        if (backdrop) {
-          backdrop.style.pointerEvents = 'none'
-        }
-        
-        // Remove any close buttons or prevent their functionality
-        const closeButtons = parentModal.querySelectorAll('[data-dismiss="modal"], .close, .btn-close')
-        closeButtons.forEach(button => {
-          button.style.pointerEvents = 'none'
-          button.style.opacity = '0.5'
-        })
-      }
-    })
-  } else {
-    nextTick(() => {
-      const parentModal = document.querySelector('[data-modal="parent"]')
-      if (parentModal) {
-        parentModal.style.pointerEvents = 'auto'
-        parentModal.style.zIndex = '100'
-        
-        const backdrop = parentModal.querySelector('.modal-backdrop')
-        if (backdrop) {
-          backdrop.style.pointerEvents = 'auto'
-        }
-        
-        // Restore close buttons
-        const closeButtons = parentModal.querySelectorAll('[data-dismiss="modal"], .close, .btn-close')
-        closeButtons.forEach(button => {
-          button.style.pointerEvents = 'auto'
-          button.style.opacity = '1'
-        })
-      }
-    })
-  }
-}
 
-// Handle sub-modal interactions to prevent parent modal interference
-const handleSubModalInteraction = () => {
-  // Force parent modal to stay visible
-  forceParentModalVisible()
-  
-  // Prevent any backdrop clicks from affecting parent modal
-  nextTick(() => {
-    const parentModal = document.querySelector('[data-modal="parent"]')
-    if (parentModal) {
-      parentModal.style.pointerEvents = 'none'
-      parentModal.style.zIndex = '1000'
-    }
-  })
-}
 
-// Add global event listener to prevent parent modal from being affected
-const addGlobalEventListeners = () => {
-  if (hasActiveSubModals.value) {
-    // Prevent any clicks outside sub-modals from affecting parent modal
-    const handleGlobalClick = (event) => {
-      const target = event.target
-      const isSubModal = target.closest('[data-modal="sub"]')
-      const isParentModal = target.closest('[data-modal="parent"]')
-      
-      if (!isSubModal && !isParentModal && hasActiveSubModals.value) {
-        event.preventDefault()
-        event.stopPropagation()
-        forceParentModalVisible()
-      }
-    }
-    
-    // Prevent modal from being closed by any means when sub-modals are active
-    const preventModalClose = (event) => {
-      if (hasActiveSubModals.value) {
-        // Prevent ESC key from closing modal
-        if (event.key === 'Escape') {
-          event.preventDefault()
-          event.stopPropagation()
-          return false
-        }
-        
-        // Prevent any backdrop clicks
-        if (event.target.classList.contains('modal-backdrop') || 
-            event.target.classList.contains('modal-overlay')) {
-          event.preventDefault()
-          event.stopPropagation()
-          return false
-        }
-      }
-    }
-    
-    // Add mutation observer to watch for modal visibility changes
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-          const target = mutation.target
-          if (target.classList.contains('modal') && hasActiveSubModals.value) {
-            // If modal is being hidden, force it to stay visible
-            if (target.style.display === 'none' || target.style.visibility === 'hidden') {
-              target.style.display = 'block'
-              target.style.visibility = 'visible'
-            }
-          }
-        }
-      })
-    })
-    
-    // Start observing
-    const parentModal = document.querySelector('[data-modal="parent"]')
-    if (parentModal) {
-      observer.observe(parentModal, { 
-        attributes: true, 
-        attributeFilter: ['style', 'class'] 
-      })
-    }
-    
-    document.addEventListener('click', handleGlobalClick, true)
-    document.addEventListener('mousedown', handleGlobalClick, true)
-    document.addEventListener('keydown', preventModalClose, true)
-    
-    // Store the handlers for cleanup
-    window._parentModalHandler = handleGlobalClick
-    window._preventModalCloseHandler = preventModalClose
-    window._modalObserver = observer
-  }
-}
 
-// Remove global event listeners
-const removeGlobalEventListeners = () => {
-  if (window._parentModalHandler) {
-    document.removeEventListener('click', window._parentModalHandler, true)
-    document.removeEventListener('mousedown', window._parentModalHandler, true)
-    window._parentModalHandler = null
-  }
-  if (window._preventModalCloseHandler) {
-    document.removeEventListener('keydown', window._preventModalCloseHandler, true)
-    window._preventModalCloseHandler = null
-  }
-  if (window._modalObserver) {
-    window._modalObserver.disconnect()
-    window._modalObserver = null
-  }
-}
+
+
+
+
 
 // Watch for modal stack changes to ensure parent modal stays visible
 watch(modalStack, (newStack) => {
@@ -734,17 +597,6 @@ watch(modalStack, (newStack) => {
 watch(hasActiveSubModals, (hasActive) => {
   if (hasActive && !show.value) {
     show.value = true
-  }
-  
-  // Manage parent modal state based on sub-modal activity
-  manageParentModalState()
-  
-  // Handle sub-modal interactions
-  if (hasActive) {
-    handleSubModalInteraction()
-    addGlobalEventListeners()
-  } else {
-    removeGlobalEventListeners()
   }
 })
 
@@ -783,24 +635,72 @@ watch(
   }
 )
 
-// Helper function for phone field validation
+// Helper function for phone field validation with debouncing
+const validationTimeouts = new Map()
+
+// Function to clear all phone field error messages
+function clearAllPhoneFieldErrors() {
+  const allErrorMessages = document.querySelectorAll('.phone-error-message')
+  allErrorMessages?.forEach(msg => msg.remove())
+  
+  // Also clear error styling from all phone inputs
+  const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'org_representative_contact_number', 'org_contact', 'representative_mobile', 'mobile_no', 'phone_no']
+  phoneFields.forEach(fieldName => {
+    const inputElement = findInputField(fieldName)
+    if (inputElement) {
+      inputElement.classList.remove('border-red-500', 'border-red-300')
+      inputElement.classList.add('border-gray-300')
+    }
+  })
+}
+
+// Function to clear error message for a specific field
+function clearPhoneFieldError(fieldName) {
+  const allErrorMessages = document.querySelectorAll('.phone-error-message')
+  allErrorMessages?.forEach(msg => {
+    if (msg.getAttribute('data-field') === fieldName) {
+      msg.remove()
+    }
+  })
+  
+  // Also clear error styling for the specific field
+  const inputElement = findInputField(fieldName)
+  if (inputElement) {
+    inputElement.classList.remove('border-red-500', 'border-red-300')
+    inputElement.classList.add('border-gray-300')
+  }
+}
+
 function createPhoneFieldWatcher(fieldName) {
   return async (newValue) => {
+    // Clear any existing timeout for this field
+    if (validationTimeouts.has(fieldName)) {
+      clearTimeout(validationTimeouts.get(fieldName))
+    }
+    
+    // Debounce validation to prevent multiple rapid calls
+    const timeoutId = setTimeout(async () => {
     if (newValue && donor.doc.country) {
       const validation = await validatePhoneNumber(newValue, donor.doc.country)
       if (validation && validation.isValid !== undefined) {
         showPhoneValidationFeedback(fieldName, validation.isValid, validation.message)
       }
-    } else if (donor.doc.country) {
-      // Always validate, even for empty values, to show required field messages
-      const validation = await validatePhoneNumber('', donor.doc.country)
+      } else if (donor.doc.country && donor.doc.country !== 'Pakistan' && donor.doc.country !== 'pakistan') {
+    const validation = await validatePhoneNumber('', donor.doc.country)
       if (validation && validation.isValid !== undefined) {
         showPhoneValidationFeedback(fieldName, validation.isValid, validation.message)
       }
-    } else {
-      // Clear error message when no country selected
-      showPhoneValidationFeedback(fieldName, true, '')
-    }
+      } else {
+        // Clear error message when field is empty or no country selected
+        clearPhoneFieldError(fieldName)
+      }
+      
+      // Remove the timeout reference
+      validationTimeouts.delete(fieldName)
+    }, 300) // 300ms debounce delay
+    
+    // Store the timeout reference
+    validationTimeouts.set(fieldName, timeoutId)
   }
 }
 
@@ -831,50 +731,21 @@ function setFieldValue(fieldName, value) {
     case 'representative_mobile':
       donor.doc.representative_mobile = value
       break
+    case 'mobile_no':
+      donor.doc.mobile_no = value
+      break
+    case 'phone_no':
+      donor.doc.phone_no = value
+      break
   }
 }
 
-// Watch for contact_no changes and validate
-watch(
-  () => donor.doc.contact_no,
-  createPhoneFieldWatcher('contact_no')
-)
+// Watch for all phone field changes
+const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'org_representative_contact_number', 'org_contact', 'representative_mobile', 'mobile_no', 'phone_no']
 
-// Watch for co_contact_no changes and validate
-watch(
-  () => donor.doc.co_contact_no,
-  createPhoneFieldWatcher('co_contact_no')
-)
-
-// Watch for company_contact_number changes and validate
-watch(
-  () => donor.doc.company_contact_number,
-  createPhoneFieldWatcher('company_contact_number')
-)
-
-// Watch for organization_contact_person changes and validate
-watch(
-  () => donor.doc.organization_contact_person,
-  createPhoneFieldWatcher('organization_contact_person')
-)
-
-// Watch for org_representative_contact_number changes and validate
-watch(
-  () => donor.doc.org_representative_contact_number,
-  createPhoneFieldWatcher('org_representative_contact_number')
-)
-
-// Watch for org_contact changes and validate
-watch(
-  () => donor.doc.org_contact,
-  createPhoneFieldWatcher('org_contact')
-)
-
-// Watch for representative_mobile changes and validate
-watch(
-  () => donor.doc.representative_mobile,
-  createPhoneFieldWatcher('representative_mobile')
-)
+phoneFields.forEach(fieldName => {
+  watch(() => donor.doc[fieldName], createPhoneFieldWatcher(fieldName))
+})
 
 // Watch for donor_type changes to reapply phone masks when conditional fields become visible
 watch(
@@ -897,7 +768,6 @@ watch(
       // Only reapply masks if they're actually missing, not on every tab change
       setTimeout(async () => {
         const cnicInput = findInputField('cnic')
-        const contactInput = findInputField('contact_no')
         
         // Only reapply CNIC mask if it's missing
         if (cnicInput && !cnicInput._maskHandler && donor.doc.identification_type) {
@@ -905,7 +775,7 @@ watch(
         }
         
         // Only reapply phone masks if they're missing
-        if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donor.doc.country) {
+        if (donor.doc.country) {
           await applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
         }
       }, 300)
@@ -928,7 +798,6 @@ watch(
             // Only reapply masks if they're actually missing, not on every DOM change
             setTimeout(() => {
               const cnicInput = findInputField('cnic')
-              const contactInput = findInputField('contact_no')
               
               // Only reapply CNIC mask if it's missing
               if (cnicInput && !cnicInput._maskHandler && donor.doc.identification_type) {
@@ -936,7 +805,7 @@ watch(
               }
               
               // Only reapply phone masks if they're missing
-              if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donor.doc.country) {
+              if (donor.doc.country) {
                 applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
               }
             }, 200)
@@ -980,7 +849,6 @@ watch(
               // Only reapply masks if they're actually missing, not on every DOM change
               setTimeout(() => {
                 const cnicInput = findInputField('cnic')
-                const contactInput = findInputField('contact_no')
                 
                 // Only reapply CNIC mask if it's missing
                 if (cnicInput && !cnicInput._maskHandler && donor.doc.identification_type) {
@@ -988,7 +856,7 @@ watch(
                 }
                 
                 // Only reapply phone masks if they're missing
-                if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donor.doc.country) {
+                if (donor.doc.country) {
                   applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
                 }
               }, 200)
@@ -1055,7 +923,6 @@ const setupObservers = () => {
       setTimeout(async () => {
         // Only reapply masks if they're actually missing, not on every DOM change
         const cnicInput = findInputField('cnic')
-        const contactInput = findInputField('contact_no')
         
         // Only reapply CNIC mask if it's missing
         if (cnicInput && !cnicInput._maskHandler && donor.doc.identification_type) {
@@ -1063,7 +930,7 @@ const setupObservers = () => {
         }
         
         // Only reapply phone masks if they're missing
-        if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donor.doc.country) {
+        if (donor.doc.country) {
           await applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
         }
       }, 200)
@@ -1081,47 +948,18 @@ const setupObservers = () => {
   // Set up periodic mask check
   maskCheckInterval = setInterval(() => {
     const cnicInput = findInputField('cnic')
-    const contactInput = findInputField('contact_no')
-    const coContactInput = findInputField('co_contact_no')
-    const companyContactInput = findInputField('company_contact_number')
-    const orgContactInput = findInputField('organization_contact_person')
-    const orgRepContactInput = findInputField('org_representative_contact_number')
-    const orgContactInput2 = findInputField('org_contact')
-    const representativeMobileInput = findInputField('representative_mobile')
     
-    // Only reapply CNIC mask if it's missing and identification type is set
     if (cnicInput && !cnicInput._maskHandler && donor.doc.identification_type) {
       applyCnicMaskToInput('cnic', donor.doc.identification_type, setFieldValue)
     }
     
-    // Only reapply phone masks if they're missing and country is set
-    if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donor.doc.country) {
-      applyPhoneMaskToInput('contact_no', donor.doc.country, setFieldValue)
-    }
-    
-    if (coContactInput && !coContactInput._pakistanHandler && !coContactInput._otherCountryHandler && donor.doc.country) {
-      applyPhoneMaskToInput('co_contact_no', donor.doc.country, setFieldValue)
-    }
-    
-    if (companyContactInput && !companyContactInput._pakistanHandler && !companyContactInput._otherCountryHandler && donor.doc.country) {
-      applyPhoneMaskToInput('company_contact_number', donor.doc.country, setFieldValue)
-    }
-    
-    if (orgContactInput && !orgContactInput._pakistanHandler && !orgContactInput._otherCountryHandler && donor.doc.country) {
-      applyPhoneMaskToInput('organization_contact_person', donor.doc.country, setFieldValue)
-    }
-    
-    if (orgRepContactInput && !orgRepContactInput._pakistanHandler && !orgRepContactInput._otherCountryHandler && donor.doc.country) {
-      applyPhoneMaskToInput('org_representative_contact_number', donor.doc.country, setFieldValue)
-    }
-    
-    if (orgContactInput2 && !orgContactInput2._pakistanHandler && !orgContactInput2._otherCountryHandler && donor.doc.country) {
-      applyPhoneMaskToInput('org_contact', donor.doc.country, setFieldValue)
-    }
-    
-    if (representativeMobileInput && !representativeMobileInput._pakistanHandler && !representativeMobileInput._otherCountryHandler && donor.doc.country) {
-      applyPhoneMaskToInput('representative_mobile', donor.doc.country, setFieldValue)
-    }
+    // Check all phone fields for missing masks
+    phoneFields.forEach(fieldName => {
+      const inputElement = findInputField(fieldName)
+      if (inputElement && !inputElement._pakistanHandler && !inputElement._otherCountryHandler && donor.doc.country) {
+        applyPhoneMaskToInput(fieldName, donor.doc.country, setFieldValue)
+      }
+    })
   }, 5000)
 }
 
@@ -1135,6 +973,10 @@ onUnmounted(() => {
     clearInterval(maskCheckInterval)
     maskCheckInterval = null
   }
+  
+  // Clear all validation timeouts
+  validationTimeouts.forEach(timeoutId => clearTimeout(timeoutId))
+  validationTimeouts.clear()
 })
 
 const countryCurrencyMap = {
@@ -1404,19 +1246,11 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
       donor.doc.organization_contact_person = ""
       donor.doc.state = ""
       donor.doc.area = ""
-      // donor.doc.citytown = ""
-      // donor.doc.stateprovince = ""
-      // donor.doc.address_type = ""
-      // donor.doc.address_line_1 = ""
-      // donor.doc.address_line_2 = ""
+
     }
     
           // Clean up any existing prefixes immediately when country changes
       if (oldCountry && oldCountry !== newCountry) {
-        // Clear all phone error messages when country changes
-        const allPhoneErrorMessages = document.querySelectorAll('.phone-error-message')
-        allPhoneErrorMessages?.forEach(msg => msg.remove())
-        
         const contactInput = findInputField('contact_no')
         const coContactInput = findInputField('co_contact_no')
         const companyContactInput = findInputField('company_contact_number')
@@ -1425,177 +1259,57 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
         const ContactInput = findInputField('org_contact')
         const representative_mobileInput = findInputField('representative_mobile')
         
-        if (contactInput) {
-          const existingPrefixes = contactInput.parentNode?.querySelectorAll('.country-prefix')
-          existingPrefixes?.forEach(prefix => prefix.remove())
-          contactInput.style.paddingLeft = ''
-          contactInput.style.position = ''
-          if (contactInput.parentNode) {
-            contactInput.parentNode.style.position = ''
-          }
-          
-          // Clear validation messages more comprehensively
-          const fieldContainer = contactInput.closest('.field') || contactInput.parentNode
-          if (fieldContainer) {
-            const existingMessages = fieldContainer.querySelectorAll('.phone-error-message')
-            existingMessages?.forEach(msg => msg.remove())
-            
-            // Also search in parent containers
-            const parentField = fieldContainer.parentNode
-            if (parentField) {
-              const parentMessages = parentField.querySelectorAll('.phone-error-message')
-              parentMessages?.forEach(msg => msg.remove())
+        // Helper function to clear phone field styling and prefixes
+        const clearPhoneField = (inputElement) => {
+          if (inputElement) {
+            const existingPrefixes = inputElement.parentNode?.querySelectorAll('.country-prefix')
+            existingPrefixes?.forEach(prefix => prefix.remove())
+            inputElement.style.paddingLeft = ''
+            inputElement.style.position = ''
+            if (inputElement.parentNode) {
+              inputElement.parentNode.style.position = ''
             }
-          }
-          contactInput.classList.remove('border-red-500', 'border-green-500')
-        }
-        
-        if (coContactInput) {
-          const existingPrefixes = coContactInput.parentNode?.querySelectorAll('.country-prefix')
-          existingPrefixes?.forEach(prefix => prefix.remove())
-          coContactInput.style.paddingLeft = ''
-          coContactInput.style.position = ''
-          if (coContactInput.parentNode) {
-            coContactInput.parentNode.style.position = ''
-          }
-          
-          // Clear validation messages more comprehensively
-          const fieldContainer = coContactInput.closest('.field') || coContactInput.parentNode
-          if (fieldContainer) {
-            const existingMessages = fieldContainer.querySelectorAll('.phone-error-message')
-            existingMessages?.forEach(msg => msg.remove())
             
-            // Also search in parent containers
-            const parentField = fieldContainer.parentNode
-            if (parentField) {
-              const parentMessages = parentField.querySelectorAll('.phone-error-message')
-              parentMessages?.forEach(msg => msg.remove())
-            }
+            // Clear validation messages
+            const existingMessages = inputElement.parentNode?.querySelectorAll('.phone-error-message')
+            existingMessages?.forEach(msg => msg.remove())
+            inputElement.classList.remove('border-red-500', 'border-green-500')
           }
-          coContactInput.classList.remove('border-red-500', 'border-green-500')
         }
         
-        if (companyContactInput) {
-          const existingPrefixes = companyContactInput.parentNode?.querySelectorAll('.country-prefix')
-          existingPrefixes?.forEach(prefix => prefix.remove())
-          companyContactInput.style.paddingLeft = ''
-          companyContactInput.style.position = ''
-          if (companyContactInput.parentNode) {
-            companyContactInput.parentNode.style.position = ''
-          }
-          
-          // Clear validation messages
-          const existingMessages = companyContactInput.parentNode?.querySelectorAll('.phone-error-message')
-          existingMessages?.forEach(msg => msg.remove())
-          companyContactInput.classList.remove('border-red-500', 'border-green-500')
-        }
-        
-        if (orgContactInput) {
-          const existingPrefixes = orgContactInput.parentNode?.querySelectorAll('.country-prefix')
-          existingPrefixes?.forEach(prefix => prefix.remove())
-          orgContactInput.style.paddingLeft = ''
-          orgContactInput.style.position = ''
-          if (orgContactInput.parentNode) {
-            orgContactInput.parentNode.style.position = ''
-          }
-          
-          // Clear validation messages
-          const existingMessages = orgContactInput.parentNode?.querySelectorAll('.phone-error-message')
-          existingMessages?.forEach(msg => msg.remove())
-          orgContactInput.classList.remove('border-red-500', 'border-green-500')
-        }
-
-        if (orgRepContactInput) {
-          const existingPrefixes = orgRepContactInput.parentNode?.querySelectorAll('.country-prefix')
-          existingPrefixes?.forEach(prefix => prefix.remove())
-          orgRepContactInput.style.paddingLeft = ''
-          orgRepContactInput.style.position = ''
-          if (orgRepContactInput.parentNode) {
-            orgRepContactInput.parentNode.style.position = ''
-          }
-          
-          // Clear validation messages
-          const existingMessages = orgRepContactInput.parentNode?.querySelectorAll('.phone-error-message')
-          existingMessages?.forEach(msg => msg.remove())
-          orgRepContactInput.classList.remove('border-red-500', 'border-green-500')
-        }
-
-        if (ContactInput) {
-          const existingPrefixes = ContactInput.parentNode?.querySelectorAll('.country-prefix')
-          existingPrefixes?.forEach(prefix => prefix.remove())
-          ContactInput.style.paddingLeft = ''
-          ContactInput.style.position = ''
-          if (ContactInput.parentNode) {
-            ContactInput.parentNode.style.position = ''
-          }
-          
-          // Clear validation messages
-          const existingMessages = ContactInput.parentNode?.querySelectorAll('.phone-error-message')
-          existingMessages?.forEach(msg => msg.remove())
-          ContactInput.classList.remove('border-red-500', 'border-green-500')
-        }
-
-        if (representative_mobileInput) {
-          const existingPrefixes = representative_mobileInput.parentNode?.querySelectorAll('.country-prefix')
-          existingPrefixes?.forEach(prefix => prefix.remove())
-          representative_mobileInput.style.paddingLeft = ''
-          representative_mobileInput.style.position = ''
-          if (representative_mobileInput.parentNode) {
-            representative_mobileInput.parentNode.style.position = ''
-          }
-          
-          // Clear validation messages
-          const existingMessages = representative_mobileInput.parentNode?.querySelectorAll('.phone-error-message')
-          existingMessages?.forEach(msg => msg.remove())
-          representative_mobileInput.classList.remove('border-red-500', 'border-green-500')
-        }
+        // Clear all phone fields
+        clearPhoneField(contactInput)
+        clearPhoneField(coContactInput)
+        clearPhoneField(companyContactInput)
+        clearPhoneField(orgContactInput)
+        clearPhoneField(orgRepContactInput)
+        clearPhoneField(ContactInput)
+        clearPhoneField(representative_mobileInput)
       }
+    
+    // Clear all existing phone field errors when country changes
+    clearAllPhoneFieldErrors()
+    
+    // Also clear any existing validation timeouts to prevent delayed validations
+    validationTimeouts.forEach(timeoutId => clearTimeout(timeoutId))
+    validationTimeouts.clear()
     
     // Apply phone masks for the new country
     setTimeout(async () => {
       await applyPhoneMasksForCountry(newCountry, setFieldValue)
       
-      // Don't show validation errors when switching countries - only validate existing values
-      if (donor.doc.contact_no) {
-        const contactValidation = await validatePhoneNumber(donor.doc.contact_no, newCountry)
-        if (!contactValidation.isValid) {
-          showPhoneValidationFeedback('contact_no', false, contactValidation.message)
-        }
-      }
-      if (donor.doc.co_contact_no) {
-        const coContactValidation = await validatePhoneNumber(donor.doc.co_contact_no, newCountry)
-        if (!coContactValidation.isValid) {
-          showPhoneValidationFeedback('co_contact_no', false, coContactValidation.message)
-        }
-      }
-      if (donor.doc.company_contact_number) {
-        const companyContactValidation = await validatePhoneNumber(donor.doc.company_contact_number, newCountry)
-        if (!companyContactValidation.isValid) {
-          showPhoneValidationFeedback('company_contact_number', false, companyContactValidation.message)
-        }
-      }
-      if (donor.doc.organization_contact_person) {
-        const orgContactValidation = await validatePhoneNumber(donor.doc.organization_contact_person, newCountry)
-        if (!orgContactValidation.isValid) {
-          showPhoneValidationFeedback('organization_contact_person', false, orgContactValidation.message)
-        }
-      }
-      if (donor.doc.org_representative_contact_number) {
-        const orgRepContactValidation = await validatePhoneNumber(donor.doc.org_representative_contact_number, newCountry)
-        if (!orgRepContactValidation.isValid) {
-          showPhoneValidationFeedback('org_representative_contact_number', false, orgRepContactValidation.message)
-        }
-      }
-      if (donor.doc.org_contact) {
-        const orgContactValidation = await validatePhoneNumber(donor.doc.org_contact, newCountry)
-        if (!orgContactValidation.isValid) {
-          showPhoneValidationFeedback('org_contact', false, orgContactValidation.message)
-        }
-      }
-      if (donor.doc.representative_mobile) {
-        const representativeMobileValidation = await validatePhoneNumber(donor.doc.representative_mobile, newCountry)
-        if (!representativeMobileValidation.isValid) {
-          showPhoneValidationFeedback('representative_mobile', false, representativeMobileValidation.message)
+          // Re-validate all phone fields with the new country
+    const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'org_representative_contact_number', 'org_contact', 'representative_mobile', 'mobile_no', 'phone_no']
+    
+    for (const fieldName of phoneFields) {
+        if (donor.doc[fieldName] && donor.doc[fieldName].trim() !== '') {
+          const validation = await validatePhoneNumber(donor.doc[fieldName], newCountry)
+          if (!validation.isValid) {
+            showPhoneValidationFeedback(fieldName, false, validation.message)
+          } else {
+            // Clear any existing error messages for valid fields
+            showPhoneValidationFeedback(fieldName, true, '')
+          }
         }
       }
     }, 500)
@@ -1603,22 +1317,7 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
 })
 
 
-// function handleTabChange() {
-//   setTimeout(() => {
-//     const cnicInput = findInputField('cnic')
-//     const contactInput = findInputField('contact_no')
-    
-//     // Only reapply CNIC mask if it's missing
-//     if (cnicInput && !cnicInput._maskHandler && donor.doc.identification_type) {
-//       applyCnicMaskToInput('cnic', donor.doc.identification_type, setFieldValue)
-//     }
-    
-//     // Only reapply phone masks if they're missing
-//     if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donor.doc.country) {
-//       applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
-//     }
-//   }, 300)
-// }
+
 
 
 onMounted(() => {
@@ -1640,10 +1339,7 @@ onMounted(() => {
 
   }
   
-  // if (!donor.doc.company) {
-  //   donor.doc.company = 'Alkhidmat Foundation'
 
-  // }
   
   if (!donor.doc.default_currency) {
     donor.doc.default_currency = 'PKR'
@@ -1665,9 +1361,7 @@ onMounted(() => {
 
   }
   
-  // if (!donor.doc.address_type) {
-  //   donor.doc.address_type = 'Current'
-  // }
+
   
   if (!donor.doc.contact_numbers || donor.doc.contact_numbers.length === 0) {
     donor.doc.contact_numbers = [{
@@ -1739,21 +1433,7 @@ watch(
   { immediate: true } 
 )
 
-// Watch for company field changes
-watch(
-  () => donor.doc.company,
-  (newCompany, oldCompany) => {
-  
-  }
-)
 
-// Watch for donor_identity field changes
-watch(
-  () => donor.doc.donor_identity,
-  (newIdentity, oldIdentity) => {
-  
-  }
-)
 
 function openCreateModal({ doctype, initialValue, onSuccess }) {
   // Ensure parent modal stays visible
@@ -1898,13 +1578,7 @@ async function createNewDonor() {
       validationErrors.push('Invalid Representative Email format. Please enter a valid email address.')
     }
   }
-  // //Company email validation 
-  // if (donor.doc.donor_type === 'Corporate Donors' && donor.doc.company_email_address && donor.doc.company_email_address.trim() !== '') {
-  //   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  //   if (!emailRegex.test(donor.doc.company_email_address.trim())) {
-  //     validationErrors.push('Invalid Company Email Address format. Please enter a valid email address.')
-  //   }
-  // }
+
   
   if (!donor.doc.donor_identity || donor.doc.donor_identity.trim() === '') {
     validationErrors.push('Donor Identity is required')
@@ -1914,26 +1588,8 @@ async function createNewDonor() {
     validationErrors.push('Default Currency is required')
   }
   
- 
-  // if (!donor.doc.company || donor.doc.company.trim() === '') {
-  //   validationErrors.push('Company is required')
-  // }
   
-  // if (!donor.doc.citytown || donor.doc.citytown.trim() === '') {
-  //   validationErrors.push('City/Town is required')
-  // }
-  
-  // if (!donor.doc.stateprovince || donor.doc.stateprovince.trim() === '') {
-  //   validationErrors.push('State/Province is required')
-  // }
-  
-  // if (!donor.doc.address_type || donor.doc.address_type.trim() === '') {
-  //   validationErrors.push('Address Type is required')
-  // }
-  
-  // if (!donor.doc.address_line_1 || donor.doc.address_line_1.trim() === '') {
-  //   validationErrors.push('Address Line 1 is required')
-  // }
+
   
   // Contact number validation
   if (donor.doc.country && (!donor.doc.contact_no || donor.doc.contact_no.trim() === '')) {
@@ -1996,52 +1652,30 @@ async function createNewDonor() {
     }
   }
   
-  // if (donor.doc.default_currency && (!donor.doc.default_account || donor.doc.default_account.trim() === '')) {
-  //   validationErrors.push('Default Account is required when Default Currency is selected')
-  // }
 
-  if (donor.doc.company_contact_number && donor.doc.company_contact_number.trim() !== '' && donor.doc.country) {  
-    const companyContactValidation = await validatePhoneNumber(donor.doc.company_contact_number.trim(), donor.doc.country)
-    if (!companyContactValidation.isValid) {
-      if (donor.doc.country === 'Pakistan') {
-        validationErrors.push('Company Contact Number: Pakistan phone number must be 10 digits and start with valid mobile prefix (30-39). Example: 348-8903564')
-      } else {
-        validationErrors.push(`Company Contact Number: ${companyContactValidation.message}`)
-      }
-    }
-  }
-  
-  if (donor.doc.organization_contact_person && donor.doc.organization_contact_person.trim() !== '' && donor.doc.country) {
-    const orgContactValidation = await validatePhoneNumber(donor.doc.organization_contact_person.trim(), donor.doc.country)
-    if (!orgContactValidation.isValid) {
-      if (donor.doc.country === 'Pakistan') {
-        validationErrors.push('Organization Contact Person: Pakistan phone number must be 10 digits and start with valid mobile prefix (30-39). Example: 348-8903564')
-      } else {
-        validationErrors.push(`Organization Contact Person: ${orgContactValidation.message}`)
+
+  // Helper function for phone validation
+  const validatePhoneField = async (fieldName, fieldLabel) => {
+    if (donor.doc[fieldName] && donor.doc[fieldName].trim() !== '' && donor.doc.country) {
+      const validation = await validatePhoneNumber(donor.doc[fieldName].trim(), donor.doc.country)
+      if (!validation.isValid) {
+        if (donor.doc.country === 'Pakistan') {
+          validationErrors.push(`${fieldLabel}: Pakistan phone number must be 10 digits and start with valid mobile prefix (30-39). Example: 348-8903564`)
+        } else {
+          validationErrors.push(`${fieldLabel}: ${validation.message}`)
+        }
       }
     }
   }
 
-  if (donor.doc.org_representative_contact_number && donor.doc.org_representative_contact_number.trim() !== '' && donor.doc.country) {
-    const orgRepContactValidation = await validatePhoneNumber(donor.doc.org_representative_contact_number.trim(), donor.doc.country)
-    if (!orgRepContactValidation.isValid) {
-      validationErrors.push(`Organization Representative Contact Number: ${orgRepContactValidation.message}`)
-    }
-  }
-
-  if (donor.doc.org_contact && donor.doc.org_contact.trim() !== '' && donor.doc.country) {
-    const orgContactValidation = await validatePhoneNumber(donor.doc.org_contact.trim(), donor.doc.country)
-    if (!orgContactValidation.isValid) {
-      validationErrors.push(`Organization Contact Number: ${orgContactValidation.message}`)
-    }
-  }
-
-  if (donor.doc.representative_mobile && donor.doc.representative_mobile.trim() !== '' && donor.doc.country) {
-    const representativeMobileValidation = await validatePhoneNumber(donor.doc.representative_mobile.trim(), donor.doc.country)
-    if (!representativeMobileValidation.isValid) {
-      validationErrors.push(`Representative Mobile Number: ${representativeMobileValidation.message}`)
-    }
-  }
+  // Validate all phone fields
+  await validatePhoneField('company_contact_number', 'Company Contact Number')
+  await validatePhoneField('organization_contact_person', 'Organization Contact Person')
+  await validatePhoneField('org_representative_contact_number', 'Organization Representative Contact Number')
+  await validatePhoneField('org_contact', 'Organization Contact Number')
+  await validatePhoneField('representative_mobile', 'Representative Mobile Number')
+  await validatePhoneField('mobile_no', 'Mobile No')
+  await validatePhoneField('phone_no', 'Phone No')
 
   if (donor.doc.identification_type && 
       donor.doc.identification_type !== 'Others' && 
@@ -2113,9 +1747,9 @@ async function createNewDonor() {
         return
       }
       
-      // Clear all phone error messages on successful creation
-      clearAllPhoneErrorMessages()
       show.value = false
+      // Reset form data after successful creation
+      resetDonorForm()
       emit('donor-created')
       toast.success(__('Donor created successfully'))
       
@@ -2282,8 +1916,6 @@ function onQuickEntryClose() {
 function onQuickEntryReset() {
   showQuickEntryModal.value = false
   show.value = true
-  // Clear all phone error messages when resetting
-  clearAllPhoneErrorMessages()
 }
 
 function onQuickEntrySaved() {
@@ -2294,9 +1926,6 @@ function onQuickEntrySaved() {
 
 
 onUnmounted(() => {
-  removeGlobalEventListeners()
-  
-  
   const inputs = document.querySelectorAll('input')
   inputs.forEach(input => {
     if (input._pakistanHandler) {
@@ -2322,106 +1951,31 @@ onUnmounted(() => {
   })
 })
 
-watch(
-  () => donor.doc.organization_contact_person,
-  createPhoneFieldWatcher('organization_contact_person')
-)
 
-watch(
-  () => donor.doc.company_email_address,
-  (newCompanyEmail) => {
-    if (newCompanyEmail && newCompanyEmail.trim() !== '') {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(newCompanyEmail.trim())) {
-        showEmailValidationFeedback('company_email_address', false, 'Invalid email format. Please enter a valid email address.')
-      } else {
-        showEmailValidationFeedback('company_email_address', true, '')
-      }
-    } else {
-      showEmailValidationFeedback('company_email_address', true, '')
-    }
-  }
-)
 
-watch(
-  () => donor.doc.representative_email,
-  (newRepresentativeEmail) => {
-    if (newRepresentativeEmail && newRepresentativeEmail.trim() !== '') {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(newRepresentativeEmail.trim())) {
-        showEmailValidationFeedback('representative_email', false, 'Invalid email format. Please enter a valid email address.')
-      } else {
-        showEmailValidationFeedback('representative_email', true, '')
-      }
-    } else {
-      showEmailValidationFeedback('representative_email', true, '')
-    }
-  }
-)
-
-watch(
-  () => donor.doc.email,
-  (newEmail) => {
+// Helper function for email validation
+function createEmailWatcher(fieldName) {
+  return (newEmail) => {
     if (newEmail && newEmail.trim() !== '') {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
       if (!emailRegex.test(newEmail.trim())) {
-        showEmailValidationFeedback('email', false, 'Invalid email format. Please enter a valid email address.')
+        showEmailValidationFeedback(fieldName, false, 'Invalid email format. Please enter a valid email address.')
       } else {
-        showEmailValidationFeedback('email', true, '')
+        showEmailValidationFeedback(fieldName, true, '')
       }
     } else {
-      showEmailValidationFeedback('email', true, '')
+      showEmailValidationFeedback(fieldName, true, '')
     }
   }
-)
+}
 
-watch(
-  () => donor.doc.co_email,
-  (newCoEmail) => {
-    if (newCoEmail && newCoEmail.trim() !== '') {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(newCoEmail.trim())) {
-        showEmailValidationFeedback('co_email', false, 'Invalid email format. Please enter a valid email address.')
-      } else {
-        showEmailValidationFeedback('co_email', true, '')
-      }
-    } else {
-      showEmailValidationFeedback('co_email', true, '')
-    }
-  }
-)
-
-watch(
-  () => donor.doc.org_email,
-  (newOrgEmail) => {
-    if (newOrgEmail && newOrgEmail.trim() !== '') {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(newOrgEmail.trim())) {
-        showEmailValidationFeedback('org_email', false, 'Invalid email format. Please enter a valid email address.')
-      } else {
-        showEmailValidationFeedback('org_email', true, '')
-      }
-    } else {
-      showEmailValidationFeedback('org_email', true, '')
-    }
-  }
-)
-
-watch(
-  () => donor.doc.donor_email,
-  (newDonorEmail) => {
-    if (newDonorEmail && newDonorEmail.trim() !== '') {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(newDonorEmail.trim())) {
-        showEmailValidationFeedback('donor_email', false, 'Invalid email format. Please enter a valid email address.')
-      } else {
-        showEmailValidationFeedback('donor_email', true, '')
-      }
-    } else {
-      showEmailValidationFeedback('donor_email', true, '')
-    }
-  }
-)
+// Watch for email field changes
+watch(() => donor.doc.company_email_address, createEmailWatcher('company_email_address'))
+watch(() => donor.doc.representative_email, createEmailWatcher('representative_email'))
+watch(() => donor.doc.email, createEmailWatcher('email'))
+watch(() => donor.doc.co_email, createEmailWatcher('co_email'))
+watch(() => donor.doc.org_email, createEmailWatcher('org_email'))
+watch(() => donor.doc.donor_email, createEmailWatcher('donor_email'))
 
 function showEmailValidationFeedback(fieldName, isValid, message) {
   nextTick(() => {

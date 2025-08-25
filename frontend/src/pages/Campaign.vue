@@ -195,34 +195,14 @@
         </SidePanelLayout>
       </div>
       <!-- Fallback content if sections are not loaded or empty -->
-      <div v-else-if="!sections.data || sections.data.length === 0" class="flex flex-1 flex-col justify-between overflow-hidden p-5">
-        <div class="space-y-4">
-          <div>
-            <h3 class="text-lg font-medium text-ink-gray-9 mb-2">{{ __('Campaign Details') }}</h3>
-            <div class="space-y-2">
-              <div v-if="campaign.data.campaign_name">
-                <label class="text-sm font-medium text-ink-gray-7">{{ __('Campaign Name') }}</label>
-                <p class="text-sm text-ink-gray-9">{{ campaign.data.campaign_name }}</p>
-              </div>
-              <div v-if="campaign.data.description">
-                <label class="text-sm font-medium text-ink-gray-7">{{ __('Description') }}</label>
-                <p class="text-sm text-ink-gray-9">{{ campaign.data.description }}</p>
-              </div>
-              <div v-if="campaign.data.owner">
-                <label class="text-sm font-medium text-ink-gray-7">{{ __('Owner') }}</label>
-                <p class="text-sm text-ink-gray-9">{{ campaign.data.owner }}</p>
-              </div>
-              <div v-if="campaign.data.creation">
-                <label class="text-sm font-medium text-ink-gray-7">{{ __('Created') }}</label>
-                <p class="text-sm text-ink-gray-9">{{ new Date(campaign.data.creation).toLocaleDateString() }}</p>
-              </div>
-              <div v-if="campaign.data.modified">
-                <label class="text-sm font-medium text-ink-gray-7">{{ __('Modified') }}</label>
-                <p class="text-sm text-ink-gray-9">{{ new Date(campaign.data.modified).toLocaleDateString() }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div v-else-if="!sections.data || sections.data.length === 0" class="flex flex-1 flex-col justify-between overflow-hidden">
+        <SidePanelLayout
+          :sections="campaignSidebarSections"
+          doctype="FCRM Campaign"
+          :docname="campaign.data.name"
+          @reload="sections.reload"
+          @afterFieldChange="reloadAssignees"
+        />
       </div>
     </div>
     </div>
@@ -502,6 +482,121 @@ const tabs = computed(() => {
 })
 
 const { tabIndex, changeTabTo } = useActiveTabManager(tabs, 'lastCampaignTab')
+
+// Campaign sidebar sections for when CRM Fields Layout is not available
+const campaignSidebarSections = computed(() => [
+  {
+    label: __('Campaign Details'),
+    name: 'campaign_details_section',
+    opened: true,
+    columns: [
+      {
+        name: 'column_campaign_details',
+        fields: [
+          {
+            fieldname: 'campaign_name',
+            label: __('Campaign Name'),
+            fieldtype: 'Data',
+            value: campaign.data?.campaign_name || '',
+            placeholder: __('Enter campaign name'),
+            reqd: true,
+            create: () => {
+              // Handle create new campaign name if needed
+            }
+          },
+          {
+            fieldname: 'description',
+            label: __('Description'),
+            fieldtype: 'Text',
+            value: campaign.data?.description || '',
+            placeholder: __('Enter description')
+          },
+          {
+            fieldname: 'naming_series',
+            label: __('Naming Series'),
+            fieldtype: 'Select',
+            value: campaign.data?.naming_series || 'SAL-CAM-.YYYY.-',
+            options: ['SAL-CAM-.YYYY.-'],
+            read_only: true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    label: __('Campaign Information'),
+    name: 'campaign_info_section',
+    opened: true,
+    columns: [
+      {
+        name: 'column_campaign_info',
+        fields: [
+          {
+            fieldname: 'website',
+            label: __('Website'),
+            fieldtype: 'Data',
+            value: campaign.data?.website || '',
+            placeholder: __('Enter website URL'),
+            create: () => {
+              if (campaign.data?.website) {
+                openWebsite(campaign.data.website)
+              }
+            }
+          },
+          {
+            fieldname: 'email',
+            label: __('Email'),
+            fieldtype: 'Data',
+            value: campaign.data?.email || '',
+            placeholder: __('Enter email address')
+          },
+          {
+            fieldname: 'sla_status',
+            label: __('SLA Status'),
+            fieldtype: 'Link',
+            options: 'CRM SLA Status',
+            value: campaign.data?.sla_status || '',
+            placeholder: __('Select SLA Status')
+          }
+        ]
+      }
+    ]
+  },
+  {
+    label: __('System Information'),
+    name: 'system_info_section',
+    opened: true,
+    columns: [
+      {
+        name: 'column_system_info',
+        fields: [
+          {
+            fieldname: 'owner',
+            label: __('Owner'),
+            fieldtype: 'User',
+            value: campaign.data?.owner || '',
+            placeholder: __('Select owner'),
+            read_only: true
+          },
+          {
+            fieldname: 'creation',
+            label: __('Created'),
+            fieldtype: 'Datetime',
+            value: campaign.data?.creation || '',
+            read_only: true
+          },
+          {
+            fieldname: 'modified',
+            label: __('Modified'),
+            fieldtype: 'Datetime',
+            value: campaign.data?.modified || '',
+            read_only: true
+          }
+        ]
+      }
+    ]
+  }
+])
 
 watch(tabs, (value) => {
   if (value && route.params.tabName) {

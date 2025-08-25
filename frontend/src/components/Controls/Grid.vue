@@ -296,6 +296,7 @@
                 :data="row"
                 :doctype="doctype"
                 :parentDoctype="parentDoctype"
+                :parentFieldname="parentFieldname"
               />
             </div>
           </template>
@@ -462,9 +463,14 @@ function getFieldObj(field) {
     })
   }
 
+  // Apply filter to link_doctype field in the links child table
+  if (props.parentFieldname === 'links' && field.fieldname === 'link_doctype' && field.fieldtype === 'Link' && field.options === 'DocType') {
+    field.filters = { name: 'Donor' }
+  }
+
   return {
     ...field,
-    filters: field.link_filters && JSON.parse(field.link_filters),
+    filters: field.filters || (field.link_filters && JSON.parse(field.link_filters)),
     placeholder: field.placeholder || field.label,
   }
 }
@@ -520,6 +526,11 @@ const addRow = () => {
     if (field.default) {
       newRow[field.fieldname] = getDefaultValue(field.default, field.fieldtype)
     }
+    
+    // Set default value for link_doctype field in links child table
+    if (props.parentFieldname === 'links' && field.fieldname === 'link_doctype' && field.fieldtype === 'Link' && field.options === 'DocType') {
+      newRow[field.fieldname] = 'Donor'
+    }
   })
   newRow.name = getRandom(10)
   showRowList.value.push(false)
@@ -548,20 +559,17 @@ const { fetchDonorDetails, updateDonorFields, clearDonorFields } = useDonorSelec
 async function fieldChange(value, field, row) {
   console.log('Grid fieldChange called:', { value, field: field.fieldname, row })
   
-  // Special handling for donor_id field in payment detail table
   if (field.fieldname === 'donor_id' && props.parentFieldname === 'payment_detail') {
     console.log('Processing donor_id change in Grid:', { value, row })
     
-    // Update the donor_id in the row
     row.donor_id = value
     
-    // Handle donor selection immediately
     if (value) {
-      console.log('Fetching donor details for:', value)
+      // console.log('Fetching donor details for:', value)
       const donorDetails = await fetchDonorDetails(value)
       if (donorDetails) {
         updateDonorFields(row, donorDetails)
-        console.log('Donor fields updated successfully')
+        // console.log('Donor fields updated successfully')
       }
     } else {
       console.log('Clearing donor fields')
@@ -602,7 +610,7 @@ watch(rows, (newRows) => {
   // Monitor donor_id changes in each row
   newRows.forEach((row, index) => {
     if (row.donor_id && row.donor_id !== row._lastDonorId) {
-      console.log(`Watcher detected donor_id change in row ${index}:`, row.donor_id)
+      // console.log(`Watcher detected donor_id change in row ${index}:`, row.donor_id)
       row._lastDonorId = row.donor_id
       
       // Handle the donor selection
@@ -613,7 +621,7 @@ watch(rows, (newRows) => {
 
 // Handle donor selection from watcher
 async function handleDonorSelectionFromWatcher(donorId, row) {
-  console.log('Handling donor selection from watcher:', { donorId, row })
+  // console.log('Handling donor selection from watcher:', { donorId, row })
   
   if (donorId) {
     const donorDetails = await fetchDonorDetails(donorId)

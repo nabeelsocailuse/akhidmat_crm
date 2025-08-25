@@ -23,7 +23,7 @@
       :placeholder="getPlaceholder(field)"
       v-model="data[field.fieldname]"
       :disabled="true"
-      :description="field.description"
+      :description="getDescription(field)"
     />
     <Grid
       v-else-if="field.fieldtype === 'Table'"
@@ -42,7 +42,7 @@
       v-model="data[field.fieldname]"
       @change="(e) => fieldChange(e.target.value, field)"
       :placeholder="getPlaceholder(field)"
-      :description="field.description"
+      :description="getDescription(field)"
     >
       <template v-if="field.prefix" #prefix>
         <IndicatorIcon :class="field.prefix" />
@@ -55,7 +55,7 @@
         v-model="data[field.fieldname]"
         @change="(e) => fieldChange(e.target.checked, field)"
         :disabled="Boolean(field.read_only)"
-        :description="field.description"
+        :description="getDescription(field)"
       />
       <label
         class="text-sm text-ink-gray-5"
@@ -81,7 +81,7 @@
         :doctype="
           field.fieldtype == 'Link' ? field.options : data[field.options]
         "
-        :filters="field.filters"
+        :filters="getFieldFilters(field)"
         @change="(v) => fieldChange(v, field)"
         :placeholder="getPlaceholder(field)"
         :onCreate="field.create"
@@ -110,7 +110,7 @@
       class="form-control"
       :value="data[field.fieldname] && getUser(data[field.fieldname]).full_name"
       :doctype="field.options"
-      :filters="field.filters"
+      :filters="getFieldFilters(field)"
       @change="(v) => fieldChange(v, field)"
       :placeholder="getPlaceholder(field)"
       :hideMe="true"
@@ -157,14 +157,14 @@
       type="textarea"
       :value="data[field.fieldname]"
       :placeholder="getPlaceholder(field)"
-      :description="field.description"
+      :description="getDescription(field)"
       @change="fieldChange($event.target.value, field)"
     />
     <Password
       v-else-if="field.fieldtype === 'Password'"
       :value="data[field.fieldname]"
       :placeholder="getPlaceholder(field)"
-      :description="field.description"
+      :description="getDescription(field)"
       @change="fieldChange($event.target.value, field)"
     />
     <FormattedInput
@@ -173,7 +173,7 @@
       :placeholder="getPlaceholder(field)"
       :value="data[field.fieldname] || '0'"
       :disabled="Boolean(field.read_only)"
-      :description="field.description"
+      :description="getDescription(field)"
       @change="fieldChange($event.target.value, field)"
     />
     <FormattedInput
@@ -182,7 +182,7 @@
       :value="getFormattedPercent(field.fieldname, data)"
       :placeholder="getPlaceholder(field)"
       :disabled="Boolean(field.read_only)"
-      :description="field.description"
+      :description="getDescription(field)"
       @change="fieldChange(flt($event.target.value), field)"
     />
     <FormattedInput
@@ -191,7 +191,7 @@
       :value="getFormattedFloat(field.fieldname, data)"
       :placeholder="getPlaceholder(field)"
       :disabled="Boolean(field.read_only)"
-      :description="field.description"
+      :description="getDescription(field)"
       @change="fieldChange(flt($event.target.value), field)"
     />
     <FormattedInput
@@ -200,7 +200,7 @@
       :value="getFormattedCurrency(field.fieldname, data, parentDoc)"
       :placeholder="getPlaceholder(field)"
       :disabled="Boolean(field.read_only)"
-      :description="field.description"
+      :description="getDescription(field)"
       @change="fieldChange(flt($event.target.value), field)"
     />
     <FormControl
@@ -209,7 +209,7 @@
       :placeholder="getPlaceholder(field)"
       :value="getDataValue(data[field.fieldname], field)"
       :disabled="Boolean(field.read_only)"
-      :description="field.description"
+      :description="getDescription(field)"
       @change="fieldChange($event.target.value, field)"
     />
     <FormControl
@@ -218,7 +218,7 @@
       :placeholder="getPlaceholder(field)"
       :value="getDataValue(data[field.fieldname], field)"
       :disabled="Boolean(field.read_only)"
-      :description="field.description"
+      :description="getDescription(field)"
       @change="fieldChange($event.target.value, field)"
     />
   </div>
@@ -249,6 +249,7 @@ const data = inject('data')
 const doctype = inject('doctype')
 const preview = inject('preview')
 const isGridRow = inject('isGridRow')
+const parentFieldname = inject('parentFieldname')
 
 const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
   getMeta(doctype)
@@ -329,6 +330,12 @@ const field = computed(() => {
 
 function isFieldVisible(field) {
   if (preview.value) return true
+  
+  // Special case: donor desk field should always be visible
+  if (field.fieldname === 'donor_desk') {
+    return true
+  }
+  
   return (
     (field.fieldtype == 'Check' ||
       (field.read_only && data.value[field.fieldname]) ||
@@ -340,6 +347,10 @@ function isFieldVisible(field) {
 
 const getPlaceholder = (field) => {
   if (field.placeholder) {
+    // Handle computed placeholders
+    if (typeof field.placeholder === 'function') {
+      return __(field.placeholder())
+    }
     return __(field.placeholder)
   }
   if (['Select', 'Link'].includes(field.fieldtype)) {
@@ -347,6 +358,17 @@ const getPlaceholder = (field) => {
   } else {
     return __('Enter {0}', [__(field.label)])
   }
+}
+
+const getDescription = (field) => {
+  if (field.description) {
+    // Handle computed descriptions
+    if (typeof field.description === 'function') {
+      return __(field.description())
+    }
+    return __(field.description)
+  }
+  return ''
 }
 
 function fieldChange(value, df) {
@@ -452,28 +474,101 @@ onMounted(() => {
 // Add this function to handle select field options
 function getSelectOptions(field) {
   if (field.fieldtype === 'Select') {
-    if (typeof field.options === 'string') {
+    let options = []
+    
+    // Handle computed options
+    if (field.options && typeof field.options === 'function') {
+      options = field.options() || []
+    } else if (typeof field.options === 'string') {
       // Split by newlines and create option objects
-      return field.options.split('\n').map(option => ({
+      options = field.options.split('\n').map(option => ({
         label: option,
         value: option
       }))
     } else if (Array.isArray(field.options)) {
       // If already an array, ensure proper format
-      return field.options.map(option => {
+      options = field.options.map(option => {
         if (typeof option === 'string') {
           return { label: option, value: option }
         }
         return option
       })
+    } else {
+      options = field.options || []
     }
+    
+    // Special handling for donor desk field - show "No records found" in dropdown only when department is selected
+    if (field.fieldname === 'donor_desk' && (!options || options.length === 0)) {
+      // For donor desk field, we'll handle the message in the DonorModal component
+      // Return empty array to show placeholder instead of message
+      return []
+    }
+    
+    // For other fields, if no options available, show "No results found" message
+    if (!options || options.length === 0) {
+      return [{
+        label: 'No results found',
+        value: '',
+        disabled: true
+      }]
+    }
+    
+    return options
   }
   return field.options || []
+}
+
+function getFieldFilters(field) {
+  // Apply filter to link_doctype field in the links child table
+  // This ensures only "Donor" doctype shows up in the link_doctype dropdown
+  if (parentFieldname === 'links' && field.fieldname === 'link_doctype' && field.fieldtype === 'Link' && field.options === 'DocType') {
+    return { name: 'Donor' }
+  }
+  
+  // Return existing filters if available
+  if (field.filters) {
+    return field.filters
+  }
+  
+  // Parse link_filters if available
+  if (field.link_filters) {
+    try {
+      return JSON.parse(field.link_filters)
+    } catch (e) {
+      return {}
+    }
+  }
+  
+  return {}
 }
 
 </script>
 <style scoped>
 :deep(.form-control.prefix select) {
   padding-left: 2rem;
+}
+
+/* Style for disabled options in select dropdowns */
+:deep(select option[disabled]) {
+  color: #6b7280;
+  font-style: italic;
+  background-color: #f3f4f6;
+}
+
+/* Style for "No records found" message */
+:deep(select option[value=""][disabled]) {
+  color: #9ca3af;
+  font-style: italic;
+  background-color: #f9fafb;
+}
+
+/* Ensure placeholder text is visible when no value is selected */
+:deep(select:invalid) {
+  color: #6b7280;
+}
+
+/* Style for empty select fields */
+:deep(select:not([size]) option:first-child:empty) {
+  display: none;
 }
 </style>
