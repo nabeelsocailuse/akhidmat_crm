@@ -34,7 +34,7 @@
       :parentFieldname="field.fieldname"
     />
     <FormControl
-      v-else-if="field.fieldtype === 'Select'"
+      v-else-if="field.fieldtype === 'Select' && getSelectOptions(field).length > 0"
       type="select"
       class="form-control"
       :class="field.prefix ? 'prefix' : ''"
@@ -48,6 +48,15 @@
         <IndicatorIcon :class="field.prefix" />
       </template>
     </FormControl>
+    <FormControl
+      v-else-if="field.fieldtype === 'Select' && getSelectOptions(field).length === 0"
+      type="text"
+      class="form-control"
+      :placeholder="getPlaceholder(field)"
+      :description="getDescription(field)"
+      :disabled="true"
+      :value="data[field.fieldname]"
+    />
     <div v-else-if="field.fieldtype == 'Check'" class="flex items-center gap-2">
       <FormControl
         class="form-control"
@@ -497,10 +506,8 @@ function getSelectOptions(field) {
       options = field.options || []
     }
     
-    // Special handling for donor desk field - show "No records found" in dropdown only when department is selected
+    // Special handling for donor desk field - return empty array when no options
     if (field.fieldname === 'donor_desk' && (!options || options.length === 0)) {
-      // For donor desk field, we'll handle the message in the DonorModal component
-      // Return empty array to show placeholder instead of message
       return []
     }
     

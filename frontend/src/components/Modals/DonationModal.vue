@@ -38,9 +38,12 @@
               @fund-class-selected="handleFundClassSelected"
             />
           </div>
+          
+          <!-- Use the same ErrorMessage component as DonorModal -->
           <ErrorMessage class="mt-4" v-if="error" :message="__(error)" />
         </div>
       </AppStyling>
+      
       <AppStyling type="modal-styling" modalType="footer">
         <div class="flex flex-row-reverse gap-2">
           <AppStyling
@@ -171,10 +174,10 @@ const addPaymentDetailRow = () => {
   }
   
   // Add the new row to the payment_detail array
-  // if (!donation.doc.payment_detail) {
-  //   donation.doc.payment_detail = []
-  // }
-  // donation.doc.payment_detail.push(newRow)
+   if (!donation.doc.payment_detail) {
+     donation.doc.payment_detail = []
+   }
+   donation.doc.payment_detail.push(newRow)
 }
 
 // Initialize donation with default values including edit_posting_date_time
@@ -190,9 +193,9 @@ const initializeDonation = () => {
   }
   
   // Initialize payment_detail as empty array (no default rows)
-  // if (!donation.doc.payment_detail) {
-  //   donation.doc.payment_detail = []
-  // }
+  if (!donation.doc.payment_detail) {
+    donation.doc.payment_detail = []
+  }
   
   // Initialize deduction_breakeven as empty array (no default rows)
   if (!donation.doc.deduction_breakeven) {
@@ -210,7 +213,7 @@ const resetDonationData = () => {
     status: 'Draft',
     company: 'Alkhidmat Foundation',
     donor_identity: 'Known',
-    donation_type: 'Cash',
+    donation_type: 'Cash', // Default to Cash
     currency: 'PKR',
     owner: user.value,
     payment_detail: [],
@@ -226,7 +229,14 @@ const resetDonationData = () => {
   console.log('Donation data reset successfully')
 }
 
-// Filter tabs based on donation type
+// ADD: Function to create a dynamic donor query function for each field
+function createDonorQueryFunction() {
+  return function() {
+    return getDonorQuery()
+  }
+}
+
+// UPDATE: Enhanced field filtering to properly configure donor fields
 const filteredTabs = computed(() => {
   if (!tabs.data || !Array.isArray(tabs.data)) return []
   
@@ -237,6 +247,76 @@ const filteredTabs = computed(() => {
       return donation.doc.donation_type === 'In Kind Donation'
     }
     return true
+  }).map(tab => {
+    // Clone the tab to avoid mutating the original data
+    const filteredTab = { ...tab }
+    
+    // Filter sections based on donation type
+    filteredTab.sections = tab.sections.map(section => {
+      const filteredSection = { ...section }
+      
+      // Filter columns within sections
+      filteredSection.columns = section.columns.map(column => {
+        const filteredColumn = { ...column }
+        
+        // Filter fields within columns
+        filteredColumn.fields = column.fields.filter(field => {
+          // Hide Payment Details and Deduction Breakeven sections when donation type is "In Kind Donation"
+          if (donation.doc.donation_type === 'In Kind Donation') {
+            // Hide Payment Details section
+            if (field.fieldname === 'payment_detail' || 
+                field.fieldname === 'payment_details_section' ||
+                field.label === 'Payment Details') {
+              return false
+            }
+            
+            // Hide Deduction Breakeven section
+            if (field.fieldname === 'deduction_breakeven' || 
+                field.fieldname === 'section_break_otbq' ||
+                field.label === 'Deduction Breakeven') {
+              return false
+            }
+            
+            // Hide any other fields that should be hidden for In Kind Donations
+            if (field.fieldname === 'mode_of_payment' ||
+                field.fieldname === 'account_paid_to' ||
+                field.fieldname === 'transaction_no_cheque_no' ||
+                field.fieldname === 'reference_date') {
+              return false
+            }
+          }
+          
+          return true
+        }).map(field => {
+          // Create a new field object to avoid mutating the original
+          const enhancedField = { ...field }
+          
+          // Configure donor_id fields with proper query filtering
+          if (field.fieldname === 'donor_id') {
+            enhancedField.get_query = createDonorQueryFunction()
+            enhancedField.depends_on = 'donor_identity'
+            enhancedField.filters = getDonorFilters()
+            console.log('Configured donor_id field with query filtering and depends_on')
+          }
+          
+          // Configure donor fields in items table
+          if (field.fieldname === 'donor') {
+            enhancedField.get_query = createDonorQueryFunction()
+            enhancedField.depends_on = 'donor_identity'
+            enhancedField.filters = getDonorFilters()
+            console.log('Configured donor field with query filtering for items')
+          }
+          
+          return enhancedField
+        })
+        
+        return filteredColumn
+      })
+      
+      return filteredSection
+    })
+    
+    return filteredTab
   })
 })
 
@@ -579,9 +659,9 @@ function parseCustomErrorMessage(message) {
   if (message.includes('donor_id')) {
     return 'Donor is required. Please select a donor for each payment detail row.'
   }
-  // if (message.includes('payment_detail')) {
-  //   return 'Payment details are required. Please add at least one payment detail row.'
-  // }
+  if (message.includes('payment_detail')) {
+    return 'Payment details are required. Please add at least one payment detail row.'
+  }
   
   return message
 }
@@ -652,347 +732,6 @@ function formatFieldName(fieldName) {
     .trim()
 }
 
-// Enhanced validation before submission
-function validateDonationForm() {
-  const errors = []
-  
-  // Validate main donation fields
-  if (!donation.doc.company) {
-    errors.push('Company is required')
-  }
-  if (!donation.doc.donor_identity) {
-    errors.push('Donor Identity is required')
-  }
-  if (!donation.doc.contribution_type) {
-    errors.push('Contribution Type is required')
-  }
-  if (!donation.doc.posting_date) {
-    errors.push('Posting Date is required')
-  }
-  if (donation.doc.donation_type === 'Cash' && !donation.doc.currency) {
-    errors.push('Currency is required')
-  }
-  
-  // Validate payment detail rows
-  // const paymentDetails = donation.doc.payment_detail || []
-  // if (paymentDetails.length === 0) {
-  //   errors.push('At least one payment detail row is required')
-  // } else {
-  //   paymentDetails.forEach((row, index) => {
-  //     const rowNum = index + 1
-      
-  //     if (!row.donor_id) {
-  //       errors.push(`Row ${rowNum}: Donor is required`)
-  //     }
-  //     if (!row.fund_class_id) {
-  //       errors.push(`Row ${rowNum}: Fund Class is required`)
-  //     }
-  //     if (!row.donation_amount || row.donation_amount <= 0) {
-  //       errors.push(`Row ${rowNum}: Donation Amount must be greater than 0`)
-  //     }
-  //     if (donation.doc.contribution_type !== 'Pledge') {
-  //       if (!row.mode_of_payment) {
-  //         errors.push(`Row ${rowNum}: Mode of Payment is required`)
-  //       }
-  //       if (row.mode_of_payment && row.mode_of_payment !== 'Cash' && !row.transaction_no_cheque_no) {
-  //         errors.push(`Row ${rowNum}: Transaction/Cheque Number is required for non-cash payments`)
-  //       }
-  //       if (row.mode_of_payment && row.mode_of_payment !== 'Cash' && !row.account_paid_to) {
-  //         errors.push(`Row ${rowNum}: Account Paid To is required for non-cash payments`)
-  //       }
-  //     }
-  //   })
-  // }
-  
-  return errors
-}
-
-// Enhanced createNewDonation function
-function createNewDonation() {
-  console.log('Creating donation:', donation.doc)
-  
-  // Clear previous errors
-  error.value = null
-  
-  // Validate form before submission
-  const validationErrors = validateDonationForm()
-  if (validationErrors.length > 0) {
-    const errorMessage = `Please fix the following validation errors:\n\n${validationErrors.map(error => `• ${error}`).join('\n')}`
-    error.value = errorMessage
-    return
-  }
-  
-  isDonationCreating.value = true
-  createDonation.submit(donation.doc, {
-    onSuccess(data) {
-      console.log('Donation created successfully:', data)
-      isDonationCreating.value = false
-      show.value = false
-      emit('donation-created')
-      router.push({ name: 'DonationDetail', params: { donationId: data.name } })
-    },
-    onError(err) {
-      console.error('Failed to create donation:', err)
-      isDonationCreating.value = false
-      
-      // Use enhanced error handling
-      const errorMessage = extractDonationErrorMessage(err)
-      error.value = errorMessage
-      
-      // Also show toast notification for better UX
-      if (typeof frappe !== 'undefined' && frappe.show_alert) {
-        frappe.show_alert({ message: errorMessage, indicator: 'red' })
-      } else {
-        // Fallback for when frappe is not available
-        console.error('Donation creation error:', errorMessage)
-      }
-    },
-  })
-}
-
-// FIX: Enhanced refreshTabs function with proper cache clearing
-const refreshTabs = () => {
-  console.log('Refreshing tabs in DonationModal')
-  
-  // Clear the current component's cache
-  if (tabs.cache) {
-    tabs.cache.clear()
-  }
-  
-  // Clear all related caches
-  clearAllRelatedCaches()
-  
-  // Force reload with fresh data
-  nextTick(() => {
-    tabs.reload()
-    console.log('Tabs reloaded successfully')
-  })
-}
-
-// NEW: Function to clear all related caches
-function clearAllRelatedCaches() {
-  const cacheKeys = [
-    ['QuickEntryModal', 'Donation', 'layout-editor'],
-    ['DonationModal', 'Donation', 'quick-entry'],
-    ['FieldLayout', 'Donation', 'quick-entry'],
-    ['FieldLayout', 'Donation', 'required-fields']
-  ]
-  
-  cacheKeys.forEach(cacheKey => {
-    try {
-      const cache = createResource.cache.get(cacheKey)
-      if (cache) {
-        cache.clear()
-        console.log('Cleared cache for:', cacheKey)
-      }
-    } catch (error) {
-      console.log('Cache not found for:', cacheKey)
-    }
-  })
-  
-  // Force clear all caches for this doctype
-  try {
-    createResource.cache.clear()
-    console.log('Cleared all caches')
-  } catch (error) {
-    console.log('Could not clear all caches')
-  }
-}
-
-// FIX: Enhanced event listeners with immediate cache clearing
-onMounted(() => {
-  // Listen for all layout update events
-  const handleLayoutUpdate = (event) => {
-    console.log('Layout update event received:', event.detail)
-    
-    // Refresh if it's the same doctype or related
-    if (event.detail.doctype === 'Donation') {
-      console.log('Donation layout updated - refreshing tabs')
-      // Clear caches immediately
-      clearAllRelatedCaches()
-      // Then refresh
-      refreshTabs()
-    }
-  }
-  
-  // Listen for specific Quick Entry layout events
-  const handleQuickEntrySave = (event) => {
-    if (event.detail.doctype === 'Donation') {
-      console.log('Quick Entry layout updated - refreshing tabs')
-      // Clear caches immediately
-      clearAllRelatedCaches()
-      // Then refresh
-      refreshTabs()
-    }
-  }
-  
-  // Add event listeners
-  window.addEventListener('layout-updated', handleLayoutUpdate)
-  window.addEventListener('quick-entry-layout-saved', handleQuickEntrySave)
-  
-  // Cleanup on unmount
-  onUnmounted(() => {
-    window.removeEventListener('layout-updated', handleLayoutUpdate)
-    window.removeEventListener('quick-entry-layout-saved', handleQuickEntrySave)
-  })
-})
-
-// FIX: Enhanced QuickEntryModal event handlers with immediate cache clearing
-function onQuickEntrySaved() {
-  console.log('QuickEntryModal saved - immediately clearing caches and refreshing tabs')
-  showQuickEntryModal.value = false
-  
-  // Clear caches immediately
-  clearAllRelatedCaches()
-  
-  // Immediate refresh
-  refreshTabs()
-}
-
-function onQuickEntryClose() {
-  console.log('QuickEntryModal closed')
-  showQuickEntryModal.value = false
-}
-
-function onQuickEntryReset() {
-  console.log('QuickEntryModal reset - clearing caches and refreshing tabs')
-  clearAllRelatedCaches()
-  refreshTabs()
-}
-
-// Add event listeners for layout updates
-onMounted(() => {
-  // Listen for custom events that indicate layout has been updated
-  const handleLayoutUpdate = () => {
-    console.log('Layout update event received - reloading tabs')
-    refreshTabs()
-  }
-  
-  const handleQuickEntrySave = (event) => {
-    console.log('QuickEntryModal save event received:', event.detail)
-    if (event.detail.doctype === 'Donation') {
-      console.log('Donation layout updated - refreshing tabs')
-      refreshTabs()
-    }
-  }
-  
-  // Add event listeners
-  window.addEventListener('layout-updated', handleLayoutUpdate)
-  window.addEventListener('quick-entry-layout-saved', handleQuickEntrySave)
-  
-  // Cleanup on unmount
-  onUnmounted(() => {
-    window.removeEventListener('layout-updated', handleLayoutUpdate)
-    window.removeEventListener('quick-entry-layout-saved', handleQuickEntrySave)
-  })
-})
-
-function handleTabChange(tabIndex) {
-  console.log('Tab changed to:', tabIndex)
-}
-
-// 100% WORKING SOLUTION: Fetch donor details using the available 'call' function
-async function fetchDonorDetails(donorId) {
-  if (!donorId) {
-    console.log('No donor ID provided')
-    return null
-  }
-  
-  try {
-    console.log('Fetching donor details for:', donorId)
-    
-    // Use the 'call' function that's already imported and working
-    const donorDetails = await call('akf_accounts.akf_accounts.doctype.donation.donation.get_donor_details', {
-      donor_id: donorId
-    })
-    
-    console.log('Donor details fetched successfully:', donorDetails)
-    return donorDetails
-    
-  } catch (error) {
-    console.error('Error fetching donor details:', error)
-    
-    // Fallback: Try to get donor details using a different method
-    try {
-      console.log('Trying fallback method...')
-      const fallbackResult = await call('frappe.client.get', {
-        doctype: 'Donor',
-        name: donorId
-      })
-      
-      console.log('Fallback method successful:', fallbackResult)
-      return fallbackResult
-      
-    } catch (fallbackError) {
-      console.error('Fallback method also failed:', fallbackError)
-      return null
-    }
-  }
-}
-
-function updateDonorFields(row, donorDetails) {
-  if (!donorDetails) {
-    console.log('No donor details to update')
-    return
-  }
-  
-  console.log('Updating row with donor details:', donorDetails)
-  console.log('Row before update:', { ...row })
-  
-  // Map donor fields to payment detail fields - EXACT field names from your doctype
-  const fieldMappings = {
-    'donor_name': 'donor_name',
-    'donor_type': 'donor_type',
-    'contact_no': 'contact_no',
-    'email': 'email',
-    'city': 'city',
-    'address': 'address',
-    'co_name': 'co_name',
-    'co_contact_no': 'co_contact_no',
-    'co_email': 'co_email',
-    'co_address': 'co_address',
-    'relationship_with_donor': 'relationship_with_donor',
-    'cnic': 'cnic',
-    'donor_desk_id': 'donor_desk_id'
-  }
-  
-  // Update each field with donor data
-  Object.entries(fieldMappings).forEach(([donorField, rowField]) => {
-    if (donorDetails[donorField] !== undefined) {
-      const oldValue = row[rowField]
-      row[rowField] = donorDetails[donorField] || ''
-      console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
-    }
-  })
-  
-  console.log('Row after update:', { ...row })
-  
-  // // Force reactive update - CRITICAL for Vue to detect changes
-  // if (donation.doc.payment_detail) {
-  //   console.log('Forcing reactive update of payment_detail')
-  //   donation.doc.payment_detail = [...donation.doc.payment_detail]
-  // }
-}
-
-function clearDonorFields(row) {
-  console.log('Clearing donor fields for row')
-  
-  const donorFields = [
-    'donor_name', 'donor_type', 'contact_no', 'email', 'city', 'address',
-    'co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor', 
-    'cnic', 'donor_desk_id'
-  ]
-  
-  donorFields.forEach(fieldName => {
-    row[fieldName] = ''
-  })
-  
-  // // Force reactive update
-  // if (donation.doc.payment_detail) {
-  //   donation.doc.payment_detail = [...donation.doc.payment_detail]
-  // }
-}
-
 // 100% WORKING: Direct donor handling in DonationModal
 async function handleDonorSelectionDirect(donorId, row) {
   console.log('Handling donor selection directly:', { donorId, row })
@@ -1039,6 +778,7 @@ async function fetchFundClassDetails(fundClassId) {
   }
 }
 
+// FIX: Update the updateFundClassFields function to ensure proper field mapping
 function updateFundClassFields(row, fundClassDetails) {
   console.log('Updating row with Fund Class details:', fundClassDetails)
   console.log('Row before update:', { ...row })
@@ -1059,16 +799,42 @@ function updateFundClassFields(row, fundClassDetails) {
       const oldValue = row[rowField]
       row[rowField] = fundClassDetails[fundClassField] || ''
       console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
+      
+      // CRITICAL: Ensure the field is properly set in the row
+      if (fundClassDetails[fundClassField]) {
+        row[rowField] = fundClassDetails[fundClassField]
+        console.log(`Set ${rowField} to: ${row[rowField]}`)
+      }
     }
   })
   
+  // CRITICAL: Ensure equity_account and receivable_account are set
+  if (fundClassDetails.equity_account) {
+    row.equity_account = fundClassDetails.equity_account
+    console.log('Set equity_account to:', row.equity_account)
+  }
+  
+  if (fundClassDetails.receivable_account) {
+    row.receivable_account = fundClassDetails.receivable_account
+    console.log('Set receivable_account to:', row.receivable_account)
+  }
+  
   console.log('Row after Fund Class update:', { ...row })
   
-  // // Force reactive update - CRITICAL for Vue to detect changes
-  // if (donation.doc.payment_detail) {
-  //   console.log('Forcing reactive update of payment_detail after Fund Class update')
-  //   donation.doc.payment_detail = [...donation.doc.payment_detail]
-  // }
+  // Force reactive update - CRITICAL for Vue to detect changes
+  if (donation.doc.payment_detail) {
+    console.log('Forcing reactive update of payment_detail after Fund Class update')
+    donation.doc.payment_detail = [...donation.doc.payment_detail]
+  }
+  
+  // CRITICAL: Log the final state to verify fields are set
+  console.log('Final row state after Fund Class update:', {
+    equity_account: row.equity_account,
+    receivable_account: row.receivable_account,
+    service_area: row.pay_service_area,
+    subservice_area: row.pay_subservice_area,
+    product: row.pay_product
+  })
 }
 
 function clearFundClassFields(row) {
@@ -1083,10 +849,10 @@ function clearFundClassFields(row) {
     row[fieldName] = ''
   })
   
-  // // Force reactive update
-  // if (donation.doc.payment_detail) {
-  //   donation.doc.payment_detail = [...donation.doc.payment_detail]
-  // }
+  // Force reactive update
+  if (donation.doc.payment_detail) {
+    donation.doc.payment_detail = [...donation.doc.payment_detail]
+  }
 }
 
 // 100% WORKING: Direct Fund Class handling in DonationModal
@@ -1125,46 +891,177 @@ function handleDonorSelected(event) {
   if (success && donorId && row) {
     console.log('Processing donor selection for row:', row, 'with donor ID:', donorId)
     
-    // // Force a reactive update of the payment_detail table
-    // if (donation.doc.payment_detail) {
-    //   console.log('Forcing reactive update of payment_detail')
-    //   donation.doc.payment_detail = [...donation.doc.payment_detail]
-    // }
+    // Force a reactive update of the payment_detail table
+    if (donation.doc.payment_detail) {
+      console.log('Forcing reactive update of payment_detail')
+      donation.doc.payment_detail = [...donation.doc.payment_detail]
+    }
   }
 }
 
-// 100% WORKING: Watcher for donor_id changes in payment_detail
-// watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
-//   if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
-//     newPaymentDetail.forEach((row, index) => {
-//       if (row.donor_id && row.donor_id !== row._lastDonorId) {
-//         console.log(`Donor ID changed in row ${index}:`, row.donor_id)
-//         row._lastDonorId = row.donor_id
-        
-//         // Handle the donor selection
-//         handleDonorSelectionDirect(row.donor_id, row)
-//       }
-      
-//       // NEW: Watch for fund_class_id changes
-//       if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
-//         console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
-//         row._lastFundClassId = row.fund_class_id
-        
-//         // Handle the Fund Class selection
-//         handleFundClassSelectionDirect(row.fund_class_id, row)
-//       }
-//     })
-//   }
-// }, { deep: true })
+// ADD the missing fetchDonorDetails function:
+async function fetchDonorDetails(donorId) {
+  console.log('Fetching donor details for:', donorId)
+  
+  try {
+    const result = await call('frappe.client.get', {
+      doctype: 'Donor',
+      name: donorId
+    })
+    
+    console.log('Donor details received:', result)
+    return result
+  } catch (error) {
+    console.error('Error fetching donor details:', error)
+    toast.error('Error loading donor details')
+    return null
+  }
+}
 
-// // 100% WORKING: Watcher for fund_class_id changes in payment_detail
+// ADD the missing updateDonorFields function:
+function updateDonorFields(row, donorDetails) {
+  console.log('Updating row with donor details:', donorDetails)
+  console.log('Row before update:', { ...row })
+  
+  // Map donor fields to payment detail fields
+  const fieldMappings = {
+    'donor_name': 'donor_name',
+    'donor_type': 'donor_type',
+    'contact_no': 'contact_no',
+    'email': 'email',
+    'city': 'city',
+    'address': 'address',
+    'cnic': 'cnic'
+  }
+  
+  // Update each field with donor data
+  Object.entries(fieldMappings).forEach(([donorField, rowField]) => {
+    if (donorDetails[donorField] !== undefined) {
+      const oldValue = row[rowField]
+      row[rowField] = donorDetails[donorField] || ''
+      console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
+    }
+  })
+  
+  console.log('Row after donor update:', { ...row })
+  
+  // Force reactive update - CRITICAL for Vue to detect changes
+  if (donation.doc.payment_detail) {
+    console.log('Forcing reactive update of payment_detail after donor update')
+    donation.doc.payment_detail = [...donation.doc.payment_detail]
+  }
+}
+
+// ADD the missing clearDonorFields function:
+function clearDonorFields(row) {
+  console.log('Clearing donor fields for row')
+  
+  const donorFields = [
+    'donor_name', 'donor_type', 'contact_no', 'email', 'city', 'address', 'cnic'
+  ]
+  
+  donorFields.forEach(fieldName => {
+    row[fieldName] = ''
+  })
+  
+  // Force reactive update
+  if (donation.doc.payment_detail) {
+    donation.doc.payment_detail = [...donation.doc.payment_detail]
+  }
+}
+
+// ADD the missing mode of payment handling for account_paid_to:
+async function handleModeOfPaymentChange(modeOfPaymentId, row) {
+  console.log('Handling Mode of Payment change:', { modeOfPaymentId, row })
+  
+  if (!modeOfPaymentId) {
+    // Clear fields if no mode of payment is selected
+    row.account_paid_to = ''
+    row.transaction_no_cheque_no = ''
+    row.reference_date = null
+    return
+  }
+  
+  // Clear transaction details first
+  row.transaction_no_cheque_no = ''
+  row.reference_date = null
+  
+  try {
+    // Get the mode of payment document to determine account type and default account
+    const modeOfPayment = await call('frappe.client.get', {
+      doctype: 'Mode of Payment',
+      name: modeOfPaymentId
+    })
+    
+    if (modeOfPayment) {
+      console.log('Mode of Payment details:', modeOfPayment)
+      
+      // Try to get the default account from mode of payment
+      if (modeOfPayment.accounts && modeOfPayment.accounts.length > 0) {
+        // Find the account that matches the company
+        const companyAccount = modeOfPayment.accounts.find(acc => acc.company === donation.doc.company)
+        if (companyAccount && companyAccount.default_account) {
+          row.account_paid_to = companyAccount.default_account
+          console.log('Auto-filled account_paid_to:', row.account_paid_to)
+        }
+      }
+      
+      // Force reactive update
+      if (donation.doc.payment_detail) {
+        donation.doc.payment_detail = [...donation.doc.payment_detail]
+      }
+      
+      console.log('Mode of Payment fields updated successfully')
+      toast.success('Mode of Payment details loaded successfully')
+    }
+  } catch (error) {
+    console.error('Error fetching Mode of Payment details:', error)
+    toast.error('Error loading Mode of Payment details')
+  }
+}
+
+// UPDATE the watcher to include mode_of_payment changes:
+watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
+  if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
+    newPaymentDetail.forEach((row, index) => {
+      if (row.donor_id && row.donor_id !== row._lastDonorId) {
+        console.log(`Donor ID changed in row ${index}:`, row.donor_id)
+        row._lastDonorId = row.donor_id
+        
+        // Handle the donor selection
+        handleDonorSelectionDirect(row.donor_id, row)
+      }
+      
+      // Watch for fund_class_id changes
+      if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
+        console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
+        row._lastFundClassId = row.fund_class_id
+        
+        // Handle the Fund Class selection
+        handleFundClassSelectionDirect(row.fund_class_id, row)
+      }
+      
+      // NEW: Watch for mode_of_payment changes
+      if (row.mode_of_payment && row.mode_of_payment !== row._lastModeOfPayment) {
+        console.log(`Mode of Payment changed in row ${index}:`, row.mode_of_payment)
+        row._lastModeOfPayment = row.mode_of_payment
+        
+        // Handle the Mode of Payment selection
+        handleModeOfPaymentChange(row.mode_of_payment, row)
+      }
+    })
+  }
+}, { deep: true })
+
+// REMOVE the duplicate watcher that was causing issues:
+// Remove this duplicate watcher:
 // watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
 //   if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
 //     newPaymentDetail.forEach((row, index) => {
 //       if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
 //         console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
 //         row._lastFundClassId = row.fund_class_id
-        
+//         
 //         // Handle the Fund Class selection
 //         handleFundClassSelectionDirect(row.fund_class_id, row)
 //       }
@@ -1182,19 +1079,497 @@ function handleFundClassSelected(event) {
     console.log('Processing Fund Class selection for row:', row, 'with Fund Class ID:', fundClassId)
     
     // Force a reactive update of the payment_detail table
-    // if (donation.doc.payment_detail) {
-    //   console.log('Forcing reactive update of payment_detail')
-    //   donation.doc.payment_detail = [...donation.doc.payment_detail]
-    // }
+    if (donation.doc.payment_detail) {
+      console.log('Forcing reactive update of payment_detail')
+      donation.doc.payment_detail = [...donation.doc.payment_detail]
+    }
   }
 }
 
-// Debug logging
+// RESTORE the original simple createNewDonation function:
+// FIX the createNewDonation function to ensure doctype is set:
+// FIX: Update the createNewDonation function to handle async preparation
+// async function createNewDonation() {
+//   console.log('Creating new donation...')
+  
+//   try {
+//     // First validate the form
+//     const validationErrors = validateDonationForm()
+//     if (validationErrors.length > 0) {
+//       const errorMessage = validationErrors.join('\n')
+//       toast.error(`Please fix the following errors:\n${errorMessage}`)
+//       return
+//     }
+    
+//     // Prepare the donation document (now async)
+//     const preparedDoc = await prepareDonationForSubmission()
+    
+//     // CRITICAL: Final validation of account fields before submission
+//     let hasMissingAccounts = false
+//     preparedDoc.payment_detail.forEach((row, index) => {
+//       if (!row.equity_account || !row.receivable_account) {
+//         console.error(`Row ${index + 1} still has missing accounts:`, {
+//           equity_account: row.equity_account,
+//           receivable_account: row.receivable_account
+//         })
+//         hasMissingAccounts = true
+//       }
+//     })
+    
+//     if (hasMissingAccounts) {
+//       toast.error('Some payment detail rows are missing required account fields. Please ensure fund classes are selected.')
+//       return
+//     }
+    
+//     // CRITICAL: Ensure the account fields are properly included in the document
+//     preparedDoc.payment_detail.forEach((row, index) => {
+//       console.log(`Row ${index + 1} final check:`, {
+//         equity_account: row.equity_account,
+//         receivable_account: row.receivable_account,
+//         fund_class_id: row.fund_class_id
+//       })
+      
+//       // Force the fields to be included
+//       if (row.equity_account) {
+//         row.equity_account = row.equity_account.toString()
+//       }
+//       if (row.receivable_account) {
+//         row.receivable_account = row.receivable_account.toString()
+//       }
+//     })
+    
+//     // Log the document being submitted
+//     console.log('Submitting prepared donation document:', preparedDoc)
+    
+//     // Create the donation
+//     call('frappe.client.insert', {
+//       doc: preparedDoc
+//     }).then(result => {
+//       console.log('Donation created successfully:', result)
+//       toast.success('Donation created successfully!')
+      
+//       // Close modal and refresh
+//       show.value = false
+//       emit('donation-created', result)
+//     }).catch(error => {
+//       console.error('Error creating donation:', error)
+//       handleDonationError(error)
+//     })
+    
+//   } catch (error) {
+//     console.error('Error preparing donation:', error)
+//     toast.error(`Error preparing donation document: ${error.message}`)
+//   }
+// }
+
+// ADD a function to ensure all required fields are set before submission:
+// FIX: Update the prepareDonationForSubmission function to actively ensure account fields are set
+async function prepareDonationForSubmission() {
+  console.log('Preparing donation for submission...')
+  
+  // Ensure doctype is set
+  if (!donation.doc.doctype) {
+    donation.doc.doctype = 'Donation'
+  }
+  
+  // Ensure company is set
+  if (!donation.doc.company) {
+    donation.doc.company = 'Alkhidmat Foundation Pakistan'
+  }
+  
+  // Ensure posting_date is set
+  if (!donation.doc.posting_date) {
+    donation.doc.posting_date = new Date().toISOString().split('T')[0]
+  }
+  
+  // Ensure posting_time is set
+  if (!donation.doc.posting_time) {
+    donation.doc.posting_time = '00:00:00'
+  }
+  
+  // Ensure currency is set
+  if (!donation.doc.currency) {
+    donation.doc.currency = 'PKR'
+  }
+  
+  // Ensure to_currency is set
+  if (!donation.doc.to_currency) {
+    donation.doc.to_currency = 'PKR'
+  }
+  
+  // Ensure exchange_rate is set
+  if (!donation.doc.exchange_rate) {
+    donation.doc.exchange_rate = 1
+  }
+  
+  // For In Kind Donations, skip payment detail processing
+  if (donation.doc.donation_type === 'In Kind Donation') {
+    console.log('In Kind Donation - skipping payment detail processing')
+    return donation.doc
+  }
+  
+  // CRITICAL: Ensure payment_detail has required fields and account fields are properly set
+  if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
+    for (let index = 0; index < donation.doc.payment_detail.length; index++) {
+      const row = donation.doc.payment_detail[index]
+      
+      // Ensure each row has required fields
+      if (!row.doctype) {
+        row.doctype = 'Payment Detail'
+      }
+      if (!row.idx) {
+        row.idx = index + 1
+      }
+      if (!row.random_id) {
+        row.random_id = `row_${index + 1}_${Date.now()}`
+      }
+      
+      // CRITICAL: If account fields are missing, fetch them from fund class
+      if (!row.equity_account || !row.receivable_account) {
+        if (row.fund_class_id) {
+          console.log(`Row ${index + 1}: Fetching missing account fields from fund class:`, row.fund_class_id)
+          
+          try {
+            const fundClassDetails = await fetchFundClassDetails(row.fund_class_id)
+            if (fundClassDetails) {
+              // Update the missing fields
+              if (!row.equity_account && fundClassDetails.equity_account) {
+                row.equity_account = fundClassDetails.equity_account
+                console.log(`Row ${index + 1}: Set equity_account to:`, row.equity_account)
+              }
+              
+              if (!row.receivable_account && fundClassDetails.receivable_account) {
+                row.receivable_account = fundClassDetails.receivable_account
+                console.log(`Row ${index + 1}: Set receivable_account to:`, row.receivable_account)
+              }
+              
+              // Also update other fund class fields if missing
+              if (!row.pay_service_area && fundClassDetails.service_area) {
+                row.pay_service_area = fundClassDetails.service_area
+              }
+              if (!row.pay_subservice_area && fundClassDetails.subservice_area) {
+                row.pay_subservice_area = fundClassDetails.subservice_area
+              }
+              if (!row.pay_product && fundClassDetails.product) {
+                row.pay_product = fundClassDetails.product
+              }
+              if (!row.cost_center && fundClassDetails.cost_center) {
+                row.cost_center = fundClassDetails.cost_center
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching fund class details for row ${index + 1}:`, error)
+          }
+        } else {
+          console.error(`Row ${index + 1}: fund_class_id is missing, cannot fetch account fields`)
+        }
+      }
+      
+      // CRITICAL: Final validation - ensure account fields are set
+      if (!row.equity_account) {
+        throw new Error(`Row ${index + 1}: equity_account is still missing after attempting to fetch from fund class`)
+      }
+      
+      if (!row.receivable_account) {
+        throw new Error(`Row ${index + 1}: receivable_account is still missing after attempting to fetch from fund class`)
+      }
+      
+      // Ensure donation_amount is set
+      if (!row.donation_amount || row.donation_amount <= 0) {
+        row.donation_amount = 0
+      }
+      
+      // Ensure net_amount is set
+      if (!row.net_amount) {
+        row.net_amount = row.donation_amount || 0
+      }
+      
+      // Ensure outstanding_amount is set
+      if (!row.outstanding_amount) {
+        row.outstanding_amount = row.donation_amount || 0
+      }
+      
+      console.log(`Row ${index + 1} prepared:`, {
+        equity_account: row.equity_account,
+        receivable_account: row.receivable_account,
+        fund_class_id: row.fund_class_id,
+        donor_id: row.donor_id
+      })
+    }
+  }
+  
+  console.log('Final prepared donation document:', donation.doc)
+  return donation.doc
+}
+
+// RESTORE: Add proper validation function for the modal
+function validateDonationForm() {
+  const errors = []
+  
+  console.log('Starting form validation with donation data:', donation.doc)
+  
+  // Validate main donation fields
+  if (!donation.doc.company) {
+    errors.push('Company is required')
+  }
+  if (!donation.doc.donor_identity) {
+    errors.push('Donor Identity is required')
+  }
+  
+  // Contribution type is not required for In Kind Donations
+  if (donation.doc.donation_type !== 'In Kind Donation' && !donation.doc.contribution_type) {
+    errors.push('Contribution Type is required')
+  }
+  
+  if (!donation.doc.posting_date) {
+    errors.push('Posting Date is required')
+  }
+  if (donation.doc.donation_type === 'Cash' && !donation.doc.currency) {
+    errors.push('Currency is required')
+  }
+  
+  // Validate Due Date against Invoice Issuance Date
+  if (donation.doc.due_date && donation.doc.posting_date) {
+    const dueDate = new Date(donation.doc.due_date)
+    const invoiceDate = new Date(donation.doc.posting_date)
+    
+    // Reset time to start of day for accurate comparison
+    dueDate.setHours(0, 0, 0, 0)
+    invoiceDate.setHours(0, 0, 0, 0)
+    
+    if (dueDate < invoiceDate) {
+      errors.push('Due Date must be equal to or greater than Invoice Issuance Date (Posting Date)')
+    }
+  }
+  
+  // For In Kind Donations, validate required fields
+  if (donation.doc.donation_type === 'In Kind Donation') {
+    console.log('Validating In Kind Donation fields:', {
+      stock_entry_type: donation.doc.stock_entry_type,
+      warehouse: donation.doc.warehouse,
+      items: donation.doc.items
+    })
+    
+    if (!donation.doc.stock_entry_type) {
+      errors.push('Stock Entry Type is required')
+    }
+    if (!donation.doc.warehouse) {
+      errors.push('Warehouse is required')
+    }
+    
+    // Validate items table
+    const items = donation.doc.items || []
+    if (items.length === 0) {
+      errors.push('At least one item is required for In Kind Donation')
+    } else {
+      items.forEach((item, index) => {
+        const itemNum = index + 1
+        
+        if (!item.donor) {
+          errors.push(`Item ${itemNum}: Donor is required`)
+        }
+        if (!item.item_code) {
+          errors.push(`Item ${itemNum}: Item Code is required`)
+        }
+        if (!item.qty || item.qty <= 0) {
+          errors.push(`Item ${itemNum}: Quantity must be greater than 0`)
+        }
+        if (!item.basic_rate || item.basic_rate <= 0) {
+          errors.push(`Item ${itemNum}: Basic Rate is required`)
+        }
+        if (!item.project) {
+          errors.push(`Item ${itemNum}: Project is required`)
+        }
+        if (!item.asset_category) {
+          errors.push(`Item ${itemNum}: Asset Category is required`)
+        }
+        if (!item.transaction_type) {
+          errors.push(`Item ${itemNum}: Transaction Type is required`)
+        }
+      })
+    }
+    
+    console.log('In Kind Donation validation completed with errors:', errors)
+    // Only validate basic fields for In Kind Donations
+    return errors
+  }
+  
+  // Validate payment detail rows only for Cash donations
+  const paymentDetails = donation.doc.payment_detail || []
+  if (paymentDetails.length === 0) {
+    errors.push('At least one payment detail row is required')
+  } else {
+    paymentDetails.forEach((row, index) => {
+      const rowNum = index + 1
+      
+      if (!row.donor_id) {
+        errors.push(`Row ${rowNum}: Donor is required`)
+      }
+      if (!row.fund_class_id) {
+        errors.push(`Row ${rowNum}: Fund Class is required`)
+      }
+      if (!row.donation_amount || row.donation_amount <= 0) {
+        errors.push(`Row ${index + 1}: Donation Amount must be greater than 0`)
+      }
+      
+      // CRITICAL: Validate required account fields
+      if (!row.equity_account) {
+        errors.push(`Row ${rowNum}: Equity Account is required. Please select a fund class to auto-populate this field.`)
+      }
+      if (!row.receivable_account) {
+        errors.push(`Row ${rowNum}: Receivable Account is required. Please select a fund class to auto-populate this field.`)
+      }
+      
+      if (donation.doc.contribution_type !== 'Pledge') {
+        if (!row.mode_of_payment) {
+          errors.push(`Row ${rowNum}: Mode of Payment is required`)
+        }
+        if (row.mode_of_payment && row.mode_of_payment !== 'Cash' && !row.transaction_no_cheque_no) {
+          errors.push(`Row ${rowNum}: Transaction/Cheque Number is required for non-cash payments`)
+        }
+        if (row.mode_of_payment && row.mode_of_payment !== 'Cash' && !row.account_paid_to) {
+          errors.push(`Row ${rowNum}: Account Paid To is required for non-cash payments`)
+        }
+      }
+    })
+  }
+  
+  console.log('Form validation completed with errors:', errors)
+  return errors
+}
+
+// UPDATE: Enhanced createNewDonation function to match DonorModal's error handling
+async function createNewDonation() {
+  console.log('Creating new donation...')
+  
+  try {
+    // First validate the form
+    const validationErrors = validateDonationForm()
+    if (validationErrors.length > 0) {
+      const errorMessage = `Please fill in the following required fields:\n\n${validationErrors.map(error => `• ${error}`).join('\n')}`
+      error.value = errorMessage
+      
+      // Show error toast
+      toast.error(`Please fix ${validationErrors.length} validation error(s)`)
+      
+      // Scroll to top to show errors
+      nextTick(() => {
+        const modalBody = document.querySelector('[data-modal="parent"] .modal-body')
+        if (modalBody) {
+          modalBody.scrollTop = 0
+        }
+      })
+      
+      return
+    }
+    
+    // Prepare the donation document (now async)
+    const preparedDoc = await prepareDonationForSubmission()
+    
+    // CRITICAL: Final validation of account fields before submission
+    let hasMissingAccounts = false
+    if (preparedDoc.payment_detail && Array.isArray(preparedDoc.payment_detail)) {
+      preparedDoc.payment_detail.forEach((row, index) => {
+        if (!row.equity_account || !row.receivable_account) {
+          console.error(`Row ${index + 1} still has missing accounts:`, {
+            equity_account: row.equity_account,
+            receivable_account: row.receivable_account
+          })
+          hasMissingAccounts = true
+        }
+      })
+    }
+    
+    if (hasMissingAccounts) {
+      error.value = 'Some payment detail rows are missing required account fields. Please ensure fund classes are selected.'
+      toast.error('Some payment detail rows are missing required account fields. Please ensure fund classes are selected.')
+      return
+    }
+    
+    // CRITICAL: Ensure the account fields are properly included in the document
+    if (preparedDoc.payment_detail && Array.isArray(preparedDoc.payment_detail)) {
+      preparedDoc.payment_detail.forEach((row, index) => {
+        console.log(`Row ${index + 1} final check:`, {
+          equity_account: row.equity_account,
+          receivable_account: row.receivable_account,
+          fund_class_id: row.fund_class_id
+        })
+        
+        // Force the fields to be included
+        if (row.equity_account) {
+          row.equity_account = row.equity_account.toString()
+        }
+        if (row.receivable_account) {
+          row.receivable_account = row.receivable_account.toString()
+        }
+      })
+    }
+    
+    // Log the document being submitted
+    console.log('Submitting prepared donation document:', preparedDoc)
+  
+    // Create the donation
+    call('frappe.client.insert', {
+      doc: preparedDoc
+    }).then(result => {
+      console.log('Donation created successfully:', result)
+      toast.success('Donation created successfully!')
+      
+      // Clear errors on success
+      error.value = null
+      
+      // Close modal and refresh
+      show.value = false
+      emit('donation-created', result)
+    }).catch(error => {
+      console.error('Error creating donation:', error)
+      handleDonationError(error)
+    })
+    
+  } catch (error) {
+    console.error('Error preparing donation:', error)
+    const errorMessage = `Error preparing donation document: ${error.message}`
+    error.value = errorMessage
+    toast.error(errorMessage)
+  }
+}
+
+// ADD: Function to handle donation errors properly
+function handleDonationError(error) {
+  console.error('Donation creation error:', error)
+  
+  if (error._server_messages) {
+    try {
+      const serverMessages = JSON.parse(error._server_messages)
+      if (serverMessages.length > 0) {
+        const message = JSON.parse(serverMessages[0])
+        toast.error(message.message || 'Error creating donation')
+        return
+      }
+    } catch (parseError) {
+      console.error('Error parsing server messages:', parseError)
+    }
+  }
+  
+  if (error.message) {
+    toast.error(error.message)
+  } else {
+    toast.error('Error creating donation. Please check the console for details.')
+  }
+}
+
+// CALL the initialization function when the modal is mounted:
 onMounted(() => {
   console.log('DonationModal mounted')
   console.log('DonationModal props defaults:', props.defaults)
   console.log('Tabs resource:', tabs)
   console.log('Show value:', show.value)
+  
+  // Initialize the donation document with required fields
+  initializeDonationDocument()
+  
+  // Configure field queries for child tables
+  configureFieldQueries()
 })
 
 // Watch for changes in the show value
@@ -1208,6 +1583,33 @@ watch(() => donation.doc.donation_type, (newType) => {
   // Force re-render of tabs when select_donation_type changes
   nextTick(() => {
     // This will trigger the computed filteredTabs to update
+  })
+})
+
+// UPDATE: Enhanced watcher for donation_type changes to clear errors
+watch(() => donation.doc.donation_type, (newType) => {
+  console.log('Donation type changed to:', newType)
+  
+  // Clear previous errors when donation type changes
+  error.value = null
+  
+  // Clear payment_detail and deduction_breakeven when switching to In Kind Donation
+  if (newType === 'In Kind Donation') {
+    donation.doc.payment_detail = []
+    donation.doc.deduction_breakeven = []
+    console.log('Cleared payment_detail and deduction_breakeven for In Kind Donation')
+  }
+  
+  // Clear items when switching to Cash donation
+  if (newType === 'Cash') {
+    donation.doc.items = []
+    console.log('Cleared items for Cash donation')
+  }
+  
+  // Force re-render of tabs when donation_type changes
+  nextTick(() => {
+    // This will trigger the computed filteredTabs to update
+    console.log('Tabs re-rendered for donation type:', newType)
   })
 })
 
@@ -1229,28 +1631,28 @@ watch(() => donation.doc.edit_posting_date_time, (newValue) => {
 })
 
 // Watch for changes in payment_detail table to ensure random_id is always present
-// watch(() => donation.doc.payment_detail, (newPaymentDetail, oldPaymentDetail) => {
-//   if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
-//     // Ensure every row has a random_id
-//     newPaymentDetail.forEach((row, index) => {
-//       if (row && !row.random_id) {
-//         row.random_id = generateRandomId(index + 1)
-//       }
-//     })
-//   }
-// }, { deep: true })
+watch(() => donation.doc.payment_detail, (newPaymentDetail, oldPaymentDetail) => {
+  if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
+    // Ensure every row has a random_id
+    newPaymentDetail.forEach((row, index) => {
+      if (row && !row.random_id) {
+        row.random_id = generateRandomId(index + 1)
+      }
+    })
+  }
+}, { deep: true })
 
-// // Alternative approach: Watch for array length changes
-// watch(() => donation.doc.payment_detail?.length, (newLen, oldLen) => {
-//   if (newLen && oldLen && newLen > oldLen) {
-//     // Assign random_id to the new row(s)
-//     for (let i = oldLen; i < newLen; i++) {
-//       if (donation.doc.payment_detail[i] && !donation.doc.payment_detail[i].random_id) {
-//         donation.doc.payment_detail[i].random_id = generateRandomId(i + 1)
-//       }
-//     }
-//   }
-// })
+// Alternative approach: Watch for array length changes
+watch(() => donation.doc.payment_detail?.length, (newLen, oldLen) => {
+  if (newLen && oldLen && newLen > oldLen) {
+    // Assign random_id to the new row(s)
+    for (let i = oldLen; i < newLen; i++) {
+      if (donation.doc.payment_detail[i] && !donation.doc.payment_detail[i].random_id) {
+        donation.doc.payment_detail[i].random_id = generateRandomId(i + 1)
+      }
+    }
+  }
+})
 
 
 // FIX: Listen for the specific QuickEntryModal save event
@@ -1279,6 +1681,507 @@ onMounted(() => {
     window.removeEventListener('quick-entry-layout-saved', handleQuickEntrySave)
   })
 })
+
+
+// Enhanced field configuration for account_paid_to
+function configureAccountPaidToField(row) {
+  // This function configures the account_paid_to field for a specific row
+  // It should be called when a row is added or when mode_of_payment changes
+  
+  if (row.mode_of_payment) {
+    // Get the mode of payment type to determine account types
+    call('frappe.client.get', {
+      doctype: 'Mode of Payment',
+      name: row.mode_of_payment
+    }).then(modeOfPayment => {
+      if (modeOfPayment) {
+        let accountTypes = ['Bank', 'Cash']
+        if (modeOfPayment.type === 'Bank') {
+          accountTypes = ['Bank']
+        } else if (modeOfPayment.type === 'Cash') {
+          accountTypes = ['Cash']
+        }
+        
+        // Update the field's filtering
+        updateAccountPaidToFieldFilters(row, accountTypes)
+      }
+    })
+  }
+}
+
+function updateAccountPaidToFieldFilters(row, accountTypes) {
+  // This function updates the filtering for the account_paid_to field
+  // It should be implemented based on how your form fields are configured
+  
+  console.log(`Updating account_paid_to filters for row ${row.idx}:`, accountTypes)
+  
+  // The actual implementation depends on how your form fields are set up
+  // You might need to update the field's get_query function or apply filters directly
+}
+
+// ADD: Function to handle donor selection in items child table
+async function handleItemsDonorSelection(donorId, row) {
+  console.log('Handling donor selection in items table:', { donorId, row })
+  
+  if (!donorId) {
+    clearItemsDonorFields(row)
+    return
+  }
+  
+  try {
+    const donorDetails = await fetchDonorDetails(donorId)
+    if (donorDetails) {
+      updateItemsDonorFields(row, donorDetails)
+      console.log('Items donor fields updated successfully')
+      
+      // Show success message
+      toast.success('Donor details loaded successfully')
+    } else {
+      console.log('No donor details received')
+      toast.error('Could not fetch donor details')
+    }
+  } catch (error) {
+    console.error('Error in items donor handling:', error)
+    toast.error('Error loading donor details')
+  }
+}
+
+// ADD: Function to update donor fields in items table
+function updateItemsDonorFields(row, donorDetails) {
+  console.log('Updating items row with donor details:', donorDetails)
+  console.log('Items row before update:', { ...row })
+  
+  // Map donor fields to items table fields
+  const fieldMappings = {
+    'donor_name': 'donor_name',
+    'donor_type': 'donor_type',
+    'donor_desk': 'donor_desk'
+  }
+  
+  // Update each field with donor data
+  Object.entries(fieldMappings).forEach(([donorField, rowField]) => {
+    if (donorDetails[donorField] !== undefined) {
+      const oldValue = row[rowField]
+      row[rowField] = donorDetails[donorField] || ''
+      console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
+    }
+  })
+  
+  console.log('Items row after donor update:', { ...row })
+  
+  // Force reactive update - CRITICAL for Vue to detect changes
+  if (donation.doc.items) {
+    console.log('Forcing reactive update of items table after donor update')
+    donation.doc.items = [...donation.doc.items]
+  }
+}
+
+
+
+// ADD: Enhanced watcher to handle items table donor selection
+watch(() => donation.doc.items, (newItems) => {
+  if (newItems && Array.isArray(newItems)) {
+    newItems.forEach((row, index) => {
+      if (row.donor && row.donor !== row._lastItemsDonorId) {
+        console.log(`Donor ID changed in items row ${index}:`, row.donor)
+        row._lastItemsDonorId = row.donor
+        
+        // Handle the donor selection in items table
+        handleItemsDonorSelection(row.donor, row)
+      }
+    })
+  }
+}, { deep: true })
+
+// ADD: Function to get filtered donor query based on donor identity
+function getDonorQuery() {
+  const filters = {
+    status: 'Active'
+  }
+  
+  // Add donor identity filter based on the selected donor identity
+  if (donation.doc.donor_identity) {
+    filters.donor_identity = donation.doc.donor_identity
+    console.log('Adding donor identity filter:', donation.doc.donor_identity)
+  }
+  
+  // Add currency filter if available
+  if (donation.doc.currency) {
+    filters.default_currency = donation.doc.currency
+  }
+  
+  console.log('Donor query filters:', filters)
+  
+  return {
+    doctype: 'Donor',
+    filters: filters,
+    fields: ['name', 'donor_name', 'donor_type', 'donor_desk', 'contact_no', 'email', 'city', 'address', 'cnic']
+  }
+}
+
+// ADD: Function to apply donor filtering to existing form fields
+function applyDonorFilteringToForm() {
+  console.log('Applying donor filtering to form fields')
+  
+  // Wait for the next tick to ensure the form is rendered
+  nextTick(() => {
+    // Find all donor_id fields in the form
+    const donorFields = document.querySelectorAll('input[name="donor_id"], select[name="donor_id"]')
+    console.log('Found donor fields:', donorFields.length)
+    
+    donorFields.forEach((field, index) => {
+      console.log(`Configuring donor field ${index}:`, field)
+      
+      // Set the get_query function on the field
+      if (field && typeof field.setAttribute === 'function') {
+        // Store the query function in a data attribute for the Grid component to use
+        field.setAttribute('data-donor-query', JSON.stringify(getDonorQuery()))
+        console.log(`Set donor query on field ${index}:`, getDonorQuery())
+      }
+    })
+  })
+}
+
+// ADD: Function to refresh donor fields when donor identity changes
+function refreshDonorFields() {
+  console.log('Refreshing donor fields')
+  
+  // Force a re-render of the form to apply new filtering
+  if (tabs.data) {
+    // Trigger a reactive update
+    tabs.data = [...tabs.data]
+    
+    // Apply filtering after the update
+    nextTick(() => {
+      applyDonorFilteringToForm()
+    })
+  }
+}
+
+// UPDATE: Enhanced watcher for donor_identity changes
+watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) => {
+  console.log('Donor Identity changed from', oldDonorIdentity, 'to:', newDonorIdentity)
+  
+  // Clear existing donor selections in payment detail when donor identity changes
+  if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
+    donation.doc.payment_detail.forEach((row, index) => {
+      // Clear donor-related fields
+      row.donor_id = ''
+      row.donor_name = ''
+      row.donor_type = ''
+      row.donor_desk = ''
+      row.contact_no = ''
+      row.email = ''
+      row.city = ''
+      row.address = ''
+      row.cnic = ''
+      
+      // Clear the last donor ID tracker
+      row._lastDonorId = null
+    })
+    
+    // Force reactive update
+    donation.doc.payment_detail = [...donation.doc.payment_detail]
+  }
+  
+  // Clear existing donor selections in items table when donor identity changes
+  if (donation.doc.items && Array.isArray(donation.doc.items)) {
+    donation.doc.items.forEach((row, index) => {
+      // Clear donor-related fields
+      row.donor = ''
+      row.donor_name = ''
+      row.donor_type = ''
+      row.donor_desk = ''
+      
+      // Clear the last donor ID tracker
+      row._lastItemsDonorId = null
+    })
+    
+    // Force reactive update
+    donation.doc.items = [...donation.doc.items]
+  }
+  
+  // Force re-render of tabs to apply new filtering
+  nextTick(() => {
+    // This will trigger the computed filteredTabs to update with new donor filters
+    console.log('Tabs re-rendered for new donor identity:', newDonorIdentity)
+  })
+  
+  console.log('Donor queries updated for new donor identity:', newDonorIdentity)
+})
+
+// UPDATE: Enhanced initialization to include donor filtering setup
+onMounted(() => {
+  console.log('DonationModal mounted')
+  console.log('DonationModal props defaults:', props.defaults)
+  console.log('Tabs resource:', tabs)
+  console.log('Show value:', show.value)
+  
+  // Initialize the donation document with required fields
+  initializeDonationDocument()
+  
+  // Configure field queries for child tables
+  configureFieldQueries()
+  
+  // Apply donor filtering after form is rendered
+  nextTick(() => {
+    applyDonorFilteringToForm()
+  })
+})
+
+// UPDATE: Enhanced watcher for show value to apply filtering when modal opens
+watch(show, async (val) => {
+  if (val && user.value) {
+    refreshTabs()
+    resetDonationData() // Use the reset function
+    
+    // Apply donor filtering after form is rendered
+    nextTick(() => {
+      applyDonorFilteringToForm()
+    })
+  }
+  
+  // Prevent parent modal from closing when sub-modals are active
+  if (!val && hasActiveSubModals.value) {
+    show.value = true
+  }
+})
+
+// Watch for select_donation_type changes to update tabs
+watch(() => donation.doc.donation_type, (newType) => {
+  console.log('Donation type changed to:', newType)
+  // Force re-render of tabs when select_donation_type changes
+  nextTick(() => {
+    // This will trigger the computed filteredTabs to update
+  })
+})
+
+// UPDATE: Enhanced watcher for donation_type changes to clear errors
+watch(() => donation.doc.donation_type, (newType) => {
+  console.log('Donation type changed to:', newType)
+  
+  // Clear previous errors when donation type changes
+  error.value = null
+  
+  // Clear payment_detail and deduction_breakeven when switching to In Kind Donation
+  if (newType === 'In Kind Donation') {
+    donation.doc.payment_detail = []
+    donation.doc.deduction_breakeven = []
+    console.log('Cleared payment_detail and deduction_breakeven for In Kind Donation')
+  }
+  
+  // Clear items when switching to Cash donation
+  if (newType === 'Cash') {
+    donation.doc.items = []
+    console.log('Cleared items for Cash donation')
+  }
+  
+  // Force re-render of tabs when donation_type changes
+  nextTick(() => {
+    // This will trigger the computed filteredTabs to update
+    console.log('Tabs re-rendered for donation type:', newType)
+  })
+})
+
+// Watch for changes in edit_posting_date_time to update field read-only states
+watch(() => donation.doc.edit_posting_date_time, (newValue) => {
+  if (tabs.data) {
+    tabs.data.forEach((tab) => {
+      tab.sections.forEach((section) => {
+        section.columns.forEach((column) => {
+          column.fields.forEach((field) => {
+            if (field.fieldname === 'posting_date' || field.fieldname === 'posting_time') {
+              field.read_only = !newValue
+            }
+          })
+        })
+      })
+    })
+  }
+})
+
+// Watch for changes in payment_detail table to ensure random_id is always present
+watch(() => donation.doc.payment_detail, (newPaymentDetail, oldPaymentDetail) => {
+  if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
+    // Ensure every row has a random_id
+    newPaymentDetail.forEach((row, index) => {
+      if (row && !row.random_id) {
+        row.random_id = generateRandomId(index + 1)
+      }
+    })
+  }
+}, { deep: true })
+
+// Alternative approach: Watch for array length changes
+watch(() => donation.doc.payment_detail?.length, (newLen, oldLen) => {
+  if (newLen && oldLen && newLen > oldLen) {
+    // Assign random_id to the new row(s)
+    for (let i = oldLen; i < newLen; i++) {
+      if (donation.doc.payment_detail[i] && !donation.doc.payment_detail[i].random_id) {
+        donation.doc.payment_detail[i].random_id = generateRandomId(i + 1)
+      }
+    }
+  }
+})
+
+
+// FIX: Listen for the specific QuickEntryModal save event
+onMounted(() => {
+  // Listen for custom events that indicate layout has been updated
+  const handleLayoutUpdate = () => {
+    console.log('Layout update event received - reloading tabs')
+    refreshTabs()
+  }
+  
+  const handleQuickEntrySave = (event) => {
+    console.log('QuickEntryModal save event received:', event.detail)
+    if (event.detail.doctype === 'Donation') {
+      console.log('Donation layout updated - refreshing tabs')
+      refreshTabs()
+    }
+  }
+  
+  // Add event listeners
+  window.addEventListener('layout-updated', handleLayoutUpdate)
+  window.addEventListener('quick-entry-layout-saved', handleQuickEntrySave)
+  
+  // Cleanup on unmount
+  onUnmounted(() => {
+    window.removeEventListener('layout-updated', handleLayoutUpdate)
+    window.removeEventListener('quick-entry-layout-saved', handleQuickEntrySave)
+  })
+})
+
+
+// ADD: Function to clear donor fields in items table
+function clearItemsDonorFields(row) {
+  console.log('Clearing items donor fields for row')
+  
+  const donorFields = [
+    'donor_name', 'donor_type', 'donor_desk'
+  ]
+  
+  donorFields.forEach(fieldName => {
+    row[fieldName] = ''
+  })
+  
+  // Force reactive update
+  if (donation.doc.items) {
+    donation.doc.items = [...donation.doc.items]
+  }
+}
+
+// UPDATE: Enhanced watcher for donor_identity changes
+watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) => {
+  console.log('Donor Identity changed from', oldDonorIdentity, 'to:', newDonorIdentity)
+  
+  // Clear existing donor selections in payment detail when donor identity changes
+  if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
+    donation.doc.payment_detail.forEach((row, index) => {
+      // Clear donor-related fields
+      row.donor_id = ''
+      row.donor_name = ''
+      row.donor_type = ''
+      row.donor_desk = ''
+      row.contact_no = ''
+      row.email = ''
+      row.city = ''
+      row.address = ''
+      row.cnic = ''
+      
+      // Clear the last donor ID tracker
+      row._lastDonorId = null
+    })
+    
+    // Force reactive update
+    donation.doc.payment_detail = [...donation.doc.payment_detail]
+  }
+  
+  // Clear existing donor selections in items table when donor identity changes
+  if (donation.doc.items && Array.isArray(donation.doc.items)) {
+    donation.doc.items.forEach((row, index) => {
+      // Clear donor-related fields
+      row.donor = ''
+      row.donor_name = ''
+      row.donor_type = ''
+      row.donor_desk = ''
+      
+      // Clear the last donor ID tracker
+      row._lastItemsDonorId = null
+    })
+    
+    // Force reactive update
+    donation.doc.items = [...donation.doc.items]
+  }
+  
+  // Refresh donor fields to apply new filtering
+  refreshDonorFields()
+  
+  console.log('Donor queries updated for new donor identity:', newDonorIdentity)
+})
+
+// ADD: Function to get donor filters for field configuration
+function getDonorFilters() {
+  const filters = {
+    status: 'Active'
+  }
+  
+  // Add donor identity filter based on the selected donor identity
+  if (donation.doc.donor_identity) {
+    filters.donor_identity = donation.doc.donor_identity
+  }
+  
+  // Add currency filter if available
+  if (donation.doc.currency) {
+    filters.default_currency = donation.doc.currency
+  }
+  
+  return filters
+}
+
+// ADD: Function to initialize donation document with required fields
+function initializeDonationDocument() {
+  console.log('Initializing donation document')
+  
+  // Ensure required fields are set
+  if (!donation.doc.status) {
+    donation.doc.status = 'Draft'
+  }
+  
+  if (!donation.doc.company) {
+    donation.doc.company = 'Alkhidmat Foundation'
+  }
+  
+  if (!donation.doc.donor_identity) {
+    donation.doc.donor_identity = 'Known'
+  }
+  
+  if (!donation.doc.donation_type) {
+    donation.doc.donation_type = 'Cash'
+  }
+  
+  // Initialize posting_date and posting_time
+  initializeDonation()
+  
+  console.log('Donation document initialized:', donation.doc)
+}
+
+// ADD: Function to configure field queries for child tables
+function configureFieldQueries() {
+  console.log('Configuring field queries for child tables')
+  
+  // This function will be called when the modal is mounted
+  // The actual field query configuration is handled in the filteredTabs computed property
+  // and in the watchers for donor_identity and currency changes
+}
+
+// ADD: Function to refresh tabs (used in event listeners)
+function refreshTabs() {
+  console.log('Refreshing tabs')
+  if (tabs.reload) {
+    tabs.reload()
+  }
+}
 
 </script>
 

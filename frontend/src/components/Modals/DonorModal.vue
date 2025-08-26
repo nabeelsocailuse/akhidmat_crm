@@ -237,7 +237,6 @@ const donorDeskOptions = computed(() => {
     return []
   }
   
-
   if (donorDeskResource.data.length === 0) {
     return []
   }
@@ -346,8 +345,14 @@ const tabs = createResource({
                     }
                   }
                   field.data = computed(() => donorDeskOptions.value)
+                  // Keep fieldtype as Select but handle empty options gracefully
                   field.fieldtype = 'Select'
-                  field.options = computed(() => donorDeskOptions.value)
+                  field.options = computed(() => {
+                    if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
+                      return []
+                    }
+                    return donorDeskOptions.value
+                  })
                   field.placeholder = computed(() => {
                     if (!donor.doc?.department) {
                       return 'Please select a department first'
@@ -359,13 +364,19 @@ const tabs = createResource({
                   })
                   field.description = computed(() => {
                     if (!donor.doc?.department) {
+                      return 'Please select a department to see available donor desks'
                     }
                     if (donorDeskResource.data && donorDeskResource.data.length === 0) {
                       return 'No donor desks found for the selected department'
                     }
                     return ''
                   })
-                  field.read_only = false
+                  field.read_only = computed(() => {
+                    if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
+                      return true
+                    }
+                    return false
+                  })
                   field.hidden = false
                   if (!donor.doc[field.fieldname]) {
                     donor.doc[field.fieldname] = ''
@@ -413,8 +424,13 @@ watch(() => donorDeskResource.data, (newData) => {
         section.columns.forEach(column => {
           column.fields.forEach(field => {
             if (field.fieldname === 'donor_desk') {
-              field.options = computed(() => donorDeskOptions.value)
               field.fieldtype = 'Select'
+              field.options = computed(() => {
+                if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
+                  return []
+                }
+                return donorDeskOptions.value
+              })
               field.placeholder = computed(() => {
                 if (!donor.doc?.department) {
                   return 'Please select a department first'
@@ -433,7 +449,12 @@ watch(() => donorDeskResource.data, (newData) => {
                 }
                 return ''
               })
-              field.read_only = false
+              field.read_only = computed(() => {
+                if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
+                  return true
+                }
+                return false
+              })
               field.hidden = false
               if (!donor.doc[field.fieldname]) {
                 donor.doc[field.fieldname] = ''
@@ -494,7 +515,14 @@ watch(show, async (val) => {
                       field.data = computed(() => donorDeskOptions.value)
                       field.fieldtype = 'Select'
                       // Use the computed options directly instead of converting to string
-                      field.options = computed(() => donorDeskOptions.value)
+                      field.options = computed(() => {
+                        if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
+                          return []
+                        }
+                        return donorDeskOptions.value
+                      })
+                      // Keep fieldtype as Select but handle empty options gracefully
+                      field.fieldtype = 'Select'
                       // Set placeholder based on department selection
                       field.placeholder = computed(() => {
                         if (!donor.doc?.department) {
@@ -517,8 +545,13 @@ watch(show, async (val) => {
                         }
                         return ''
                       })
-                      // Keep field enabled but show appropriate state
-                      field.read_only = false
+                      // Set read_only based on availability of options
+                      field.read_only = computed(() => {
+                        if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
+                          return true
+                        }
+                        return false
+                      })
                       // Ensure field is always visible
                       field.hidden = false
                       // Ensure field always has a value to prevent hiding
@@ -678,18 +711,18 @@ function createPhoneFieldWatcher(fieldName) {
       clearTimeout(validationTimeouts.get(fieldName))
     }
     
-    // Debounce validation to prevent multiple rapid calls
+        // Debounce validation to prevent multiple rapid calls
     const timeoutId = setTimeout(async () => {
-    if (newValue && donor.doc.country) {
-      const validation = await validatePhoneNumber(newValue, donor.doc.country)
-      if (validation && validation.isValid !== undefined) {
-        showPhoneValidationFeedback(fieldName, validation.isValid, validation.message)
-      }
+      if (newValue && donor.doc.country) {
+        const validation = await validatePhoneNumber(newValue, donor.doc.country)
+        if (validation && validation.isValid !== undefined) {
+          showPhoneValidationFeedback(fieldName, validation.isValid, validation.message)
+        }
       } else if (donor.doc.country && donor.doc.country !== 'Pakistan' && donor.doc.country !== 'pakistan') {
-    const validation = await validatePhoneNumber('', donor.doc.country)
-      if (validation && validation.isValid !== undefined) {
-        showPhoneValidationFeedback(fieldName, validation.isValid, validation.message)
-      }
+        const validation = await validatePhoneNumber('', donor.doc.country)
+        if (validation && validation.isValid !== undefined) {
+          showPhoneValidationFeedback(fieldName, validation.isValid, validation.message)
+        }
       } else {
         // Clear error message when field is empty or no country selected
         clearPhoneFieldError(fieldName)
@@ -1263,16 +1296,16 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
         const clearPhoneField = (inputElement) => {
           if (inputElement) {
             const existingPrefixes = inputElement.parentNode?.querySelectorAll('.country-prefix')
-            existingPrefixes?.forEach(prefix => prefix.remove())
+          existingPrefixes?.forEach(prefix => prefix.remove())
             inputElement.style.paddingLeft = ''
             inputElement.style.position = ''
             if (inputElement.parentNode) {
               inputElement.parentNode.style.position = ''
-            }
-            
-            // Clear validation messages
+          }
+          
+          // Clear validation messages
             const existingMessages = inputElement.parentNode?.querySelectorAll('.phone-error-message')
-            existingMessages?.forEach(msg => msg.remove())
+          existingMessages?.forEach(msg => msg.remove())
             inputElement.classList.remove('border-red-500', 'border-green-500')
           }
         }
@@ -1659,9 +1692,9 @@ async function createNewDonor() {
     if (donor.doc[fieldName] && donor.doc[fieldName].trim() !== '' && donor.doc.country) {
       const validation = await validatePhoneNumber(donor.doc[fieldName].trim(), donor.doc.country)
       if (!validation.isValid) {
-        if (donor.doc.country === 'Pakistan') {
+      if (donor.doc.country === 'Pakistan') {
           validationErrors.push(`${fieldLabel}: Pakistan phone number must be 10 digits and start with valid mobile prefix (30-39). Example: 348-8903564`)
-        } else {
+      } else {
           validationErrors.push(`${fieldLabel}: ${validation.message}`)
         }
       }

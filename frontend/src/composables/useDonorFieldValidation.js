@@ -413,16 +413,19 @@ export function useDonorFieldValidation() {
             inputElement.addEventListener('paste', inputElement._pakistanPasteHandler)
             
           } else {
-            // Other countries - strict mask enforcement
+            // Other countries - use backend mask exactly as configured
             const dialCode = countryMask?.dialCode || ''
             const phoneMask = countryMask?.phoneMask || ''
             
-            // Calculate required digits from mask
-            const requiredDigits = phoneMask ? phoneMask.replace(/\D/g, '').length : 0
+            // Backend concatenates dialCode + phoneMask, so we do the same
+            const fullMask = dialCode + phoneMask
             
-            // Set placeholder based on mask
-            if (phoneMask) {
-              inputElement.placeholder = phoneMask
+            // Calculate required digits from the full mask
+            const requiredDigits = fullMask ? fullMask.replace(/\D/g, '').length : 0
+            
+            // Set placeholder based on full mask (like backend)
+            if (fullMask) {
+              inputElement.placeholder = fullMask
             } else {
               inputElement.placeholder = 'Enter phone number'
             }
@@ -437,22 +440,22 @@ export function useDonorFieldValidation() {
               let value = e.target.value
               const cleanValue = value.replace(/\D/g, '')
               
-              // If we have a mask, enforce the exact digit count
-              if (phoneMask && requiredDigits > 0) {
+              // If we have a full mask, enforce the exact digit count
+              if (fullMask && requiredDigits > 0) {
                 // Limit to required digits
                 if (cleanValue.length > requiredDigits) {
                   value = cleanValue.slice(0, requiredDigits)
                   e.target.value = value
                 }
                 
-                // Format according to mask if we have the full number
+                // Format according to full mask if we have the full number
                 if (cleanValue.length === requiredDigits) {
-                  // Apply mask formatting
-                  let formattedValue = phoneMask
+                  // Apply mask formatting using the full mask (dialCode + phoneMask)
+                  let formattedValue = fullMask
                   let digitIndex = 0
                   
-                  for (let i = 0; i < phoneMask.length && digitIndex < cleanValue.length; i++) {
-                    if (phoneMask[i] === '9' || phoneMask[i] === '0') {
+                  for (let i = 0; i < fullMask.length && digitIndex < cleanValue.length; i++) {
+                    if (fullMask[i] === '9' || fullMask[i] === '0') {
                       formattedValue = formattedValue.slice(0, i) + cleanValue[digitIndex] + formattedValue.slice(i + 1)
                       digitIndex++
                     }
@@ -479,8 +482,8 @@ export function useDonorFieldValidation() {
                 return true
               }
               
-              // If we have a mask, enforce the exact digit count
-              if (phoneMask && requiredDigits > 0) {
+              // If we have a full mask, enforce the exact digit count
+              if (fullMask && requiredDigits > 0) {
                 if (currentValue.length >= requiredDigits) {
                   e.preventDefault()
                   return false
@@ -500,8 +503,8 @@ export function useDonorFieldValidation() {
               let paste = (e.originalEvent || e).clipboardData.getData('text')
               paste = paste.replace(/\D/g, '')
               
-              // If we have a mask, limit to required digits
-              if (phoneMask && requiredDigits > 0) {
+              // If we have a full mask, limit to required digits
+              if (fullMask && requiredDigits > 0) {
                 paste = paste.slice(0, requiredDigits)
               } else {
                 paste = paste.slice(0, 15) // Fallback limit
@@ -600,16 +603,21 @@ export function useDonorFieldValidation() {
           }
         }
       } else if (country === 'Algeria') {
-        // Special validation for Algeria
+        // Special validation for Algeria - use backend mask approach
         const dialCode = countryMask.dialCode || '213'
         const phoneMask = countryMask.phoneMask || '11097'
-        const requiredDigits = phoneMask ? phoneMask.replace(/\D/g, '').length : 5
+        
+        // Backend concatenates dialCode + phoneMask, so we do the same
+        const fullMask = dialCode + phoneMask
+        
+        // For Algeria, we need to count digits ONLY in the phoneMask part (not including dialCode)
+        const requiredDigits = phoneMask ? phoneMask.replace(/\D/g, '').length : 0
         
         // If no phone number provided, show required message
         if (!phoneNumber) {
           return {
             isValid: false,
-            message: `Algeria phone number is required. Expected format: ${dialCode}-${phoneMask}`
+            message: `Algeria phone number is required. Expected format: ${fullMask}`
           }
         }
         
@@ -623,7 +631,7 @@ export function useDonorFieldValidation() {
         if (!phoneToValidate.startsWith(dialCode)) {
           return {
             isValid: false,
-            message: `Algeria phone number must start with country code ${dialCode}. Expected format: ${dialCode}-${phoneMask}`
+            message: `Algeria phone number must be correctly formatted. Expected format: ${fullMask}`
           }
         }
         
@@ -631,41 +639,45 @@ export function useDonorFieldValidation() {
         const numberWithoutCode = phoneToValidate.slice(dialCode.length)
         const cleanNumber = numberWithoutCode.replace(/\D/g, '')
         
-        // Strict validation: check exact digit count
+        // Strict validation: check exact digit count from phoneMask (not fullMask)
         if (cleanNumber.length !== requiredDigits) {
           return {
             isValid: false,
-            message: `Algeria phone number must be exactly ${requiredDigits} digits after country code. Expected format: ${dialCode}-${phoneMask}`
+            message: `Algeria phone number must be exactly ${requiredDigits} digits after country code. Expected format: ${fullMask}`
           }
         }
         
         // If we reach here, the number is valid
         return { isValid: true, message: '' }
       } else {
-        // For other countries, use strict mask validation
+        // For other countries, use backend validation approach (dialCode + phoneMask)
         if (!phoneNumber) {
           return { isValid: true, message: '' } // Allow empty for other countries
         }
         
         const cleanNumber = phoneNumber.replace(/\D/g, '')
+        const dialCode = countryMask.dialCode || ''
         const phoneMask = countryMask.phoneMask || ''
-        const requiredDigits = phoneMask ? phoneMask.replace(/\D/g, '').length : 0
         
-        // If we have a specific mask, validate against it strictly
-        if (phoneMask && requiredDigits > 0) {
+        // Backend concatenates dialCode + phoneMask, so we do the same
+        const fullMask = dialCode + phoneMask
+        const requiredDigits = fullMask ? fullMask.replace(/\D/g, '').length : 0
+        
+        // If we have a specific full mask, validate against it strictly
+        if (fullMask && requiredDigits > 0) {
           if (cleanNumber.length !== requiredDigits) {
             return {
               isValid: false,
-              message: `${country} phone number must be exactly ${requiredDigits} digits. Expected format: ${phoneMask}`
+              message: `${country} phone number must be exactly ${requiredDigits} digits. Expected format: ${fullMask}`
             }
           }
           
-          // Check if the number matches the mask format
+          // Check if the number matches the full mask format
           let isValidFormat = true
           let digitIndex = 0
           
-          for (let i = 0; i < phoneMask.length; i++) {
-            if (phoneMask[i] === '9' || phoneMask[i] === '0') {
+          for (let i = 0; i < fullMask.length; i++) {
+            if (fullMask[i] === '9' || fullMask[i] === '0') {
               if (digitIndex >= cleanNumber.length || !/^\d$/.test(cleanNumber[digitIndex])) {
                 isValidFormat = false
                 break
@@ -677,7 +689,7 @@ export function useDonorFieldValidation() {
           if (!isValidFormat) {
             return {
               isValid: false,
-              message: `${country} phone number format is invalid. Expected format: ${phoneMask}`
+              message: `${country} phone number format is invalid. Expected format: ${fullMask}`
             }
           }
           
