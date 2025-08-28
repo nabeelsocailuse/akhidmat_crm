@@ -384,7 +384,7 @@ import { getFormat, evaluateDependsOnValue } from '@/utils'
 import { flt } from '@/utils/numberFormat.js'
 import { Tooltip, DateTimePicker, DatePicker } from 'frappe-ui'
 import { useDocument } from '@/data/document'
-import { ref, computed, getCurrentInstance } from 'vue'
+import { ref, computed, getCurrentInstance, watch } from 'vue'
 
 const props = defineProps({
   sections: {
@@ -464,6 +464,58 @@ function parsedField(field) {
     })
   }
 
+  // Make owner_id field readonly for Donor doctype
+  if (field.fieldname === 'owner_id' && props.doctype === 'Donor') {
+    field.read_only = true
+  }
+
+  // Configure department field as required for Donor doctype
+  if (field.fieldname === 'department' && props.doctype === 'Donor') {
+    field.reqd = true
+    field.placeholder = 'Select Department *'
+  }
+
+  // Configure donor_desk field with set query functionality for Donor doctype
+  if (field.fieldname === 'donor_desk' && props.doctype === 'Donor') {
+    // Set up the get_query function for dynamic filtering based on department
+    field.get_query = () => {
+      const department = doc.value?.department
+      if (!department) {
+        return {
+          doctype: 'Donor Desk',
+          filters: { department: ['!=', undefined] }
+        }
+      }
+      return {
+        doctype: 'Donor Desk',
+        filters: { department: department }
+      }
+    }
+    
+    // Set up depends_on to show/hide field based on department selection
+    field.depends_on = 'department'
+    
+    // Set placeholder and description based on department selection
+    if (!doc.value?.department) {
+      field.placeholder = 'Please select a department first *'
+      field.description = 'Please select a department to see available donor desks'
+      field.read_only = true
+    } else {
+      field.placeholder = 'Select Donor Desk *'
+      field.description = ''
+      field.read_only = false
+    }
+    
+    // Mark field as required
+    field.reqd = true
+    
+    // Ensure field is always visible
+    field.hidden = false
+    
+    // Add a dynamic key to force field reload when department changes
+    field._departmentKey = doc.value?.department || 'no-department'
+  }
+
   let _field = {
     ...field,
     filters: field.link_filters && JSON.parse(field.link_filters),
@@ -482,8 +534,47 @@ function parsedField(field) {
 const instance = getCurrentInstance()
 const attrs = instance?.vnode?.props ?? {}
 
+// Watch for department changes to clear donor_desk field and force field reload
+watch(
+  () => doc.value?.department,
+  (newDepartment, oldDepartment) => {
+    if (props.doctype === 'Donor' && newDepartment !== oldDepartment) {
+      console.log('Department changed, clearing donor_desk field:', {
+        oldDepartment,
+        newDepartment
+      })
+      
+      // Clear donor_desk when department changes
+      if (document.doc && document.doc.donor_desk) {
+        document.doc.donor_desk = ''
+        // Trigger change for donor_desk field
+        triggerOnChange('donor_desk', '')
+      }
+      
+      // Force a reload of the sections to update field states
+      emit('reload')
+      
+      // Force clear any cached options in Link components
+      nextTick(() => {
+        // This will trigger the key change and force Link component reload
+        console.log('Forcing field reload after department change')
+      })
+    }
+  }
+)
+
 async function fieldChange(value, df) {
   if (props.preview) return
+
+  // Handle special case: when department changes, clear donor_desk field
+  if (df.fieldname === 'department' && props.doctype === 'Donor') {
+    // Clear the donor_desk field when department changes
+    if (document.doc && document.doc.donor_desk) {
+      document.doc.donor_desk = ''
+      // Also trigger change for donor_desk field
+      await triggerOnChange('donor_desk', '')
+    }
+  }
 
   await triggerOnChange(df.fieldname, value)
 

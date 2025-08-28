@@ -553,42 +553,7 @@ window.reapplyMasksImmediately = async () => {
 // Make the aggressive mask monitor available globally
 window.aggressiveMaskMonitor = null // Will be set in onMounted
 
-// Add comprehensive debugging functions
-window.debugDonorMasks = () => {
-  console.log('=== Donor Mask Debugging ===')
-  
-  const cnicInput = findInputField('cnic')
-  const contactInput = findInputField('contact_no')
-  
-  console.log('CNIC Input:', cnicInput)
-  if (cnicInput) {
-    console.log('CNIC Mask Handler:', cnicInput._maskHandler)
-    console.log('CNIC Mask Applied:', cnicInput._maskApplied)
-    console.log('CNIC Value:', cnicInput.value)
-  }
-  
-  console.log('Contact Input:', contactInput)
-  if (contactInput) {
-    console.log('Pakistan Handler:', contactInput._pakistanHandler)
-    console.log('Other Country Handler:', contactInput._otherCountryHandler)
-    console.log('Phone Mask Applied:', contactInput._phoneMaskApplied)
-    console.log('Contact Value:', contactInput.value)
-  }
-  
-  console.log('Document Data:', {
-    identification_type: donorDocument.doc?.identification_type,
-    country: donorDocument.doc?.country,
-    cnic: donorDocument.doc?.cnic,
-    contact_no: donorDocument.doc?.contact_no
-  })
-  
-  console.log('Available Functions:', {
-    reapplyAllMasksNow: typeof reapplyAllMasksNow,
-    applyCnicMaskToInput: typeof applyCnicMaskToInput,
-    applyPhoneMasksForCountry: typeof applyPhoneMasksForCountry,
-    findInputField: typeof findInputField
-  })
-}
+
 
 // Override any global save functions that might be used
 const originalSave = window.save || window.Save
@@ -676,34 +641,6 @@ function handleModalClose(idx) {
 async function validateRequired(fieldname, value) {
   let meta = donor.fields_meta || {}
   
-  if (donor.data?.foa === 1 || donor.data?.foa === true || donor.data?.foa == 1 || !!donor.data?.foa) {
-    const foaRequiredFields = ['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor']
-    
-    if (foaRequiredFields.includes(fieldname)) {
-      if (!value || value.trim() === '') {
-        const fieldLabels = {
-          'co_name': 'C/O Name',
-          'co_contact_no': 'C/O Contact No',
-          'co_email': 'C/O Email',
-          'co_address': 'C/O Address',
-          'relationship_with_donor': 'Relationship With Donor'
-        }
-        toast.error(__('{0} is required when FOA is enabled', [fieldLabels[fieldname] || fieldname]))
-        return true
-      }
-      
-
-      
-      if (fieldname === 'co_email' && value) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-        if (!emailRegex.test(value.trim())) {
-          toast.error(__('Invalid C/O Email format. Please enter a valid email address.'))
-          return true
-        }
-      }
-    }
-  }
-  
   if (fieldname === 'contact_no' && value && donor.data?.country) {
     const phoneValidationResult = await validatePhoneNumber(value, donor.data.country)
     if (!phoneValidationResult.isValid) {
@@ -712,18 +649,48 @@ async function validateRequired(fieldname, value) {
     }
   }
   
-  if (fieldname === 'co_contact_no' && value && donor.data?.country && donor.data?.foa) {
-    // Phone validation removed
+  // FOA field validation - check if FOA is enabled and validate required fields
+  if (donor.data?.foa === 1 || donor.data?.foa === true || donor.data?.foa == 1 || !!donor.data?.foa) {
+    const foaRequiredFields = ['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor']
+    if (foaRequiredFields.includes(fieldname) && (!value || value.toString().trim() === '')) {
+      const fieldLabels = {
+        'co_name': 'C/O Name',
+        'co_contact_no': 'C/O Contact No',
+        'co_email': 'C/O Email',
+        'co_address': 'C/O Address',
+        'relationship_with_donor': 'Relationship With Donor'
+      }
+      toast.error(__('{0} is required when FOA is enabled', [fieldLabels[fieldname] || fieldname]))
+      return true
+    }
+    
+    // Special validation for C/O Contact Number when FOA is enabled
+    if (fieldname === 'co_contact_no' && value && donor.data?.country) {
+      const phoneValidationResult = await validatePhoneNumber(value, donor.data.country)
+      if (!phoneValidationResult.isValid) {
+        if (donor.data.country === 'Pakistan') {
+          toast.error('C/O Contact Number: Pakistan phone number must be 10 digits and start with valid mobile prefix (30-39). Example: 348-8903564')
+        } else {
+          toast.error(`C/O Contact Number: ${phoneValidationResult.message}`)
+        }
+        return true
+      }
+    }
+    
+    // Special validation for C/O Email when FOA is enabled
+    if (fieldname === 'co_email' && value) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(value.toString().trim())) {
+        toast.error('Invalid C/O Email format. Please enter a valid email address.')
+        return true
+      }
+    }
   }
   
   if (meta[fieldname]?.reqd && !value) {
     toast.error(__('{0} is a required field', [meta[fieldname].label]))
     return true
   }
-  
-
-  
-
   
   return false
 }
@@ -812,39 +779,7 @@ function setFieldValue(fieldName, value) {
   }
 }
 
-// CNIC masking functions moved to useDonorFieldValidation composable
 
-// CNIC mask application function removed
-
-// Reapply all masks function removed
-
-// This duplicate function has been removed
-
-// Tab change handler function removed
-
-// Add FOA validation watcher
-watch(() => donor.data?.foa, (newFOA, oldFOA) => {
-  if (newFOA !== oldFOA) {
-    // When FOA changes, validate all FOA-related fields
-    const foaFields = ['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor']
-    foaFields.forEach(fieldname => {
-      if (newFOA) {
-        // If FOA is enabled, validate that required fields are filled
-        const value = donor.data?.[fieldname]
-        if (!value || value.trim() === '') {
-          const fieldLabels = {
-            'co_name': 'C/O Name',
-            'co_contact_no': 'C/O Contact No',
-            'co_email': 'C/O Email',
-            'co_address': 'C/O Address',
-            'relationship_with_donor': 'Relationship With Donor'
-          }
-          toast.error(__('{0} is required when FOA is enabled', [fieldLabels[fieldname] || fieldname]))
-        }
-      }
-    })
-  }
-}, { immediate: true })
 
 async function validateBeforeSave() {
   const errors = []
@@ -878,32 +813,7 @@ async function validateBeforeSave() {
     }
   }
   
-  // FOA validation
-  if (donor.data?.foa === 1 || donor.data?.foa === true || donor.data?.foa == 1 || !!donor.data?.foa) {
-    const foaRequiredFields = [
-      { fieldname: 'co_name', label: 'C/O Name' },
-      { fieldname: 'co_contact_no', label: 'C/O Contact No' },
-      { fieldname: 'co_email', label: 'C/O Email' },
-      { fieldname: 'co_address', label: 'C/O Address' },
-      { fieldname: 'relationship_with_donor', label: 'Relationship With Donor' }
-    ]
-    
-    for (const field of foaRequiredFields) {
-      const value = donor.data?.[field.fieldname]
-      if (!value || value.trim() === '') {
-        errors.push(`${field.label} is required when FOA is enabled`)
-      } else {
-        // Phone validation removed
-        
-        if (field.fieldname === 'co_email') {
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-          if (!emailRegex.test(value.trim())) {
-            errors.push('Invalid C/O Email format. Please enter a valid email address.')
-          }
-        }
-      }
-    }
-  }
+
   
   // Check for required fields based on metadata - this ensures all required fields are validated
   if (donor.fields_meta) {
@@ -923,6 +833,68 @@ async function validateBeforeSave() {
     }
   }
   
+  // Department and Donor Desk validation - these are mandatory fields
+  if (!donorDocument.doc?.department || donorDocument.doc.department.toString().trim() === '') {
+    errors.push('Department is required')
+  }
+  
+  if (!donorDocument.doc?.donor_desk || donorDocument.doc.donor_desk.toString().trim() === '') {
+    errors.push('Donor Desk is required')
+  }
+  
+  // FOA (Friend of Association) validations
+  if (donorDocument.doc?.foa === 1 || donorDocument.doc?.foa === true || donorDocument.doc?.foa == 1 || !!donorDocument.doc?.foa) {
+    if (!donorDocument.doc?.co_name || donorDocument.doc.co_name.toString().trim() === '') {
+      errors.push('C/O Name is required when FOA is enabled')
+    }
+    if (!donorDocument.doc?.co_contact_no || donorDocument.doc.co_contact_no.toString().trim() === '') {
+      errors.push('C/O Contact No is required when FOA is enabled')
+    } else if (donorDocument.doc?.co_contact_no && donorDocument.doc.co_contact_no.toString().trim() !== '' && donorDocument.doc?.country) {
+      const coPhoneValidation = await validatePhoneNumber(donorDocument.doc.co_contact_no.toString().trim(), donorDocument.doc.country)
+      if (!coPhoneValidation.isValid) {
+        if (donorDocument.doc.country === 'Pakistan') {
+          errors.push('C/O Contact Number: Pakistan phone number must be 10 digits and start with valid mobile prefix (30-39). Example: 348-8903564')
+        } else {
+          errors.push(`C/O Contact Number: ${coPhoneValidation.message}`)
+        }
+      }
+    }
+    if (!donorDocument.doc?.co_email || donorDocument.doc.co_email.toString().trim() === '') {
+      errors.push('C/O Email is required when FOA is enabled')
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(donorDocument.doc.co_email.toString().trim())) {
+        errors.push('Invalid C/O Email format. Please enter a valid email address.')
+      }
+    }
+    if (!donorDocument.doc?.co_address || donorDocument.doc.co_address.toString().trim() === '') {
+      errors.push('C/O Address is required when FOA is enabled')
+    }
+    if (!donorDocument.doc?.relationship_with_donor || donorDocument.doc.relationship_with_donor.toString().trim() === '') {
+      errors.push('Relationship With Donor is required when FOA is enabled')
+    }
+  }
+  
+  // Email format validation for various email fields
+  const emailFields = ['email', 'co_email', 'representative_email', 'company_email_address', 'org_email', 'donor_email', 'org_representative_email_address']
+  for (const fieldName of emailFields) {
+    if (donorDocument.doc?.[fieldName] && donorDocument.doc[fieldName].toString().trim() !== '') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(donorDocument.doc[fieldName].toString().trim())) {
+        const fieldLabels = {
+          'email': 'Donor Email',
+          'co_email': 'C/O Email',
+          'representative_email': 'Representative Email',
+          'company_email_address': 'Company Email Address',
+          'org_email': 'Organization Email',
+          'donor_email': 'Donor Email',
+          'org_representative_email_address': 'Organization Representative Email Address'
+        }
+        errors.push(`Invalid ${fieldLabels[fieldName] || fieldName} format. Please enter a valid email address.`)
+      }
+    }
+  }
+  
   if (errors.length > 0) {
     const errorMessage = `Please fix the following validation errors:\n\n${errors.map(error => `• ${error}`).join('\n')}`
     toast.error(errorMessage)
@@ -934,7 +906,7 @@ async function validateBeforeSave() {
 
 
 
-// Override the updateDonor function to include FOA validation
+// Override the updateDonor function
 async function updateDonor(fieldname, value, callback) {
   value = Array.isArray(fieldname) ? '' : value
 
@@ -943,23 +915,12 @@ async function updateDonor(fieldname, value, callback) {
   
   // Special validation for main contact number removed
   
-  // Always validate FOA fields if FOA is enabled, regardless of which field is being updated
-  if (donor.data?.foa === 1 || donor.data?.foa === true || donor.data?.foa == 1 || !!donor.data?.foa) {
-    // If we're updating a FOA field, validate it specifically
-    if (['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor'].includes(fieldname)) {
-      if (!(await validateFOAField(fieldname, value))) return
-    }
-    
-    // If we're updating the FOA field itself, validate all FOA fields
-    if (fieldname === 'foa' && value) {
-      if (!(await validateAllFOAFields())) return
-    }
-  }
+
 
   createResource({
     url: 'frappe.client.set_value',
     params: {
-      doctype: 'Donor',
+      doctype: 'Donor', 
       name: props.donorId,
       fieldname,
       value,
@@ -994,91 +955,36 @@ async function updateDonor(fieldname, value, callback) {
   })
 }
 
-// Add function to validate individual FOA field
-async function validateFOAField(fieldname, value) {
-  const fieldLabels = {
-    'co_name': 'C/O Name',
-    'co_contact_no': 'C/O Contact No',
-    'co_email': 'C/O Email',
-    'co_address': 'C/O Address',
-    'relationship_with_donor': 'Relationship With Donor'
-  }
-  
-  if (!value || value.trim() === '') {
-    toast.error(__('{0} is required when FOA is enabled', [fieldLabels[fieldname] || fieldname]))
-    return false
-  }
-  
-        // Phone validation for C/O contact number removed
-  
-  if (fieldname === 'co_email') {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(value.trim())) {
-      toast.error(__('Invalid C/O Email format. Please enter a valid email address.'))
-      return false
-    }
-  }
-  
-  return true
-}
 
-// Add function to validate all FOA fields
-async function validateAllFOAFields() {
-  const errors = []
-  const foaRequiredFields = [
-    { fieldname: 'co_name', label: 'C/O Name' },
-    { fieldname: 'co_contact_no', label: 'C/O Contact No' },
-    { fieldname: 'co_email', label: 'C/O Email' },
-    { fieldname: 'co_address', label: 'C/O Address' },
-    { fieldname: 'relationship_with_donor', label: 'Relationship With Donor' }
-  ]
-  
-  for (const field of foaRequiredFields) {
-    const value = donor.data?.[field.fieldname]
-    if (!value || value.trim() === '') {
-      errors.push(`${field.label} is required when FOA is enabled`)
-    } else {
-              // Phone validation for C/O contact number removed
-      
-      if (field.fieldname === 'co_email') {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-        if (!emailRegex.test(value.trim())) {
-          errors.push('Invalid C/O Email format. Please enter a valid email address.')
+
+
+
+
+
+// FOA validation watcher - monitor FOA field changes and validate required fields
+watch(
+  () => donor.data?.foa,
+  (newFoa, oldFoa) => {
+    if (newFoa === 1 || newFoa === true || newFoa == 1 || !!newFoa) {
+      // FOA is enabled, validate that required fields are filled
+      const foaRequiredFields = ['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor']
+      foaRequiredFields.forEach(fieldname => {
+        const value = donor.data?.[fieldname]
+        if (!value || value.toString().trim() === '') {
+          const fieldLabels = {
+            'co_name': 'C/O Name',
+            'co_contact_no': 'C/O Contact No',
+            'co_email': 'C/O Email',
+            'co_address': 'C/O Address',
+            'relationship_with_donor': 'Relationship With Donor'
+          }
+          toast.error(__('{0} is required when FOA is enabled', [fieldLabels[fieldname] || fieldname]))
         }
-      }
+      })
     }
-  }
-  
-  // Phone validation removed
-  
-  if (errors.length > 0) {
-    const errorMessage = `Please fix the following validation errors:\n\n${errors.map(error => `• ${error}`).join('\n')}`
-    toast.error(errorMessage)
-    return false
-  }
-  
-  return true
-}
-
-// Add real-time validation for field changes
-watch(() => donor.data, async (newData, oldData) => {
-  if (!newData || !oldData) return
-  
-  // Check if FOA was enabled and validate all FOA fields
-  if (newData.foa && !oldData.foa) {
-    // FOA was just enabled, validate all FOA fields
-    await validateAllFOAFields()
-  }
-  
-  // Check if any FOA field was changed and FOA is enabled
-  const foaFields = ['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor']
-  for (const fieldname of foaFields) {
-    if (newData[fieldname] !== oldData[fieldname] && newData.foa) {
-      // A FOA field was changed and FOA is enabled, validate it
-      await validateFOAField(fieldname, newData[fieldname])
-    }
-  }
-}, { deep: true })
+  },
+  { immediate: true }
+)
 
 // Phone validation watchers removed
 
@@ -1405,24 +1311,51 @@ async function updateField(name, value, callback) {
 }
 
 async function deleteDonor(name) {
-  await call('frappe.client.delete', {
-    doctype: 'Donor',
-    name,
-  })
-  router.push({ name: 'Donor' })
+  try {
+    await call('frappe.client.delete', {
+      doctype: 'Donor',
+      name,
+    })
+    
+    // Show success message
+    toast.success(__('Donor deleted successfully'))
+    
+    // Redirect to donor list
+    router.push({ name: 'Donor' })
+  } catch (error) {
+    console.error('Error deleting donor:', error)
+    
+    // Show error message
+    toast.error(__('Failed to delete donor. Please try again.'))
+    
+    // Extract error message if available
+    let errorMessage = __('Failed to delete donor')
+    if (error?.exc) {
+      errorMessage = error.exc
+    } else if (error?.message) {
+      errorMessage = error.message
+    } else if (typeof error === 'string') {
+      errorMessage = error
+    }
+    
+    toast.error(errorMessage)
+  }
 }
 
 async function deleteDonorWithModal(name) {
-  const confirmed = await $dialog.confirm({
-    title: __('Delete Donor'),
-    message: __('Are you sure you want to delete this donor? This action cannot be undone.'),
-    confirmText: __('Delete'),
-    cancelText: __('Cancel'),
-    variant: 'danger'
-  })
-  
-  if (confirmed) {
-    await deleteDonor(name)
+  try {
+    // Use browser's native confirm dialog as fallback
+    const confirmed = window.confirm(__('Are you sure you want to delete this donor? This action cannot be undone.'))
+    
+    if (confirmed) {
+      await deleteDonor(name)
+    }
+  } catch (error) {
+    console.error('Error in delete confirmation:', error)
+    // Fallback to direct deletion if confirmation fails
+    if (window.confirm(__('Delete donor? This action cannot be undone.'))) {
+      await deleteDonor(name)
+    }
   }
 }
 
@@ -2295,79 +2228,79 @@ onMounted(() => {
     }
     
     // Add comprehensive debugging function
-    window.debugDonorMasks = () => {
-      console.log('=== Donor Mask Debugging ===')
+    // window.debugDonorMasks = () => {
+    //   console.log('=== Donor Mask Debugging ===')
       
-      const cnicInput = findInputField('cnic')
-      const contactInput = findInputField('contact_no')
+    //   const cnicInput = findInputField('cnic')
+    //   const contactInput = findInputField('contact_no')
       
-      console.log('CNIC Input:', cnicInput)
-      if (cnicInput) {
-        console.log('CNIC Mask Handler:', cnicInput._maskHandler)
-        console.log('CNIC Mask Applied:', cnicInput._maskApplied)
-        console.log('CNIC Value:', cnicInput.value)
-      }
+    //   console.log('CNIC Input:', cnicInput)
+    //   if (cnicInput) {
+    //     console.log('CNIC Mask Handler:', cnicInput._maskHandler)
+    //     console.log('CNIC Mask Applied:', cnicInput._maskApplied)
+    //     console.log('CNIC Value:', cnicInput.value)
+    //   }
       
-      console.log('Contact Input:', contactInput)
-      if (contactInput) {
-        console.log('Pakistan Handler:', contactInput._pakistanHandler)
-        console.log('Other Country Handler:', contactInput._otherCountryHandler)
-        console.log('Phone Mask Applied:', contactInput._phoneMaskApplied)
-        console.log('Contact Value:', contactInput.value)
-      }
+    //   console.log('Contact Input:', contactInput)
+    //   if (contactInput) {
+    //     console.log('Pakistan Handler:', contactInput._pakistanHandler)
+    //     console.log('Other Country Handler:', contactInput._otherCountryHandler)
+    //     console.log('Phone Mask Applied:', contactInput._phoneMaskApplied)
+    //     console.log('Contact Value:', contactInput.value)
+    //   }
       
-      console.log('Document Data:', {
-        identification_type: document.doc?.identification_type,
-        country: document.doc?.country,
-        cnic: document.doc?.cnic,
-        contact_no: document.doc?.contact_no
-      })
+    //   console.log('Document Data:', {
+    //     identification_type: document.doc?.identification_type,
+    //     country: document.doc?.country,
+    //     cnic: document.doc?.cnic,
+    //     contact_no: document.doc?.contact_no
+    //   })
       
-      console.log('Available Functions:', {
-        reapplyAllMasksNow: typeof reapplyAllMasksNow,
-        applyCnicMaskToInput: typeof applyCnicMaskToInput,
-        applyPhoneMasksForCountry: typeof applyPhoneMasksForCountry,
-        findInputField: typeof findInputField
-      })
-    }
+    //   console.log('Available Functions:', {
+    //     reapplyAllMasksNow: typeof reapplyAllMasksNow,
+    //     applyCnicMaskToInput: typeof applyCnicMaskToInput,
+    //     applyPhoneMasksForCountry: typeof applyPhoneMasksForCountry,
+    //     findInputField: typeof findInputField
+    //   })
+    // }
     
     // Add a simple test function to check if masking is working
-    window.testMasks = () => {
-      console.log('Testing masks...')
+    // window.testMasks = () => {
+    //   console.log('Testing masks...')
       
-      // Check if we can find the input fields
-      const cnicInput = findInputField('cnic')
-      const contactInput = findInputField('contact_no')
+    //   // Check if we can find the input fields
+    //   const cnicInput = findInputField('cnic')
+    //   const contactInput = findInputField('contact_no')
       
-      if (cnicInput) {
-        console.log('✅ CNIC input found')
-        if (cnicInput._maskHandler) {
-          console.log('✅ CNIC mask handler present')
-        } else {
-          console.log('❌ CNIC mask handler missing')
-        }
-      } else {
-        console.log('❌ CNIC input not found')
-      }
+    //   if (cnicInput) {
+    //     console.log('✅ CNIC input found')
+    //     if (cnicInput._maskHandler) {
+    //       console.log('✅ CNIC mask handler present')
+    //     } else {
+    //       console.log('❌ CNIC mask handler missing')
+    //     }
+    //   } else {
+    //     console.log('❌ CNIC input not found')
+    //   }
       
-      if (contactInput) {
-        console.log('✅ Contact input found')
-        if (contactInput._pakistanHandler || contactInput._otherCountryHandler) {
-          console.log('✅ Phone mask handlers present')
-        } else {
-          console.log('❌ Phone mask handlers missing')
-        }
-      } else {
-        console.log('❌ Contact input not found')
-      }
+    //   if (contactInput) {
+    //     console.log('✅ Contact input found')
+    //     if (contactInput._pakistanHandler || contactInput._otherCountryHandler) {
+    //       console.log('✅ Phone mask handlers present')
+    //     } else {
+    //       console.log('❌ Phone mask handlers missing')
+    //     }
+    //   } else {
+    //     console.log('❌ Contact input not found')
+    //   }
       
-      // Try to reapply masks
-      console.log('Attempting to reapply masks...')
-      reapplyAllMasksNow()
-    }
+    //   // Try to reapply masks
+    //   console.log('Attempting to reapply masks...')
+    //   reapplyAllMasksNow()
+    // }
     
-    const endTime = performance.now()
-    console.log(`onMounted: Initialization completed in ${(endTime - startTime).toFixed(2)}ms`)
+  //   const endTime = performance.now()
+  //   console.log(`onMounted: Initialization completed in ${(endTime - startTime).toFixed(2)}ms`)
   }, 500)
   
 })
@@ -2464,6 +2397,9 @@ onUnmounted(() => {
 })
 
 
+let saveInterceptRetryCount = 0
+const MAX_SAVE_INTERCEPT_RETRIES = 5
+
 function interceptSave() {
   // Find all possible save buttons
   const saveSelectors = [
@@ -2475,7 +2411,9 @@ function interceptSave() {
     '.btn-save',
     '.btn-submit',
     '[data-testid="save-button"]',
-    '[data-testid="submit-button"]'
+    '[data-testid="submit-button"]',
+    'button:contains("Save")',
+    'button:contains("save")'
   ]
   
   let saveButton = null
@@ -2509,9 +2447,18 @@ function interceptSave() {
       const originalClickEvent = new Event('click', { bubbles: true })
       newSaveButton.dispatchEvent(originalClickEvent)
     })
+    
+    // Reset retry count on success
+    saveInterceptRetryCount = 0
   } else {
-    console.log('interceptSave: Save button not found, will retry')
-    setTimeout(interceptSave, 1000)
+    saveInterceptRetryCount++
+    
+    if (saveInterceptRetryCount < MAX_SAVE_INTERCEPT_RETRIES) {
+      console.log(`interceptSave: Save button not found, retry ${saveInterceptRetryCount}/${MAX_SAVE_INTERCEPT_RETRIES}`)
+      setTimeout(interceptSave, 2000) // Increase delay to 2 seconds
+    } else {
+      console.log('interceptSave: Max retries reached, giving up on save button interception')
+    }
   }
 }
 

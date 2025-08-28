@@ -213,6 +213,18 @@ export function useDonorFieldValidation() {
           inputElement.removeEventListener('paste', inputElement._pakistanPasteHandler)
           inputElement._pakistanPasteHandler = null
         }
+        if (inputElement._afghanistanHandler) {
+          inputElement.removeEventListener('input', inputElement._afghanistanHandler)
+          inputElement._afghanistanHandler = null
+        }
+        if (inputElement._afghanistanKeydownHandler) {
+          inputElement.removeEventListener('keydown', inputElement._afghanistanKeydownHandler)
+          inputElement._afghanistanKeydownHandler = null
+        }
+        if (inputElement._afghanistanPasteHandler) {
+          inputElement.removeEventListener('paste', inputElement._afghanistanPasteHandler)
+          inputElement._afghanistanPasteHandler = null
+        }
         if (inputElement._otherCountryHandler) {
           inputElement.removeEventListener('input', inputElement._otherCountryHandler)
           inputElement._otherCountryHandler = null
@@ -220,6 +232,10 @@ export function useDonorFieldValidation() {
         if (inputElement._otherCountryKeydownHandler) {
           inputElement.removeEventListener('keydown', inputElement._otherCountryKeydownHandler)
           inputElement._otherCountryKeydownHandler = null
+        }
+        if (inputElement._otherCountryPasteHandler) {
+          inputElement.removeEventListener('paste', inputElement._otherCountryPasteHandler)
+          inputElement._otherCountryPasteHandler = null
         }
         
         // Remove existing country prefix with more thorough cleanup
@@ -412,6 +428,129 @@ export function useDonorFieldValidation() {
             }
             inputElement.addEventListener('paste', inputElement._pakistanPasteHandler)
             
+          } else if (country === 'Afghanistan' || country === 'afghanistan') {
+            // Afghanistan - transform first 2 digits to 93 immediately when user starts typing
+            const dialCode = countryMask?.dialCode || '93'
+            const phoneMask = countryMask?.phoneMask || ''
+            
+            // Backend concatenates dialCode + phoneMask, so we do the same
+            const fullMask = dialCode + phoneMask
+            
+            // Calculate required digits from the full mask
+            const requiredDigits = fullMask ? fullMask.replace(/\D/g, '').length : 0
+            
+            // Set placeholder based on full mask (like backend)
+            if (fullMask) {
+              inputElement.placeholder = fullMask
+          } else {
+              inputElement.placeholder = '93-XXXXXXX'
+            }
+            
+            // Handle existing value - remove 92 prefix if switching from Pakistan
+            if (inputElement.value && inputElement.value.startsWith('92')) {
+              inputElement.value = inputElement.value.slice(2)
+            }
+            
+            // Add input handler for Afghanistan - transform first 2 digits to 93 immediately
+            inputElement._afghanistanHandler = (e) => {
+              let value = e.target.value
+              const cleanValue = value.replace(/\D/g, '')
+              
+              // Transform first 2 digits to 93 immediately when user starts typing
+              if (cleanValue.length >= 2 && !cleanValue.startsWith('93')) {
+                // Transform first 2 digits to 93 and keep the rest exactly as entered
+                const remainingDigits = cleanValue.slice(2)
+                const transformedValue = '93' + remainingDigits
+                
+                // Simple formatting: 93-XXXXXXX (no mask transformation)
+                if (remainingDigits.length > 0) {
+                  e.target.value = `93-${remainingDigits}`
+                  value = `93-${remainingDigits}`
+                } else {
+                  e.target.value = '93'
+                  value = '93'
+                }
+              } else if (cleanValue.startsWith('93')) {
+                // Already starts with 93, format normally without mask transformation
+                if (cleanValue.length > 2) {
+                  e.target.value = `93-${cleanValue.slice(2)}`
+                  value = e.target.value
+                } else {
+                  e.target.value = cleanValue
+                  value = cleanValue
+                }
+              } else {
+                // While typing, just format normally without transformation
+                if (cleanValue.length > 2) {
+                  e.target.value = `${cleanValue.slice(0, 2)}-${cleanValue.slice(2)}`
+                  value = e.target.value
+                } else {
+                  e.target.value = cleanValue
+                  value = cleanValue
+                }
+              }
+              
+              // Store the formatted value
+              if (setFieldValue) {
+                setFieldValue(fieldName, value)
+              }
+            }
+            inputElement.addEventListener('input', inputElement._afghanistanHandler)
+            
+            // Add keydown handler with strict digit limit
+            inputElement._afghanistanKeydownHandler = (e) => {
+              const currentValue = e.target.value.replace(/\D/g, '')
+              
+              // Allow navigation keys always
+              if ([8, 9, 27, 37, 38, 39, 40, 46].includes(e.keyCode)) {
+                return true
+              }
+              
+              // If we have a full mask, enforce the exact digit count
+              if (fullMask && requiredDigits > 0) {
+                if (currentValue.length >= requiredDigits) {
+                  e.preventDefault()
+                  return false
+                }
+              } else {
+                // Fallback limit for Afghanistan
+                if (currentValue.length > 10) {
+                  e.preventDefault()
+                  return false
+                }
+              }
+            }
+            inputElement.addEventListener('keydown', inputElement._afghanistanKeydownHandler)
+            
+            // Add paste handler for Afghanistan
+            inputElement._afghanistanPasteHandler = (e) => {
+              let paste = (e.originalEvent || e).clipboardData.getData('text')
+              paste = paste.replace(/\D/g, '')
+              
+              // Transform first 2 digits to 93 immediately if not already
+              if (paste.length >= 2 && !paste.startsWith('93')) {
+                const remainingDigits = paste.slice(2)
+                paste = '93' + remainingDigits
+              }
+              
+              // Simple formatting without mask transformation - just limit length
+              paste = paste.slice(0, 10) // Afghanistan limit
+              
+              // Format the pasted value
+              if (paste.startsWith('93') && paste.length > 2) {
+                e.target.value = `93-${paste.slice(2)}`
+              } else {
+                e.target.value = paste
+              }
+              
+              // Store the value
+              if (setFieldValue) {
+                setFieldValue(fieldName, paste)
+              }
+              
+              e.preventDefault()
+            }
+            inputElement.addEventListener('paste', inputElement._afghanistanPasteHandler)
           } else {
             // Other countries - use backend mask exactly as configured
             const dialCode = countryMask?.dialCode || ''
@@ -485,8 +624,8 @@ export function useDonorFieldValidation() {
               // If we have a full mask, enforce the exact digit count
               if (fullMask && requiredDigits > 0) {
                 if (currentValue.length >= requiredDigits) {
-                  e.preventDefault()
-                  return false
+                e.preventDefault()
+                return false
                 }
               } else {
                 // Fallback limit for countries without mask
@@ -527,13 +666,18 @@ export function useDonorFieldValidation() {
   }
 
   // Apply phone masks when country changes
-  async function applyPhoneMasksForCountry(country, setFieldValue) {
+  async function applyPhoneMasksForCountry(country, setFieldValue, fieldFilter = null) {
     if (!country) return
     
     // Wait for fields to be rendered
     await new Promise(resolve => setTimeout(resolve, 500))
     
-    const fields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'phone_no', 'mobile_no', 'org_representative_contact_number', 'org_contact']
+    let fields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'phone_no', 'mobile_no', 'org_representative_contact_number', 'org_contact', 'company_ownerceo_conatct']
+    
+    // If fieldFilter is provided, only apply to those specific fields
+    if (fieldFilter && Array.isArray(fieldFilter)) {
+      fields = fields.filter(field => fieldFilter.includes(field))
+    }
     
     for (const fieldName of fields) {
       const inputElement = findInputField(fieldName)
@@ -696,21 +840,21 @@ export function useDonorFieldValidation() {
           return { isValid: true, message: '' }
         } else {
           // Fallback validation for countries without specific mask
-          if (cleanNumber.length < 7) {
-            return {
-              isValid: false,
-              message: `${country} phone number must be at least 7 digits.`
-            }
+        if (cleanNumber.length < 7) {
+          return {
+            isValid: false,
+            message: `${country} phone number must be at least 7 digits.`
           }
-          
-          if (cleanNumber.length > 15) {
-            return {
-              isValid: false,
-              message: `${country} phone number cannot exceed 15 digits.`
-            }
+        }
+        
+        if (cleanNumber.length > 15) {
+          return {
+            isValid: false,
+            message: `${country} phone number cannot exceed 15 digits.`
           }
-          
-          return { isValid: true, message: '' }
+        }
+        
+        return { isValid: true, message: '' }
         }
       }
     } catch (error) {
@@ -755,7 +899,7 @@ export function useDonorFieldValidation() {
         const fieldContainer = inputElement.closest('.field') || inputElement.parentNode
         if (fieldContainer) {
           const existingMessages = fieldContainer.querySelectorAll('.phone-error-message')
-          existingMessages?.forEach(msg => msg.remove())
+        existingMessages?.forEach(msg => msg.remove())
           
           // Also clear any duplicate messages that might be in the parent
           const parentContainer = fieldContainer.parentNode
@@ -787,21 +931,21 @@ export function useDonorFieldValidation() {
             // Update existing error message instead of creating a new one
             existingError.textContent = message
           } else {
-            // Add error styling
-            inputElement.classList.remove('border-gray-300')
-            inputElement.classList.add('border-red-500')
-            
-            // Create and show error message
-            const errorMessage = document.createElement('div')
-            errorMessage.className = 'phone-error-message text-red-500 text-sm mt-1'
-            errorMessage.textContent = message
+          // Add error styling
+          inputElement.classList.remove('border-gray-300')
+          inputElement.classList.add('border-red-500')
+          
+          // Create and show error message
+          const errorMessage = document.createElement('div')
+          errorMessage.className = 'phone-error-message text-red-500 text-sm mt-1'
+          errorMessage.textContent = message
             errorMessage.setAttribute('data-field', fieldName) // Add data attribute to identify the field
-            
-            // Insert after the input field
-            if (fieldContainer) {
-              fieldContainer.appendChild(errorMessage)
-            }
+          
+          // Insert after the input field
+          if (fieldContainer) {
+            fieldContainer.appendChild(errorMessage)
           }
+        }
         }
       } else {
         // If we can't find the input, try to clear messages by field name

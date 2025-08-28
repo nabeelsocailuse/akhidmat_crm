@@ -32,6 +32,8 @@
       :doctype="field.options"
       :parentDoctype="doctype"
       :parentFieldname="field.fieldname"
+      :donorFiltering="getDonorFilteringFromData()"
+      @donor-selected="$emit('donor-selected', $event)"
     />
     <FormControl
       v-else-if="field.fieldtype === 'Select' && getSelectOptions(field).length > 0"
@@ -84,6 +86,16 @@
       class="flex gap-1"
       v-else-if="['Link', 'Dynamic Link'].includes(field.fieldtype)"
     >
+      <!-- ADD: Debug logging for Link component props -->
+      <div v-if="field.fieldname === 'donor_id'" style="display: none;">
+        {{ console.log('FieldLayout: Rendering donor_id Link component with props:', {
+          doctype: field.fieldtype == 'Link' ? field.options : data[field.options],
+          filters: getFieldFilters(field),
+          get_query: typeof field.get_query,
+          field: field
+        }) }}
+      </div>
+      
       <Link
         class="form-control flex-1 truncate"
         v-model="data[field.fieldname]"
@@ -91,6 +103,8 @@
           field.fieldtype == 'Link' ? field.options : data[field.options]
         "
         :filters="getFieldFilters(field)"
+        :get_query="field.get_query"
+        :key="`link-${field.fieldname}-${field._departmentKey || 'default'}`"
         @change="(v) => fieldChange(v, field)"
         :placeholder="getPlaceholder(field)"
         :onCreate="field.create"
@@ -319,6 +333,46 @@ const field = computed(() => {
     }
   }
 
+  // Make owner_id field readonly for Donor doctype
+  if (field.fieldname === 'owner_id' && doctype === 'Donor') {
+    field.read_only = true
+  }
+
+  // Configure donor_desk field with set query functionality for Donor doctype
+  if (field.fieldname === 'donor_desk' && doctype === 'Donor') {
+    // Set up the get_query function for dynamic filtering based on department
+    field.get_query = () => {
+      const department = data.value?.department
+      if (!department) {
+        return {
+          doctype: 'Donor Desk',
+          filters: { department: ['!=', undefined] }
+        }
+      }
+      return {
+        doctype: 'Donor Desk',
+        filters: { department: department }
+      }
+    }
+    
+    // Set up depends_on to show/hide field based on department selection
+    field.depends_on = 'department'
+    
+    // Set placeholder and description based on department selection
+    if (!data.value?.department) {
+      field.placeholder = 'Please select a department first'
+      field.description = 'Please select a department to see available donor desks'
+      field.read_only = true
+    } else {
+      field.placeholder = 'Select Donor Desk'
+      field.description = ''
+      field.read_only = false
+    }
+    
+    // Ensure field is always visible
+    field.hidden = false
+  }
+
   let _field = {
     ...field,
     filters: field.link_filters && JSON.parse(field.link_filters),
@@ -526,26 +580,60 @@ function getSelectOptions(field) {
 }
 
 function getFieldFilters(field) {
+  // ADD: Debug logging to see what field configuration is received
+  console.log('FieldLayout: getFieldFilters called for field:', {
+    fieldname: field.fieldname,
+    fieldtype: field.fieldtype,
+    options: field.options,
+    filters: field.filters,
+    link_filters: field.link_filters,
+    get_query: typeof field.get_query
+  })
+  
   // Apply filter to link_doctype field in the links child table
   // This ensures only "Donor" doctype shows up in the link_doctype dropdown
   if (parentFieldname === 'links' && field.fieldname === 'link_doctype' && field.fieldtype === 'Link' && field.options === 'DocType') {
+    console.log('FieldLayout: Applying link_doctype filter for links table')
     return { name: 'Donor' }
   }
   
   // Return existing filters if available
   if (field.filters) {
+    console.log('FieldLayout: Using field.filters:', field.filters)
     return field.filters
   }
   
   // Parse link_filters if available
   if (field.link_filters) {
     try {
-      return JSON.parse(field.link_filters)
+      const parsedFilters = JSON.parse(field.link_filters)
+      console.log('FieldLayout: Using parsed link_filters:', parsedFilters)
+      return parsedFilters
     } catch (e) {
+      console.log('FieldLayout: Error parsing link_filters:', e)
       return {}
     }
   }
   
+  console.log('FieldLayout: No filters found, returning empty object')
+  return {}
+}
+
+// ADD: Function to get donor filtering from data
+function getDonorFilteringFromData() {
+  console.log('Field: Getting donor filtering from data:', data.value)
+  
+  if (data.value) {
+    const donorFiltering = {
+      donor_identity: data.value.donor_identity,
+      currency: data.value.currency
+    }
+    
+    console.log('Field: Extracted donor filtering:', donorFiltering)
+    return donorFiltering
+  }
+  
+  console.log('Field: No data available for donor filtering')
   return {}
 }
 

@@ -76,7 +76,7 @@
 import Autocomplete from '@/components/frappe-ui/Autocomplete.vue'
 import { watchDebounced } from '@vueuse/core'
 import { createResource } from 'frappe-ui'
-import { useAttrs, computed, ref } from 'vue'
+import { useAttrs, computed, ref, watch } from 'vue'
 
 const props = defineProps({
   doctype: {
@@ -86,6 +86,14 @@ const props = defineProps({
   filters: {
     type: [Array, Object, String],
     default: [],
+  },
+  get_query: {
+    type: Function,
+    default: null,
+  },
+  key: {
+    type: String,
+    default: '',
   },
   modelValue: {
     type: String,
@@ -158,15 +166,83 @@ watchDebounced(
   { debounce: 300, immediate: true },
 )
 
+// Add watcher to monitor filter changes
+watch(
+  () => props.filters,
+  (newFilters, oldFilters) => {
+    console.log('Link component filters changed:', {
+      newFilters,
+      oldFilters,
+      doctype: props.doctype
+    })
+    // Force reload when filters change
+    reload(text.value || '')
+  },
+  { deep: true }
+)
+
+// Add watcher to monitor get_query function changes
+watch(
+  () => props.get_query,
+  (newGetQuery, oldGetQuery) => {
+    console.log('Link component get_query changed:', {
+      newGetQuery: typeof newGetQuery,
+      oldGetQuery: typeof oldGetQuery,
+      doctype: props.doctype
+    })
+    // Force reload when get_query changes
+    reload(text.value || '')
+  }
+)
+
+// Add watcher to monitor key changes (for department-based reloading)
+watch(
+  () => props.key,
+  (newKey, oldKey) => {
+    if (newKey !== oldKey) {
+      console.log('Link component key changed:', {
+        newKey,
+        oldKey,
+        doctype: props.doctype
+      })
+      // Clear current options and force reload
+      options.data = []
+      reload(text.value || '')
+    }
+  }
+)
+
+// Expose reload method for parent components
+defineExpose({
+  reload: () => reload(text.value || '')
+})
+
 const options = createResource({
   url: 'frappe.desk.search.search_link',
   cache: [props.doctype, text.value, props.hideMe, props.filters],
   method: 'POST',
-  params: {
-    txt: text.value,
-    doctype: props.doctype,
-    filters: props.filters,
-  },
+  params: computed(() => {
+    // Handle get_query function if provided
+    let filters = props.filters || {}
+    
+    // If get_query is a function, call it to get dynamic filters
+    if (typeof props.get_query === 'function') {
+      try {
+        const queryResult = props.get_query()
+        if (queryResult && queryResult.filters) {
+          filters = { ...filters, ...queryResult.filters }
+        }
+      } catch (error) {
+        console.error('Error executing get_query function:', error)
+      }
+    }
+    
+    return {
+      txt: text.value,
+      doctype: props.doctype,
+      filters: filters,
+    }
+  }),
   transform: (data) => {
     let allData = data.map((option) => {
       return {
@@ -187,18 +263,30 @@ const options = createResource({
 
 function reload(val) {
   if (!props.doctype) return
-  if (
-    options.data?.length &&
-    val === options.params?.txt &&
-    props.doctype === options.params?.doctype
-  )
-    return
+  
+  // Clear current options data to force fresh loading
+  options.data = []
+  
+  // Handle get_query function if provided
+  let filters = props.filters || {}
+  
+  // If get_query is a function, call it to get dynamic filters
+  if (typeof props.get_query === 'function') {
+    try {
+      const queryResult = props.get_query()
+      if (queryResult && queryResult.filters) {
+        filters = { ...filters, ...queryResult.filters }
+      }
+    } catch (error) {
+      console.error('Error executing get_query function:', error)
+    }
+  }
 
   options.update({
     params: {
       txt: val,
       doctype: props.doctype,
-      filters: props.filters,
+      filters: filters,
     },
   })
   options.reload()

@@ -297,6 +297,7 @@
                 :doctype="doctype"
                 :parentDoctype="parentDoctype"
                 :parentFieldname="parentFieldname"
+                :donorFiltering="getDonorFilteringFromParent()"
               />
             </div>
           </template>
@@ -443,6 +444,77 @@ const allFields = computed(() => {
   return getFields()?.map((f) => getFieldObj(f)) || []
 })
 
+// ADD: Force refresh of Link components when filters change
+watch(
+  () => fields.value,
+  (newFields) => {
+    if (newFields) {
+      newFields.forEach(field => {
+        if (field.fieldname === 'donor_id' && field.options === 'Donor') {
+          console.log('Grid - donor_id field detected, ensuring proper filtering:', {
+            fieldname: field.fieldname,
+            filters: field.filters,
+            hasGetQuery: !!field.get_query
+          })
+        }
+      })
+    }
+  },
+  { deep: true }
+)
+
+// ADD: Force refresh when parent document changes
+watch(
+  () => parentDoc.value,
+  (newParentDoc) => {
+    if (newParentDoc) {
+      console.log('Grid - Parent document changed, forcing field refresh')
+      
+      // Force a reactive update
+      nextTick(() => {
+        // This will trigger the fields computed property to recalculate
+        console.log('Grid - Parent document change triggered field refresh')
+      })
+    }
+  },
+  { deep: true }
+)
+
+// ADD: Enhanced setQueryForField function specifically for donor_id
+function setQueryForField(field, parentDoc) {
+  console.log('Grid setQueryForField called for:', field.fieldname, 'with parent doc:', parentDoc)
+  
+  if (field.fieldname === 'donor_id' && field.options === 'Donor') {
+    let filters = {
+      status: "Active"
+    }
+    
+    if (parentDoc?.currency) {
+      filters.default_currency = parentDoc.currency
+      console.log('Grid setQueryForField - Added currency filter:', parentDoc.currency)
+    }
+    
+    if (parentDoc?.donor_identity && parentDoc.donor_identity.trim() !== '') {
+      filters.donor_identity = parentDoc.donor_identity
+      console.log('Grid setQueryForField - Added donor_identity filter:', parentDoc.donor_identity)
+    }
+    
+    // CRITICAL: Set both filters and get_query
+    field.filters = filters
+    field.get_query = () => ({ filters })
+    
+    console.log('Grid setQueryForField - Final donor_id configuration:', {
+      fieldname: field.fieldname,
+      filters: field.filters,
+      hasGetQuery: !!field.get_query,
+      getQueryResult: field.get_query()
+    })
+  }
+  
+  return field
+}
+
+// UPDATE: Enhanced getFieldObj function to always apply setQueryForField
 function getFieldObj(field) {
   if (field.fieldtype === 'Link' && field.options !== 'User') {
     if (!field.create) {
@@ -463,16 +535,36 @@ function getFieldObj(field) {
     })
   }
 
+  // CRITICAL: Always apply setQueryForField with current parent document values
+  setQueryForField(field, parentDoc.value)
+
   // Apply filter to link_doctype field in the links child table
   if (props.parentFieldname === 'links' && field.fieldname === 'link_doctype' && field.fieldtype === 'Link' && field.options === 'DocType') {
     field.filters = { name: 'Donor' }
   }
 
-  return {
+  const fieldObj = {
     ...field,
-    filters: field.filters || (field.link_filters && JSON.parse(field.link_filters)),
     placeholder: field.placeholder || field.label,
   }
+  
+  if (field.depends_on) {
+    fieldObj.display_via_depends_on = true
+  }
+  
+  // CRITICAL: Ensure filters are properly set
+  if (field.filters) {
+    fieldObj.filters = field.filters
+  } else if (field.link_filters) {
+    fieldObj.filters = JSON.parse(field.link_filters)
+  }
+  
+  // CRITICAL: Ensure get_query is preserved
+  if (field.get_query) {
+    fieldObj.get_query = field.get_query
+  }
+  
+  return fieldObj
 }
 
 const gridTemplateColumns = computed(() => {
@@ -664,6 +756,24 @@ function getDefaultValue(defaultValue, fieldtype) {
   }
 
   return defaultValue
+}
+
+// ADD: Function to get donor filtering from parent document
+function getDonorFilteringFromParent() {
+  console.log('Grid: Getting donor filtering from parent document:', parentDoc.value)
+  
+  if (parentDoc.value) {
+    const donorFiltering = {
+      donor_identity: parentDoc.value.donor_identity,
+      currency: parentDoc.value.currency
+    }
+    
+    console.log('Grid: Extracted donor filtering:', donorFiltering)
+    return donorFiltering
+  }
+  
+  console.log('Grid: No parent document available for donor filtering')
+  return {}
 }
 </script>
 

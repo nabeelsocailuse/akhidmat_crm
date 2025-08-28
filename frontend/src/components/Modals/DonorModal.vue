@@ -5,9 +5,12 @@
       <AppStyling type="donor-modal-background">
       <AppStyling type="modal-styling" modalType="header" >
         <div class="mb-5 flex items-center justify-between" >
+          <div>
           <h3 class="text-2xl font-semibold text-ink-gray-9">
             {{ __('Create Donor') }}
           </h3>
+
+          </div>
           <div class="flex items-center gap-1">
             <Button
               v-if="isManager() && !isMobileView"
@@ -115,7 +118,7 @@ import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
 import { nextTick } from 'vue'
 import { isMobileView } from '@/composables/settings'
 import { useDocument } from '@/data/document'
-import { useInputMask } from '@/composables/useInputMask'
+
 import AppStyling from '@/components/AppStyling.vue'
 
 const props = defineProps({
@@ -153,19 +156,19 @@ const {
   cnicExistsMessage,
   showCnicValidationDialog,
   cnicValidationMessage,
-  formatCnic,
-  formatNtn,
-  formatPassport,
-  getMaskPattern,
+  // formatCnic,
+  // formatNtn,
+  // formatPassport,
+  // getMaskPattern,
   applyCnicMaskToInput,
   validateCnicFormat,
-  getCountryPhoneMask,
+  // getCountryPhoneMask,
   applyPhoneMaskToInput,
   applyPhoneMasksForCountry,
   validatePhoneNumber,
   showPhoneValidationFeedback,
   findInputField,
-  reapplyAllMasks
+  // reapplyAllMasks
 } = useDonorFieldValidation()
 
 const modalStack = ref([]) 
@@ -187,34 +190,8 @@ function openQuickEntryModal() {
 
 const { document: donor, triggerOnBeforeCreate } = useDocument('Donor')
 
-// Function to reset donor form data
-function resetDonorForm() {
-  // Reset to default values
-  donor.doc = {
-    status: 'Active',
-    identification_type: 'CNIC',
-    identification_value: '99999-9999999-9',
-    donor_identity: 'Known',
-    country: 'Pakistan',
-    contact_numbers: [{
-      phone: '',
-      is_primary_phone: false,
-      is_primary_mobile_no: false
-    }],
-    email_ids: [{
-      email_id: '',
-      is_primary: false
-    }]
-  }
-  
-  // Set owner_id if user is available
-  if (user.value) {
-    donor.doc.owner_id = user.value
-  }
-  
-  // Clear donor desk resource data
-  donorDeskResource.data = []
-}
+// Function to reset donor form data - will be defined after user is available
+let resetDonorForm
 
 
 
@@ -248,21 +225,162 @@ const donorDeskOptions = computed(() => {
 })
 
 
+// Function to configure donor desk field with proper set query functionality
+function configureDonorDeskField(field) {
+  if (field.fieldname === 'donor_desk') {
+    // Configure donor desk field with proper set query functionality
+    field.options = 'Donor Desk'
+    field.fieldtype = 'Link'
+    
+    // Set up the get_query function for dynamic filtering based on department
+    field.get_query = () => {
+      const department = donor.doc?.department
+      if (!department) {
+        return {
+          doctype: 'Donor Desk',
+          filters: { department: ['!=', undefined] }
+        }
+      }
+      return {
+        doctype: 'Donor Desk',
+        filters: { department: department }
+      }
+    }
+    
+    // Set up depends_on to show/hide field based on department selection
+    field.depends_on = 'department'
+    
+    // Set placeholder and description based on department selection
+    if (!donor.doc?.department) {
+      field.placeholder = 'Please select a department first'
+      field.description = 'Please select a department to see available donor desks'
+      field.read_only = true
+    } else {
+      field.placeholder = 'Select Donor Desk'
+      field.description = ''
+      field.read_only = false
+    }
+    
+    // Ensure field is always visible
+    field.hidden = false
+    
+    // Initialize field value if not set
+    if (!donor.doc[field.fieldname]) {
+      donor.doc[field.fieldname] = ''
+    }
+  }
+}
+
 const onFieldChange = (fieldname, value) => {
   if (fieldname === 'department') {
-    donor.doc.donor_desk = ''
+  donor.doc.donor_desk = ''
     if (value) {
       donorDeskResource.reload()
     }
   }
 }
 
-
-
-
-
 const { getUser, isManager } = usersStore()
 const { user } = sessionStore()
+
+async function getCurrentUserId() {
+  // Try session store first
+  if (user.value?.name) {
+    return user.value.name
+  }
+  
+  // Try Frappe session directly
+  if (typeof frappe !== 'undefined' && frappe.session && frappe.session.user) {
+    return frappe.session.user
+  }
+  
+  // Try window.frappe if available
+  if (typeof window !== 'undefined' && window.frappe && window.frappe.session && window.frappe.session.user) {
+    return window.frappe.session.user
+  }
+  
+  // Try to get from localStorage or cookies
+  try {
+    if (typeof window !== 'undefined') {
+      // Try localStorage
+      const storedUser = localStorage.getItem('frappe_user')
+      if (storedUser) {
+        return storedUser
+      }
+      
+      // Try cookies
+      const cookies = document.cookie.split(';')
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split('=')
+        if (name === 'frappe_user' || name === 'user_id') {
+          return value
+        }
+      }
+    }
+  } catch (error) {
+    // Silently handle error
+  }
+  
+  // Try API call as last resort
+  try {
+    const response = await call('frappe.auth.get_logged_user')
+    if (response) {
+      return response
+    }
+  } catch (error) {
+    // Silently handle error
+  }
+  
+
+  
+
+  try {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      const urlUser = urlParams.get('user') || urlParams.get('owner')
+      if (urlUser) {
+
+        return urlUser
+      }
+      
+      const pageTitle = document.title
+      if (pageTitle && pageTitle.includes('User:')) {
+        const userMatch = pageTitle.match(/User:\s*([^\s]+)/)
+        if (userMatch) {
+
+          return userMatch[1]
+        }
+      }
+    }
+  } catch (error) {
+  }
+  
+  return ''
+}
+
+resetDonorForm = async function() {
+  const currentUserId = await getCurrentUserId()
+  
+  donor.doc = {
+    status: 'Active',
+    identification_type: 'CNIC',
+    identification_value: '99999-9999999-9',
+    donor_identity: 'Known',    
+    country: 'Pakistan',
+    owner_id: currentUserId,
+    contact_numbers: [{
+      phone: '',
+      is_primary_phone: false,
+      is_primary_mobile_no: false
+    }],
+    email_ids: [{
+      email_id: '',
+      is_primary: false
+    }]
+  }
+  
+  donorDeskResource.data = []
+}
 
 const tabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
@@ -279,23 +397,13 @@ const tabs = createResource({
               donor.doc[field.fieldname] = []
             }
             
-            // Make owner_id field readonly
-            if (field.fieldname === 'owner_id') {
-              field.read_only = true
-              if (!donor.doc.owner_id) {
-                donor.doc.owner_id = user.value || ''
-              }
-            }
-            
-              // if (field.fieldname === 'status') {
-              //   field.read_only = true
-              //   field.tooltip = 'This field is read only and cannot be edited.'
-              //   field.hidden = false
-              // }
-              
               field.hidden = false
               if (field.read_only !== true) {
                 field.read_only = false
+              }
+              
+              if (field.fieldname === 'owner_id') {
+                field.read_only = true
               }
             }
           })
@@ -323,69 +431,26 @@ const tabs = createResource({
       donor.doc.country = 'Pakistan'
     }
     
-    // Ensure owner_id field is always present and visible
+    // Configure donor desk field
     if (data && data.length > 0) {
-      let ownerIdFieldExists = false
       data.forEach(tab => {
         tab.sections.forEach(section => {
           section.columns.forEach(column => {
             column.fields.forEach(field => {
               if (typeof field === 'object' && field !== null) {
-              if (field.fieldname === 'owner_id') {
-                ownerIdFieldExists = true
-              }
               
               if (field.fieldname === 'donor_desk') {
-                  field.options = 'Donor Desk'
-                field.get_query = () => {
-                    donorDeskResource.reload()
-                    return {
-                      doctype: 'Donor Desk',
-                      filters: donor.doc?.department ? { department: donor.doc.department } : {}
-                    }
-                  }
-                  field.data = computed(() => donorDeskOptions.value)
-                  // Keep fieldtype as Select but handle empty options gracefully
-                  field.fieldtype = 'Select'
-                  field.options = computed(() => {
-                    if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
-                      return []
-                    }
-                    return donorDeskOptions.value
-                  })
-                  field.placeholder = computed(() => {
-                    if (!donor.doc?.department) {
-                      return 'Please select a department first'
-                    }
-                    if (donorDeskResource.data && donorDeskResource.data.length === 0) {
-                      return 'No donor desks available'
-                    }
-                    return 'Select Donor Desk'
-                  })
-                  field.description = computed(() => {
-                    if (!donor.doc?.department) {
-                      return 'Please select a department to see available donor desks'
-                    }
-                    if (donorDeskResource.data && donorDeskResource.data.length === 0) {
-                      return 'No donor desks found for the selected department'
-                    }
-                    return ''
-                  })
-                  field.read_only = computed(() => {
-                    if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
-                      return true
-                    }
-                    return false
-                  })
-                  field.hidden = false
-                  if (!donor.doc[field.fieldname]) {
-                    donor.doc[field.fieldname] = ''
-                  }
-                }
+                configureDonorDeskField(field)
+              }
                 
                 field.hidden = false
                 if (field.read_only !== true) {
                 field.read_only = false
+                }
+                
+                // Make owner_id field readonly
+                if (field.fieldname === 'owner_id') {
+                  field.read_only = true
                 }
               }
             })
@@ -424,41 +489,51 @@ watch(() => donorDeskResource.data, (newData) => {
         section.columns.forEach(column => {
           column.fields.forEach(field => {
             if (field.fieldname === 'donor_desk') {
-              field.fieldtype = 'Select'
-              field.options = computed(() => {
-                if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
-                  return []
+              // Configure donor desk field with proper set query functionality
+              field.options = 'Donor Desk'
+              field.fieldtype = 'Link'
+              
+              // Set up the get_query function for dynamic filtering based on department
+              field.get_query = () => {
+                const department = donor.doc?.department
+                if (!department) {
+                  return {
+                    doctype: 'Donor Desk',
+                    filters: { department: ['!=', undefined] }
+                  }
                 }
-                return donorDeskOptions.value
-              })
-              field.placeholder = computed(() => {
-                if (!donor.doc?.department) {
-                  return 'Please select a department first'
+                return {
+                  doctype: 'Donor Desk',
+                  filters: { department: department }
                 }
-                if (donorDeskResource.data && donorDeskResource.data.length === 0) {
-                  return 'No donor desks available'
-                }
-                return 'Select Donor Desk'
-              })
-              field.description = computed(() => {
-                if (!donor.doc?.department) {
-                  return 'Please select a department to see available donor desks'
-                }
-                if (donorDeskResource.data && donorDeskResource.data.length === 0) {
-                  return 'No donor desks found for the selected department'
-                }
-                return ''
-              })
-              field.read_only = computed(() => {
-                if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
-                  return true
-                }
-                return false
-              })
+              }
+              
+              // Set up depends_on to show/hide field based on department selection
+              field.depends_on = 'department'
+              
+              // Set placeholder and description based on department selection
+              if (!donor.doc?.department) {
+                field.placeholder = 'Please select a department first'
+                field.description = 'Please select a department to see available donor desks'
+                field.read_only = true
+              } else {
+                field.placeholder = 'Select Donor Desk'
+                field.description = ''
+                field.read_only = false
+              }
+              
+              // Ensure field is always visible
               field.hidden = false
+              
+              // Initialize field value if not set
               if (!donor.doc[field.fieldname]) {
                 donor.doc[field.fieldname] = ''
               }
+            }
+            
+            // Make owner_id field readonly
+            if (field.fieldname === 'owner_id') {
+              field.read_only = true
             }
           })
         })
@@ -482,8 +557,12 @@ const createDonor = createResource({
 })
 
 watch(show, async (val) => {
-  if (val && user.value) {
-    resetDonorForm()
+  if (val) {
+    await resetDonorForm()
+    
+    // Ensure owner_id is set to current user
+    const currentUserId = await getCurrentUserId()
+    donor.doc.owner_id = currentUserId
     
     if (donor.doc.department) {
       donorDeskResource.reload()
@@ -494,7 +573,8 @@ watch(show, async (val) => {
     }, 500)
     
     setTimeout(async () => {
-      await applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
+      const mainCountryPhoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
+      await applyPhoneMasksForCountry(donor.doc.country, setFieldValue, mainCountryPhoneFields)
     }, 1000)
     
         setTimeout(() => {
@@ -504,60 +584,51 @@ watch(show, async (val) => {
                 section.columns.forEach(column => {
                   column.fields.forEach(field => {
                     if (field.fieldname === 'donor_desk') {
+                      // Configure donor desk field with proper set query functionality
                       field.options = 'Donor Desk'
+                      field.fieldtype = 'Link'
+                      
+                      // Set up the get_query function for dynamic filtering based on department
                       field.get_query = () => {
-                        donorDeskResource.reload()
+                        const department = donor.doc?.department
+                        if (!department) {
                         return {
                           doctype: 'Donor Desk',
-                          filters: donor.doc?.department ? { department: donor.doc.department } : {}
+                            filters: { department: ['!=', undefined] }
+                          }
+                        }
+                        return {
+                          doctype: 'Donor Desk',
+                          filters: { department: department }
                         }
                       }
-                      field.data = computed(() => donorDeskOptions.value)
-                      field.fieldtype = 'Select'
-                      // Use the computed options directly instead of converting to string
-                      field.options = computed(() => {
-                        if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
-                          return []
-                        }
-                        return donorDeskOptions.value
-                      })
-                      // Keep fieldtype as Select but handle empty options gracefully
-                      field.fieldtype = 'Select'
-                      // Set placeholder based on department selection
-                      field.placeholder = computed(() => {
-                        if (!donor.doc?.department) {
-                          return 'Please select a department first'
-                        }
-                        // If department is selected but no donor desks available, show appropriate message
-                        if (donorDeskResource.data && donorDeskResource.data.length === 0) {
-                          return 'No donor desks available'
-                        }
-                        return 'Select Donor Desk'
-                      })
-                      // Set description to show helper text when no department is selected
-                      field.description = computed(() => {
-                        if (!donor.doc?.department) {
-                          return 'Please select a department to see available donor desks'
-                        }
-                        // Show "No records found" message in description when department has no donor desks
-                        if (donorDeskResource.data && donorDeskResource.data.length === 0) {
-                          return 'No donor desks found for the selected department'
-                        }
-                        return ''
-                      })
-                      // Set read_only based on availability of options
-                      field.read_only = computed(() => {
-                        if (!donor.doc?.department || (donorDeskResource.data && donorDeskResource.data.length === 0)) {
-                          return true
-                        }
-                        return false
-                      })
+                      
+                      // Set up depends_on to show/hide field based on department selection
+                      field.depends_on = 'department'
+                      
+                      // Set placeholder and description based on department selection
+                      if (!donor.doc?.department) {
+                        field.placeholder = 'Please select a department first'
+                        field.description = 'Please select a department to see available donor desks'
+                        field.read_only = true
+                      } else {
+                        field.placeholder = 'Select Donor Desk'
+                        field.description = ''
+                        field.read_only = false
+                      }
+                      
                       // Ensure field is always visible
                       field.hidden = false
-                      // Ensure field always has a value to prevent hiding
+                      
+                      // Initialize field value if not set
                       if (!donor.doc[field.fieldname]) {
                         donor.doc[field.fieldname] = ''
                       }
+                    }
+                    
+                    // Make owner_id field readonly
+                    if (field.fieldname === 'owner_id') {
+                      field.read_only = true
                     }
                   })
                 })
@@ -574,10 +645,10 @@ watch(show, async (val) => {
 })
 
 // Reset form when modal is closed
-watch(() => show.value, (newVal, oldVal) => {
+watch(() => show.value, async (newVal, oldVal) => {
   if (oldVal === true && newVal === false) {
     // Modal was closed, reset form data
-    resetDonorForm()
+    await resetDonorForm()
   }
 })
 
@@ -601,14 +672,14 @@ const ensureParentModalVisible = (modalIdx) => {
 }
 
 // Handle close button click
-const handleCloseButton = () => {
+const handleCloseButton = async () => {
   if (hasActiveSubModals.value) {
     // Don't allow closing when sub-modals are active
     return
   }
   show.value = false
   // Reset form data when modal is manually closed
-  resetDonorForm()
+  await resetDonorForm()
 }
 
 
@@ -647,6 +718,38 @@ watch(() => modalStack.value.filter(m => m.visible).length, (visibleCount) => {
   }
 })
 
+// Watch for user session changes to update owner_id
+watch(() => user.value, async (newUser) => {
+  // Update owner_id when user changes
+  if (show.value && donor.doc) {
+    const currentUserId = await getCurrentUserId()
+    donor.doc.owner_id = currentUserId
+  }
+})
+
+watch(() => user.value?.name, (newUserName) => {
+  if (newUserName && show.value && donor.doc) {
+    donor.doc.owner_id = newUserName
+  }
+})
+
+// Watch for tabs data changes to ensure owner_id field remains readonly
+watch(() => tabs.data, (newTabs) => {
+  if (newTabs && newTabs.length > 0) {
+    newTabs.forEach(tab => {
+      tab.sections.forEach(section => {
+        section.columns.forEach(column => {
+          column.fields.forEach(field => {
+            if (field.fieldname === 'owner_id') {
+              field.read_only = true
+            }
+          })
+        })
+      })
+    })
+  }
+}, { deep: true })
+
 
 
 
@@ -663,7 +766,8 @@ watch(
     
     // Apply phone masks when FOA changes (affects co_contact_no visibility)
     setTimeout(async () => {
-      await applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
+      const mainCountryPhoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
+      await applyPhoneMasksForCountry(donor.doc.country, setFieldValue, mainCountryPhoneFields)
     }, 400)
   }
 )
@@ -672,17 +776,19 @@ watch(
 const validationTimeouts = new Map()
 
 // Function to clear all phone field error messages
-function clearAllPhoneFieldErrors() {
+function clearAllPhoneFieldErrors(excludeFields = []) {
   const allErrorMessages = document.querySelectorAll('.phone-error-message')
   allErrorMessages?.forEach(msg => msg.remove())
   
-  // Also clear error styling from all phone inputs
-  const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'org_representative_contact_number', 'org_contact', 'representative_mobile', 'mobile_no', 'phone_no']
+  // Also clear error styling from phone inputs (excluding specified fields)
+  const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'org_representative_contact_number', 'org_contact', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
   phoneFields.forEach(fieldName => {
-    const inputElement = findInputField(fieldName)
-    if (inputElement) {
-      inputElement.classList.remove('border-red-500', 'border-red-300')
-      inputElement.classList.add('border-gray-300')
+    if (!excludeFields.includes(fieldName)) {
+      const inputElement = findInputField(fieldName)
+      if (inputElement) {
+        inputElement.classList.remove('border-red-500', 'border-red-300')
+        inputElement.classList.add('border-gray-300')
+      }
     }
   })
 }
@@ -711,15 +817,25 @@ function createPhoneFieldWatcher(fieldName) {
       clearTimeout(validationTimeouts.get(fieldName))
     }
     
-        // Debounce validation to prevent multiple rapid calls
+    // Determine which country to use for validation based on field type
+    let countryForValidation = null
+    if (fieldName === 'org_representative_contact_number' || fieldName === 'org_contact') {
+      // Organization contact fields use orgs_country
+      countryForValidation = donor.doc.orgs_country
+    } else {
+      // All other phone fields use the main country
+      countryForValidation = donor.doc.country
+    }
+    
+    // Debounce validation to prevent multiple rapid calls
     const timeoutId = setTimeout(async () => {
-      if (newValue && donor.doc.country) {
-        const validation = await validatePhoneNumber(newValue, donor.doc.country)
+      if (newValue && countryForValidation) {
+        const validation = await validatePhoneNumber(newValue, countryForValidation)
         if (validation && validation.isValid !== undefined) {
           showPhoneValidationFeedback(fieldName, validation.isValid, validation.message)
         }
-      } else if (donor.doc.country && donor.doc.country !== 'Pakistan' && donor.doc.country !== 'pakistan') {
-        const validation = await validatePhoneNumber('', donor.doc.country)
+      } else if (countryForValidation && countryForValidation !== 'Pakistan' && countryForValidation !== 'pakistan') {
+        const validation = await validatePhoneNumber('', countryForValidation)
         if (validation && validation.isValid !== undefined) {
           showPhoneValidationFeedback(fieldName, validation.isValid, validation.message)
         }
@@ -770,11 +886,14 @@ function setFieldValue(fieldName, value) {
     case 'phone_no':
       donor.doc.phone_no = value
       break
+    case 'company_ownerceo_conatct':
+      donor.doc.company_ownerceo_conatct = value
+      break
   }
 }
 
 // Watch for all phone field changes
-const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'org_representative_contact_number', 'org_contact', 'representative_mobile', 'mobile_no', 'phone_no']
+const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'org_representative_contact_number', 'org_contact', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
 
 phoneFields.forEach(fieldName => {
   watch(() => donor.doc[fieldName], createPhoneFieldWatcher(fieldName))
@@ -784,11 +903,23 @@ phoneFields.forEach(fieldName => {
 watch(
   () => donor.doc.donor_type,
   async (newDonorType) => {
-    if (newDonorType && donor.doc.country) {
-      setTimeout(async () => {
-        await applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
-      }, 300)
-  }
+    if (newDonorType) {
+      // Apply phone masks for main country fields
+      if (donor.doc.country) {
+        setTimeout(async () => {
+          const mainCountryPhoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
+          await applyPhoneMasksForCountry(donor.doc.country, setFieldValue, mainCountryPhoneFields)
+        }, 300)
+      }
+      
+      // Apply phone masks for organization fields if orgs_country is set
+      if (newDonorType === 'Organizational' && donor.doc.orgs_country) {
+        setTimeout(async () => {
+          const orgPhoneFields = ['org_representative_contact_number', 'org_contact']
+          await applyPhoneMasksForCountry(donor.doc.orgs_country, setFieldValue, orgPhoneFields)
+        }, 300)
+      }
+    }
   }
 )
 
@@ -809,7 +940,8 @@ watch(
         
         // Only reapply phone masks if they're missing
         if (donor.doc.country) {
-          await applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
+          const mainCountryPhoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
+          await applyPhoneMasksForCountry(donor.doc.country, setFieldValue, mainCountryPhoneFields)
         }
       }, 300)
     }
@@ -839,7 +971,8 @@ watch(
               
               // Only reapply phone masks if they're missing
               if (donor.doc.country) {
-                applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
+                const mainCountryPhoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
+                applyPhoneMasksForCountry(donor.doc.country, setFieldValue, mainCountryPhoneFields)
               }
             }, 200)
           })
@@ -890,7 +1023,8 @@ watch(
                 
                 // Only reapply phone masks if they're missing
                 if (donor.doc.country) {
-                  applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
+                  const mainCountryPhoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
+                  applyPhoneMasksForCountry(donor.doc.country, setFieldValue, mainCountryPhoneFields)
                 }
               }, 200)
             }
@@ -907,8 +1041,9 @@ watch(
         // Apply phone masks when modal becomes visible
         if (donor.doc.country) {
           setTimeout(async () => {
-            await applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
-      }, 500)
+            const mainCountryPhoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
+            await applyPhoneMasksForCountry(donor.doc.country, setFieldValue, mainCountryPhoneFields)
+          }, 500)
         }
       }, 300)
     } else {
@@ -964,7 +1099,8 @@ const setupObservers = () => {
         
         // Only reapply phone masks if they're missing
         if (donor.doc.country) {
-          await applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
+          const mainCountryPhoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
+          await applyPhoneMasksForCountry(donor.doc.country, setFieldValue, mainCountryPhoneFields)
         }
       }, 200)
     }
@@ -986,13 +1122,25 @@ const setupObservers = () => {
       applyCnicMaskToInput('cnic', donor.doc.identification_type, setFieldValue)
     }
     
-    // Check all phone fields for missing masks
-    phoneFields.forEach(fieldName => {
+    // Check main country phone fields for missing masks (excluding organization fields)
+    const mainCountryPhoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
+    mainCountryPhoneFields.forEach(fieldName => {
       const inputElement = findInputField(fieldName)
       if (inputElement && !inputElement._pakistanHandler && !inputElement._otherCountryHandler && donor.doc.country) {
         applyPhoneMaskToInput(fieldName, donor.doc.country, setFieldValue)
       }
     })
+    
+    // Check organization phone fields for missing masks
+    if (donor.doc.orgs_country) {
+      const orgPhoneFields = ['org_representative_contact_number', 'org_contact']
+      orgPhoneFields.forEach(fieldName => {
+        const inputElement = findInputField(fieldName)
+        if (inputElement && !inputElement._pakistanHandler && !inputElement._otherCountryHandler && !inputElement._afghanistanHandler) {
+          applyPhoneMaskToInput(fieldName, donor.doc.orgs_country, setFieldValue)
+        }
+      })
+    }
   }, 5000)
 }
 
@@ -1277,6 +1425,7 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
       donor.doc.co_contact_no = ""
       donor.doc.company_contact_number = ""
       donor.doc.organization_contact_person = ""
+        donor.doc.company_ownerceo_conatct = ""
       donor.doc.state = ""
       donor.doc.area = ""
 
@@ -1288,9 +1437,9 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
         const coContactInput = findInputField('co_contact_no')
         const companyContactInput = findInputField('company_contact_number')
         const orgContactInput = findInputField('organization_contact_person')
-        const orgRepContactInput = findInputField('org_representative_contact_number')
-        const ContactInput = findInputField('org_contact')
+
         const representative_mobileInput = findInputField('representative_mobile')
+        const companyOwnerceoContactInput = findInputField('company_ownerceo_conatct')
         
         // Helper function to clear phone field styling and prefixes
         const clearPhoneField = (inputElement) => {
@@ -1310,31 +1459,29 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
           }
         }
         
-        // Clear all phone fields
+        // Clear main country phone fields (not organization fields)
         clearPhoneField(contactInput)
         clearPhoneField(coContactInput)
         clearPhoneField(companyContactInput)
         clearPhoneField(orgContactInput)
-        clearPhoneField(orgRepContactInput)
-        clearPhoneField(ContactInput)
         clearPhoneField(representative_mobileInput)
+        clearPhoneField(companyOwnerceoContactInput)
       }
     
-    // Clear all existing phone field errors when country changes
-    clearAllPhoneFieldErrors()
+    // Clear all existing phone field errors when country changes (excluding organization fields)
+    clearAllPhoneFieldErrors(['org_representative_contact_number', 'org_contact'])
     
     // Also clear any existing validation timeouts to prevent delayed validations
     validationTimeouts.forEach(timeoutId => clearTimeout(timeoutId))
     validationTimeouts.clear()
     
-    // Apply phone masks for the new country
+    // Apply phone masks for the new country (only for main country fields)
     setTimeout(async () => {
-      await applyPhoneMasksForCountry(newCountry, setFieldValue)
+      const mainCountryPhoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
+      await applyPhoneMasksForCountry(newCountry, setFieldValue, mainCountryPhoneFields)
       
-          // Re-validate all phone fields with the new country
-    const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'org_representative_contact_number', 'org_contact', 'representative_mobile', 'mobile_no', 'phone_no']
-    
-    for (const fieldName of phoneFields) {
+      // Re-validate main country phone fields with the new country
+      for (const fieldName of mainCountryPhoneFields) {
         if (donor.doc[fieldName] && donor.doc[fieldName].trim() !== '') {
           const validation = await validatePhoneNumber(donor.doc[fieldName], newCountry)
           if (!validation.isValid) {
@@ -1349,11 +1496,61 @@ watch(() => donor.doc.country, async (newCountry, oldCountry) => {
   }
 })
 
+// Watch for orgs_country changes to update organization contact field masks
+watch(() => donor.doc.orgs_country, async (newOrgsCountry, oldOrgsCountry) => {
+  if (newOrgsCountry && oldOrgsCountry !== newOrgsCountry) {
+    // Clean up existing prefixes for organization contact fields
+    const orgRepContactInput = findInputField('org_representative_contact_number')
+    const orgContactInput = findInputField('org_contact')
+    
+    // Helper function to clear phone field styling and prefixes
+    const clearPhoneField = (inputElement) => {
+      if (inputElement) {
+        const existingPrefixes = inputElement.parentNode?.querySelectorAll('.country-prefix')
+        existingPrefixes?.forEach(prefix => prefix.remove())
+        inputElement.style.paddingLeft = ''
+        inputElement.style.position = ''
+        if (inputElement.parentNode) {
+          inputElement.parentNode.style.position = ''
+        }
+        
+        // Clear validation messages
+        const existingMessages = inputElement.parentNode?.querySelectorAll('.phone-error-message')
+        existingMessages?.forEach(msg => msg.remove())
+        inputElement.classList.remove('border-red-500', 'border-green-500')
+      }
+    }
+    
+    // Clear organization contact fields
+    clearPhoneField(orgRepContactInput)
+    clearPhoneField(orgContactInput)
+    
+    // Clear validation errors for organization fields
+    clearPhoneFieldError('org_representative_contact_number')
+    clearPhoneFieldError('org_contact')
+    
+    // Apply phone masks for the new organization country (only organization fields)
+    setTimeout(async () => {
+      const orgPhoneFields = ['org_representative_contact_number', 'org_contact']
+      await applyPhoneMasksForCountry(newOrgsCountry, setFieldValue, orgPhoneFields)
+      
+      // Re-validate organization contact fields with the new country
+      for (const fieldName of orgPhoneFields) {
+        if (donor.doc[fieldName] && donor.doc[fieldName].trim() !== '') {
+          const validation = await validatePhoneNumber(donor.doc[fieldName], newOrgsCountry)
+          if (!validation.isValid) {
+            showPhoneValidationFeedback(fieldName, false, validation.message)
+          } else {
+            // Clear any existing error messages for valid fields
+            showPhoneValidationFeedback(fieldName, true, '')
+          }
+        }
+      }
+    }, 500)
+  }
+})
 
-
-
-
-onMounted(() => {
+onMounted(async () => {
 
   
   // Set default values for donor.doc
@@ -1394,6 +1591,12 @@ onMounted(() => {
 
   }
   
+  if (!donor.doc.owner_id) {
+    getCurrentUserId().then(userId => {
+      donor.doc.owner_id = userId
+    })
+  }
+  
 
   
   if (!donor.doc.contact_numbers || donor.doc.contact_numbers.length === 0) {
@@ -1419,11 +1622,7 @@ onMounted(() => {
 
   }
   
-  // Set owner if not already set
-  if (!donor.doc.owner_id) {
-    donor.doc.owner_id = user.value
   
-  }
   
 
   
@@ -1435,8 +1634,17 @@ onMounted(() => {
   // Apply phone masks if country is set
   if (donor.doc.country) {
     setTimeout(async () => {
-      await applyPhoneMasksForCountry(donor.doc.country, setFieldValue)
+      const mainCountryPhoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'mobile_no', 'phone_no', 'company_ownerceo_conatct']
+      await applyPhoneMasksForCountry(donor.doc.country, setFieldValue, mainCountryPhoneFields)
     }, 800)
+  }
+  
+  // Apply phone masks for organization fields if orgs_country is set
+  if (donor.doc.orgs_country) {
+    setTimeout(async () => {
+      const orgPhoneFields = ['org_representative_contact_number', 'org_contact']
+      await applyPhoneMasksForCountry(donor.doc.orgs_country, setFieldValue, orgPhoneFields)
+    }, 1000)
   }
   
   // Set up observers and intervals after defaults are set
@@ -1537,9 +1745,23 @@ async function createNewDonor() {
     donor.doc.naming_series = 'DONOR-.{branch_abbreviation}.-.YYYY.-'
   }
 
-  await triggerOnBeforeCreate?.()
-
   const validationErrors = []
+
+  // Helper function for phone validation
+  const validatePhoneField = async (fieldName, fieldLabel) => {
+    if (donor.doc[fieldName] && donor.doc[fieldName].trim() !== '' && donor.doc.country) {
+      const validation = await validatePhoneNumber(donor.doc[fieldName].trim(), donor.doc.country)
+      if (!validation.isValid) {
+        if (donor.doc.country === 'Pakistan') {
+          validationErrors.push(`${fieldLabel}: Pakistan phone number must be 10 digits and start with valid mobile prefix (30-39). Example: 348-8903564`)
+        } else {
+          validationErrors.push(`${fieldLabel}: ${validation.message}`)
+        }
+      }
+    }
+  }
+
+  await triggerOnBeforeCreate?.()
   
   if (!donor.doc.identification_type) {
     validationErrors.push('Identification Type is required')
@@ -1611,6 +1833,14 @@ async function createNewDonor() {
       validationErrors.push('Invalid Representative Email format. Please enter a valid email address.')
     }
   }
+  
+  // Organization Representative Email Address validation
+  if (donor.doc.org_representative_email_address && donor.doc.org_representative_email_address.trim() !== '') {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(donor.doc.org_representative_email_address.trim())) {
+      validationErrors.push('Invalid Organization Representative Email Address format. Please enter a valid email address.')
+    }
+  }
 
   
   if (!donor.doc.donor_identity || donor.doc.donor_identity.trim() === '') {
@@ -1619,6 +1849,16 @@ async function createNewDonor() {
   
   if (!donor.doc.default_currency || donor.doc.default_currency.trim() === '') {
     validationErrors.push('Default Currency is required')
+  }
+  
+  // Department validation
+  if (!donor.doc.department || donor.doc.department.trim() === '') {
+    validationErrors.push('Department is required')
+  }
+  
+  // Donor Desk validation
+  if (!donor.doc.donor_desk || donor.doc.donor_desk.trim() === '') {
+    validationErrors.push('Donor Desk is required')
   }
   
   
@@ -1687,19 +1927,7 @@ async function createNewDonor() {
   
 
 
-  // Helper function for phone validation
-  const validatePhoneField = async (fieldName, fieldLabel) => {
-    if (donor.doc[fieldName] && donor.doc[fieldName].trim() !== '' && donor.doc.country) {
-      const validation = await validatePhoneNumber(donor.doc[fieldName].trim(), donor.doc.country)
-      if (!validation.isValid) {
-      if (donor.doc.country === 'Pakistan') {
-          validationErrors.push(`${fieldLabel}: Pakistan phone number must be 10 digits and start with valid mobile prefix (30-39). Example: 348-8903564`)
-      } else {
-          validationErrors.push(`${fieldLabel}: ${validation.message}`)
-        }
-      }
-    }
-  }
+
 
   // Validate all phone fields
   await validatePhoneField('company_contact_number', 'Company Contact Number')
@@ -1709,6 +1937,7 @@ async function createNewDonor() {
   await validatePhoneField('representative_mobile', 'Representative Mobile Number')
   await validatePhoneField('mobile_no', 'Mobile No')
   await validatePhoneField('phone_no', 'Phone No')
+  await validatePhoneField('company_ownerceo_conatct', 'Company Owner/CEO Contact')
 
   if (donor.doc.identification_type && 
       donor.doc.identification_type !== 'Others' && 
@@ -1782,8 +2011,9 @@ async function createNewDonor() {
       
       show.value = false
       // Reset form data after successful creation
-      resetDonorForm()
+      resetDonorForm().then(() => {
       emit('donor-created')
+      })
       toast.success(__('Donor created successfully'))
       
       const refreshTimestamp = Date.now()
@@ -2009,6 +2239,7 @@ watch(() => donor.doc.email, createEmailWatcher('email'))
 watch(() => donor.doc.co_email, createEmailWatcher('co_email'))
 watch(() => donor.doc.org_email, createEmailWatcher('org_email'))
 watch(() => donor.doc.donor_email, createEmailWatcher('donor_email'))
+watch(() => donor.doc.org_representative_email_address, createEmailWatcher('org_representative_email_address'))
 
 function showEmailValidationFeedback(fieldName, isValid, message) {
   nextTick(() => {

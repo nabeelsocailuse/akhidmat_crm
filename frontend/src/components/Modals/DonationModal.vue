@@ -72,6 +72,7 @@
       v-model="modal.visible"
       :doctype="modal.doctype"
       :data="{ name: modal.initialValue }"
+      :donor-filtering="modal.donorFiltering"
       @callback="(doc) => handleModalSuccess(idx, doc)"
       @close="() => handleModalClose(idx)"
       @open-create-modal="openCreateModal"
@@ -227,6 +228,52 @@ const resetDonationData = () => {
   error.value = null
   
   console.log('Donation data reset successfully')
+}
+
+// ADD: Function to get filtered donor query based on donor identity
+function getDonorQuery() {
+  const filters = {
+    status: 'Active'
+  }
+  
+  // Add donor identity filter based on the selected donor identity
+  if (donation.doc.donor_identity) {
+    filters.donor_identity = donation.doc.donor_identity
+    console.log('Adding donor identity filter:', donation.doc.donor_identity)
+  }
+  
+  // Add currency filter if available
+  if (donation.doc.currency) {
+    filters.default_currency = donation.doc.currency
+  }
+  
+  console.log('Donor query filters:', filters)
+  
+  return {
+    doctype: 'Donor',
+    filters: filters,
+    fields: ['name', 'donor_name', 'donor_type', 'donor_desk', 'contact_no', 'email', 'city', 'address', 'cnic']
+  }
+}
+
+// ADD: Function to get donor filters for field configuration
+function getDonorFilters() {
+  const filters = {}
+  
+  // Add donor identity filter
+  if (donation.doc.donor_identity) {
+    filters.donor_identity = donation.doc.donor_identity
+  }
+  
+  // Add status filter
+  filters.status = 'Active'
+  
+  // Add currency filter if available
+  if (donation.doc.currency) {
+    filters.default_currency = donation.doc.currency
+  }
+  
+  return filters
 }
 
 // ADD: Function to create a dynamic donor query function for each field
@@ -422,6 +469,43 @@ const createDonation = createResource({
 const { getUser, isManager } = usersStore()
 const { user } = sessionStore()
 
+// UPDATE: Enhanced initialization to include donor filtering setup
+onMounted(() => {
+  console.log('DonationModal mounted')
+  console.log('DonationModal props defaults:', props.defaults)
+  console.log('Tabs resource:', tabs)
+  console.log('Show value:', show.value)
+  
+  // Initialize the donation document with required fields
+  initializeDonationDocument()
+  
+  // Configure field queries for child tables
+  configureFieldQueries()
+  
+  // Apply donor filtering after form is rendered
+  nextTick(() => {
+    applyDonorFilteringToForm()
+  })
+})
+
+// UPDATE: Enhanced watcher for show value to apply filtering when modal opens
+watch(show, async (val) => {
+  if (val && user.value) {
+    refreshTabs()
+    resetDonationData() // Use the reset function
+    
+    // Apply donor filtering after form is rendered
+    nextTick(() => {
+      applyDonorFilteringToForm()
+    })
+  }
+  
+  // Prevent parent modal from closing when sub-modals are active
+  if (!val && hasActiveSubModals.value) {
+    show.value = true
+  }
+})
+
 // Add this watcher to force refresh when modal opens
 watch(show, async (val) => {
   if (val && user.value) {
@@ -543,18 +627,36 @@ const handleSubModalInteraction = () => {
   })
 }
 
+// UPDATE: Enhanced openCreateModal function to pass donor filtering data
 function openCreateModal({ doctype, initialValue, onSuccess }) {
   // Ensure parent modal stays visible
   if (!show.value) {
     show.value = true
   }
   
-  modalStack.value.push({
+  // ADD: Debug logging to see what's being passed
+  console.log('openCreateModal called with:', { doctype, initialValue, onSuccess })
+  console.log('Current donation.doc.donor_identity:', donation.doc.donor_identity)
+  console.log('Current donation.doc.currency:', donation.doc.currency)
+  console.log('Current donation.doc.company:', donation.doc.company)
+  
+  // Create modal data with donor filtering information
+  const modalData = {
     doctype,
     initialValue,
     onSuccess,
     visible: true,
-  })
+    // ADD: Pass donor filtering data to sub-modal
+    donorFiltering: {
+      donor_identity: donation.doc.donor_identity,
+      currency: donation.doc.currency,
+      company: donation.doc.company
+    }
+  }
+  
+  console.log('Modal data being created:', modalData)
+  
+  modalStack.value.push(modalData)
   
   nextTick(() => {
     if (hasActiveSubModals.value && !show.value) {
@@ -562,6 +664,76 @@ function openCreateModal({ doctype, initialValue, onSuccess }) {
     }
   })
 }
+
+// ADD: Function to update donor filtering in existing modals
+function updateDonorFilteringInModals() {
+  console.log('Updating donor filtering in existing modals')
+  console.log('Current donor_identity:', donation.doc.donor_identity)
+  
+  modalStack.value.forEach((modal, index) => {
+    if (modal.donorFiltering) {
+      modal.donorFiltering.donor_identity = donation.doc.donor_identity
+      modal.donorFiltering.currency = donation.doc.currency
+      modal.donorFiltering.company = donation.doc.company
+      console.log(`Updated modal ${index} donor filtering:`, modal.donorFiltering)
+    }
+  })
+}
+
+// ADD: Watcher to update donor filtering in modals when donor identity changes
+watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) => {
+  console.log('Donor Identity changed from', oldDonorIdentity, 'to:', newDonorIdentity)
+  
+  // Update donor filtering in existing modals
+  updateDonorFilteringInModals()
+  
+  // Clear existing donor selections in payment detail when donor identity changes
+  if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
+    donation.doc.payment_detail.forEach((row, index) => {
+      // Clear donor-related fields
+      row.donor_id = ''
+      row.donor_name = ''
+      row.donor_type = ''
+      row.donor_desk = ''
+      row.contact_no = ''
+      row.email = ''
+      row.city = ''
+      row.address = ''
+      row.cnic = ''
+      
+      // Clear the last donor ID tracker
+      row._lastDonorId = null
+    })
+    
+    // Force reactive update
+    donation.doc.payment_detail = [...donation.doc.payment_detail]
+  }
+  
+  // Clear existing donor selections in items table when donor identity changes
+  if (donation.doc.items && Array.isArray(donation.doc.items)) {
+    donation.doc.items.forEach((row, index) => {
+      // Clear donor-related fields
+      row.donor = ''
+      row.donor_name = ''
+      row.donor_type = ''
+      row.donor_desk = ''
+      
+      // Clear the last donor ID tracker
+      row._lastItemsDonorId = null
+    })
+    
+    // Force reactive update
+    donation.doc.items = [...donation.doc.items]
+  }
+  
+  // Force re-render of tabs to apply new filtering
+  nextTick(() => {
+    // This will trigger the computed filteredTabs to update with new donor filters
+    console.log('Tabs re-rendered for new donor identity:', newDonorIdentity)
+  })
+  
+  console.log('Donor queries updated for new donor identity:', newDonorIdentity)
+})
 
 function handleModalSuccess(idx, doc) {
   const modal = modalStack.value[idx]
@@ -1776,8 +1948,6 @@ function updateItemsDonorFields(row, donorDetails) {
   }
 }
 
-
-
 // ADD: Enhanced watcher to handle items table donor selection
 watch(() => donation.doc.items, (newItems) => {
   if (newItems && Array.isArray(newItems)) {
@@ -1792,266 +1962,6 @@ watch(() => donation.doc.items, (newItems) => {
     })
   }
 }, { deep: true })
-
-// ADD: Function to get filtered donor query based on donor identity
-function getDonorQuery() {
-  const filters = {
-    status: 'Active'
-  }
-  
-  // Add donor identity filter based on the selected donor identity
-  if (donation.doc.donor_identity) {
-    filters.donor_identity = donation.doc.donor_identity
-    console.log('Adding donor identity filter:', donation.doc.donor_identity)
-  }
-  
-  // Add currency filter if available
-  if (donation.doc.currency) {
-    filters.default_currency = donation.doc.currency
-  }
-  
-  console.log('Donor query filters:', filters)
-  
-  return {
-    doctype: 'Donor',
-    filters: filters,
-    fields: ['name', 'donor_name', 'donor_type', 'donor_desk', 'contact_no', 'email', 'city', 'address', 'cnic']
-  }
-}
-
-// ADD: Function to apply donor filtering to existing form fields
-function applyDonorFilteringToForm() {
-  console.log('Applying donor filtering to form fields')
-  
-  // Wait for the next tick to ensure the form is rendered
-  nextTick(() => {
-    // Find all donor_id fields in the form
-    const donorFields = document.querySelectorAll('input[name="donor_id"], select[name="donor_id"]')
-    console.log('Found donor fields:', donorFields.length)
-    
-    donorFields.forEach((field, index) => {
-      console.log(`Configuring donor field ${index}:`, field)
-      
-      // Set the get_query function on the field
-      if (field && typeof field.setAttribute === 'function') {
-        // Store the query function in a data attribute for the Grid component to use
-        field.setAttribute('data-donor-query', JSON.stringify(getDonorQuery()))
-        console.log(`Set donor query on field ${index}:`, getDonorQuery())
-      }
-    })
-  })
-}
-
-// ADD: Function to refresh donor fields when donor identity changes
-function refreshDonorFields() {
-  console.log('Refreshing donor fields')
-  
-  // Force a re-render of the form to apply new filtering
-  if (tabs.data) {
-    // Trigger a reactive update
-    tabs.data = [...tabs.data]
-    
-    // Apply filtering after the update
-    nextTick(() => {
-      applyDonorFilteringToForm()
-    })
-  }
-}
-
-// UPDATE: Enhanced watcher for donor_identity changes
-watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) => {
-  console.log('Donor Identity changed from', oldDonorIdentity, 'to:', newDonorIdentity)
-  
-  // Clear existing donor selections in payment detail when donor identity changes
-  if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
-    donation.doc.payment_detail.forEach((row, index) => {
-      // Clear donor-related fields
-      row.donor_id = ''
-      row.donor_name = ''
-      row.donor_type = ''
-      row.donor_desk = ''
-      row.contact_no = ''
-      row.email = ''
-      row.city = ''
-      row.address = ''
-      row.cnic = ''
-      
-      // Clear the last donor ID tracker
-      row._lastDonorId = null
-    })
-    
-    // Force reactive update
-    donation.doc.payment_detail = [...donation.doc.payment_detail]
-  }
-  
-  // Clear existing donor selections in items table when donor identity changes
-  if (donation.doc.items && Array.isArray(donation.doc.items)) {
-    donation.doc.items.forEach((row, index) => {
-      // Clear donor-related fields
-      row.donor = ''
-      row.donor_name = ''
-      row.donor_type = ''
-      row.donor_desk = ''
-      
-      // Clear the last donor ID tracker
-      row._lastItemsDonorId = null
-    })
-    
-    // Force reactive update
-    donation.doc.items = [...donation.doc.items]
-  }
-  
-  // Force re-render of tabs to apply new filtering
-  nextTick(() => {
-    // This will trigger the computed filteredTabs to update with new donor filters
-    console.log('Tabs re-rendered for new donor identity:', newDonorIdentity)
-  })
-  
-  console.log('Donor queries updated for new donor identity:', newDonorIdentity)
-})
-
-// UPDATE: Enhanced initialization to include donor filtering setup
-onMounted(() => {
-  console.log('DonationModal mounted')
-  console.log('DonationModal props defaults:', props.defaults)
-  console.log('Tabs resource:', tabs)
-  console.log('Show value:', show.value)
-  
-  // Initialize the donation document with required fields
-  initializeDonationDocument()
-  
-  // Configure field queries for child tables
-  configureFieldQueries()
-  
-  // Apply donor filtering after form is rendered
-  nextTick(() => {
-    applyDonorFilteringToForm()
-  })
-})
-
-// UPDATE: Enhanced watcher for show value to apply filtering when modal opens
-watch(show, async (val) => {
-  if (val && user.value) {
-    refreshTabs()
-    resetDonationData() // Use the reset function
-    
-    // Apply donor filtering after form is rendered
-    nextTick(() => {
-      applyDonorFilteringToForm()
-    })
-  }
-  
-  // Prevent parent modal from closing when sub-modals are active
-  if (!val && hasActiveSubModals.value) {
-    show.value = true
-  }
-})
-
-// Watch for select_donation_type changes to update tabs
-watch(() => donation.doc.donation_type, (newType) => {
-  console.log('Donation type changed to:', newType)
-  // Force re-render of tabs when select_donation_type changes
-  nextTick(() => {
-    // This will trigger the computed filteredTabs to update
-  })
-})
-
-// UPDATE: Enhanced watcher for donation_type changes to clear errors
-watch(() => donation.doc.donation_type, (newType) => {
-  console.log('Donation type changed to:', newType)
-  
-  // Clear previous errors when donation type changes
-  error.value = null
-  
-  // Clear payment_detail and deduction_breakeven when switching to In Kind Donation
-  if (newType === 'In Kind Donation') {
-    donation.doc.payment_detail = []
-    donation.doc.deduction_breakeven = []
-    console.log('Cleared payment_detail and deduction_breakeven for In Kind Donation')
-  }
-  
-  // Clear items when switching to Cash donation
-  if (newType === 'Cash') {
-    donation.doc.items = []
-    console.log('Cleared items for Cash donation')
-  }
-  
-  // Force re-render of tabs when donation_type changes
-  nextTick(() => {
-    // This will trigger the computed filteredTabs to update
-    console.log('Tabs re-rendered for donation type:', newType)
-  })
-})
-
-// Watch for changes in edit_posting_date_time to update field read-only states
-watch(() => donation.doc.edit_posting_date_time, (newValue) => {
-  if (tabs.data) {
-    tabs.data.forEach((tab) => {
-      tab.sections.forEach((section) => {
-        section.columns.forEach((column) => {
-          column.fields.forEach((field) => {
-            if (field.fieldname === 'posting_date' || field.fieldname === 'posting_time') {
-              field.read_only = !newValue
-            }
-          })
-        })
-      })
-    })
-  }
-})
-
-// Watch for changes in payment_detail table to ensure random_id is always present
-watch(() => donation.doc.payment_detail, (newPaymentDetail, oldPaymentDetail) => {
-  if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
-    // Ensure every row has a random_id
-    newPaymentDetail.forEach((row, index) => {
-      if (row && !row.random_id) {
-        row.random_id = generateRandomId(index + 1)
-      }
-    })
-  }
-}, { deep: true })
-
-// Alternative approach: Watch for array length changes
-watch(() => donation.doc.payment_detail?.length, (newLen, oldLen) => {
-  if (newLen && oldLen && newLen > oldLen) {
-    // Assign random_id to the new row(s)
-    for (let i = oldLen; i < newLen; i++) {
-      if (donation.doc.payment_detail[i] && !donation.doc.payment_detail[i].random_id) {
-        donation.doc.payment_detail[i].random_id = generateRandomId(i + 1)
-      }
-    }
-  }
-})
-
-
-// FIX: Listen for the specific QuickEntryModal save event
-onMounted(() => {
-  // Listen for custom events that indicate layout has been updated
-  const handleLayoutUpdate = () => {
-    console.log('Layout update event received - reloading tabs')
-    refreshTabs()
-  }
-  
-  const handleQuickEntrySave = (event) => {
-    console.log('QuickEntryModal save event received:', event.detail)
-    if (event.detail.doctype === 'Donation') {
-      console.log('Donation layout updated - refreshing tabs')
-      refreshTabs()
-    }
-  }
-  
-  // Add event listeners
-  window.addEventListener('layout-updated', handleLayoutUpdate)
-  window.addEventListener('quick-entry-layout-saved', handleQuickEntrySave)
-  
-  // Cleanup on unmount
-  onUnmounted(() => {
-    window.removeEventListener('layout-updated', handleLayoutUpdate)
-    window.removeEventListener('quick-entry-layout-saved', handleQuickEntrySave)
-  })
-})
-
 
 // ADD: Function to clear donor fields in items table
 function clearItemsDonorFields(row) {
@@ -2069,74 +1979,6 @@ function clearItemsDonorFields(row) {
   if (donation.doc.items) {
     donation.doc.items = [...donation.doc.items]
   }
-}
-
-// UPDATE: Enhanced watcher for donor_identity changes
-watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) => {
-  console.log('Donor Identity changed from', oldDonorIdentity, 'to:', newDonorIdentity)
-  
-  // Clear existing donor selections in payment detail when donor identity changes
-  if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
-    donation.doc.payment_detail.forEach((row, index) => {
-      // Clear donor-related fields
-      row.donor_id = ''
-      row.donor_name = ''
-      row.donor_type = ''
-      row.donor_desk = ''
-      row.contact_no = ''
-      row.email = ''
-      row.city = ''
-      row.address = ''
-      row.cnic = ''
-      
-      // Clear the last donor ID tracker
-      row._lastDonorId = null
-    })
-    
-    // Force reactive update
-    donation.doc.payment_detail = [...donation.doc.payment_detail]
-  }
-  
-  // Clear existing donor selections in items table when donor identity changes
-  if (donation.doc.items && Array.isArray(donation.doc.items)) {
-    donation.doc.items.forEach((row, index) => {
-      // Clear donor-related fields
-      row.donor = ''
-      row.donor_name = ''
-      row.donor_type = ''
-      row.donor_desk = ''
-      
-      // Clear the last donor ID tracker
-      row._lastItemsDonorId = null
-    })
-    
-    // Force reactive update
-    donation.doc.items = [...donation.doc.items]
-  }
-  
-  // Refresh donor fields to apply new filtering
-  refreshDonorFields()
-  
-  console.log('Donor queries updated for new donor identity:', newDonorIdentity)
-})
-
-// ADD: Function to get donor filters for field configuration
-function getDonorFilters() {
-  const filters = {
-    status: 'Active'
-  }
-  
-  // Add donor identity filter based on the selected donor identity
-  if (donation.doc.donor_identity) {
-    filters.donor_identity = donation.doc.donor_identity
-  }
-  
-  // Add currency filter if available
-  if (donation.doc.currency) {
-    filters.default_currency = donation.doc.currency
-  }
-  
-  return filters
 }
 
 // ADD: Function to initialize donation document with required fields
