@@ -376,6 +376,10 @@ def get_data(
 		if group_by_field and group_by_field not in rows:
 			rows.append(group_by_field)
 
+		# Always include primary key for routing/use in UI
+		if "name" not in rows:
+			rows.append("name")
+
 		data = (
 			frappe.get_list(
 				doctype,

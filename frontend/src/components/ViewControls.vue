@@ -677,13 +677,16 @@ const viewsDropdownOptions = computed(() => {
       view.filters =
         typeof view.filters == 'string'
           ? (() => {
-    try {
-      return JSON.parse(view.filters)
-    } catch (e) {
-      console.warn('Failed to parse view filters:', e)
-      return {}
-    }
-  })()
+              const raw = (view.filters || '').trim()
+              if (!raw || raw[0] !== '{') {
+                return {}
+              }
+              try {
+                return JSON.parse(raw)
+              } catch (e) {
+                return {}
+              }
+            })()
           : view.filters
       view.onClick = () => {
         viewUpdated.value = false

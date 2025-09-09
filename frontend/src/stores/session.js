@@ -10,6 +10,9 @@ export const sessionStore = defineStore('crm-session', () => {
     let _sessionUser = cookies.get('user_id')
     if (_sessionUser === 'Guest') {
       _sessionUser = null
+    } else if (_sessionUser) {
+      // Decode URL-encoded characters (like %40 for @)
+      _sessionUser = decodeURIComponent(_sessionUser)
     }
     return _sessionUser
   }

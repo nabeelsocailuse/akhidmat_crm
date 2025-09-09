@@ -1,18 +1,22 @@
 <template>
   <ListView
-    :class="$attrs.class"
     :columns="columns"
     :rows="rows"
+    :show-pagination="false"
     :options="{
       getRowRoute: (row) => {
         try {
-          return {
-            name: 'DonorDetail',
-            params: { donorId: row.name }
+          if (row && row.nameForRouting) {
+            return {
+              name: 'CommunicationDetail',
+              params: { communicationId: row.nameForRouting },
+            }
           }
+          console.warn('Missing real Communication name for routing. Staying on list.')
+          return { name: 'Communication' }
         } catch (error) {
           console.error('Error in getRowRoute:', error)
-          return { name: 'Donor' }
+          return { name: 'Communication' }
         }
       },
       selectable: options.selectable,
@@ -43,54 +47,38 @@
     <ListRows
       :rows="rows"
       v-slot="{ idx, column, item, row }"
-      doctype="Donor"
+      doctype="Communication"
     >
       <div v-if="column.key === '_assign'" class="flex items-center">
-        <MultipleAvatar
-          :avatars="item"
-          size="sm"
-          @click="
-            (event) =>
-              emit('applyFilter', {
-                event,
-                idx,
-                column,
-                item,
-                firstColumn: columns[0],
-              })
-          "
-        />
+        <div class="flex -space-x-1">
+          <Avatar
+            v-for="assignee in item || []"
+            :key="assignee?.name || Math.random()"
+            :image="assignee?.image"
+            :label="assignee?.label"
+            size="sm"
+            class="ring-2 ring-white"
+          />
+        </div>
       </div>
-      <ListRowItem v-else :item="item" :align="column.align">
+      <ListRowItem v-else :item="item" :align="column?.align">
         <template #prefix>
           <div v-if="column.key === 'status'">
             <IndicatorIcon :class="item.color" />
           </div>
-          <div v-else-if="column.key === 'donor_name'">
+          <div v-else-if="column.key === 'sender'">
             <Avatar
-              v-if="item.label"
+              v-if="item && item.label"
               class="flex items-center"
               :image="item.image"
               :label="item.label"
               size="sm"
             />
           </div>
-          <div v-else-if="column.key === 'donor_owner'">
-            <Avatar
-              v-if="item.full_name"
-              class="flex items-center"
-              :image="item.user_image"
-              :label="item.full_name"
-              size="sm"
-            />
-          </div>
-          <div v-else-if="column.key === 'mobile_no'">
-            <PhoneIcon class="h-4 w-4" />
-          </div>
         </template>
         <template #default="{ label }">
           <div
-            v-if="['modified', 'creation', 'last_donation_date', 'response_by'].includes(column.key)"
+            v-if="['modified','creation'].includes(column.key)"
             class="truncate text-base"
             @click="
               (event) =>
@@ -103,12 +91,9 @@
                 })
             "
           >
-            <Tooltip v-if="column.key === 'modified'" :text="item.label">
-              <div>{{ item.timeAgo }}</div>
+            <Tooltip :text="item && item.label ? item.label : label">
+              <div>{{ item && item.timeAgo ? item.timeAgo : label }}</div>
             </Tooltip>
-            <template v-else>
-              {{ label }}
-            </template>
           </div>
           <div v-else class="truncate text-base">
             {{ label }}
@@ -118,15 +103,14 @@
     </ListRows>
     <ListSelectBanner>
       <template #actions="{ selections, unselectAll }">
-        <Dropdown
-          :options="listBulkActionsRef.bulkActions(selections, unselectAll)"
-        >
+        <Dropdown :options="listBulkActionsRef.bulkActions(selections, unselectAll)">
           <Button icon="more-horizontal" variant="ghost" />
         </Dropdown>
       </template>
     </ListSelectBanner>
   </ListView>
   <ListFooter
+    v-if="options.rowCount || options.totalCount"
     class="border-t px-3 py-2 sm:px-5"
     v-model="pageLengthCount"
     :options="{
@@ -138,43 +122,26 @@
   <ListBulkActions
     ref="listBulkActionsRef"
     v-model="list"
-    doctype="Donor"
-    :options="{
-      hideAssign: true,
-    }"
+    doctype="Communication"
+    :options="{ hideAssign: true }"
   />
 </template>
 
 <script setup>
+import { ref, computed } from 'vue'
+import { ListView, ListHeaderItem, ListRowItem, ListFooter, ListSelectBanner, Dropdown, Avatar, Button } from 'frappe-ui'
+import ListRows from '@/components/ListViews/ListRows.vue'
+import ListBulkActions from '@/components/ListBulkActions.vue'
 import HeartIcon from '@/components/Icons/HeartIcon.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
-import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
-import MultipleAvatar from '@/components/MultipleAvatar.vue'
-import ListBulkActions from '@/components/ListBulkActions.vue'
-import ListRows from '@/components/ListViews/ListRows.vue'
 import AppStyling from '@/components/AppStyling.vue'
-import { useRoute } from 'vue-router'
-import {
-  Avatar,
-  ListView,
-  ListHeader,
-  ListHeaderItem,
-  ListSelectBanner,
-  ListRowItem,
-  ListFooter,
-  Tooltip,
-  Dropdown,
-  Button,
-} from 'frappe-ui'
-import { sessionStore } from '@/stores/session'
-import { ref, computed, watch } from 'vue'
 
 const props = defineProps({
-  rows: {
+  columns: {
     type: Array,
     required: true,
   },
-  columns: {
+  rows: {
     type: Array,
     required: true,
   },
@@ -201,36 +168,13 @@ const emit = defineEmits([
   'applyLikeFilter',
   'likeDoc',
   'loadMore',
-  'updatePageCount',
 ])
 
 const pageLengthCount = defineModel()
 const list = defineModel('list')
-
-const { user } = sessionStore()
-
-function isLiked(item) {
-  if (item) {
-    try {
-      let likedByMe = JSON.parse(item)
-      return likedByMe.includes(user)
-    } catch (error) {
-      return false
-    }
-  }
-  return false
-}
-
-watch(pageLengthCount, (val, old_value) => {
-  if (val === old_value) return
-  emit('updatePageCount', val)
-})
-
 const listBulkActionsRef = ref(null)
 
 defineExpose({
-  customListActions: computed(
-    () => listBulkActionsRef.value?.customListActions,
-  ),
+  customListActions: computed(() => listBulkActionsRef.value?.customListActions),
 })
 </script>

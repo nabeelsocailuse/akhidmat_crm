@@ -1,4 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { defineAsyncComponent } from 'vue'
+import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import { userResource } from '@/stores/user'
 import { sessionStore } from '@/stores/session'
 import { viewsStore } from '@/stores/views'
@@ -8,6 +10,13 @@ const handleMobileView = (componentName) => {
   return window.innerWidth < 768 ? `Mobile${componentName}` : 'Mobile' + componentName
 }
 
+// helper to wrap dynamic imports with a loading spinner
+const lazy = (loader) =>
+  defineAsyncComponent({
+    loader: typeof loader === 'function' ? loader : () => loader(),
+    loadingComponent: LoadingSpinner,
+  })
+
 const routes = [
   {
     path: '/',
@@ -16,23 +25,23 @@ const routes = [
   {
     path: '/notifications',
     name: 'Notifications',
-    component: () => import('@/pages/MobileNotification.vue'),
+    component: lazy(() => import('@/pages/MobileNotification.vue')),
   },
   {
     path: '/dashboard',
     name: 'Dashboard',
-    component: () => import('@/pages/Dashboard.vue'),
+    component: lazy(() => import('@/pages/Dashboard.vue')),
   },
   {
     alias: '/leads',
     path: '/leads/view/:viewType?',
     name: 'Leads',
-    component: () => import('@/pages/Leads.vue'),
+    component: lazy(() => import('@/pages/Leads.vue')),
   },
   {
     path: '/leads/:leadId',
     name: 'Lead',
-    component: () => import(`@/pages/${handleMobileView('Lead')}.vue`),
+    component: lazy(() => import(`@/pages/${handleMobileView('Lead')}.vue`)),
     props: true,
   },
   // {
@@ -51,36 +60,36 @@ const routes = [
     alias: '/notes',
     path: '/notes/view/:viewType?',
     name: 'Notes',
-    component: () => import('@/pages/Notes.vue'),
+    component: lazy(() => import('@/pages/Notes.vue')),
   },
   {
     alias: '/tasks',
     path: '/tasks/view/:viewType?',
     name: 'Tasks',
-    component: () => import('@/pages/Tasks.vue'),
+    component: lazy(() => import('@/pages/Tasks.vue')),
   },
   {
     alias: '/contacts',
     path: '/contacts/view/:viewType?',
     name: 'Contacts',
-    component: () => import('@/pages/Contacts.vue'),
+    component: lazy(() => import('@/pages/Contacts.vue')),
   },
   {
     path: '/contacts/:contactId',
     name: 'Contact',
-    component: () => import(`@/pages/${handleMobileView('Contact')}.vue`),
+    component: lazy(() => import(`@/pages/${handleMobileView('Contact')}.vue`)),
     props: true,
   },
   {
     alias: '/addresses',
     path: '/addresses/view/:viewType?',
     name: 'Addresses',
-    component: () => import('@/pages/Addresses.vue'),
+    component: lazy(() => import('@/pages/Addresses.vue')),
   },
   {
     path: '/addresses/:addressId',
     name: 'Address',
-    component: () => import('@/pages/Address.vue'),
+    component: lazy(() => import('@/pages/Address.vue')),
     props: true,
   },
   // {
@@ -99,55 +108,113 @@ const routes = [
     alias: '/call-logs',
     path: '/call-logs/view/:viewType?',
     name: 'Call Logs',
-    component: () => import('@/pages/CallLogs.vue'),
+    component: lazy(() => import('@/pages/CallLogs.vue')),
   },
   {
     path: '/welcome',
     name: 'Welcome',
-    component: () => import('@/pages/Welcome.vue'),
+    component: lazy(() => import('@/pages/Welcome.vue')),
   },
   {
     alias: '/campaigns',
     path: '/campaigns/view/:viewType?',
     name: 'Campaigns',
-    component: () => import('@/pages/Campaigns.vue'),
+    component: lazy(() => import('@/pages/Campaigns.vue')),
   },
   {
     path: '/campaigns/:campaignId',
     name: 'Campaign',
-    component: () => import('@/pages/Campaign.vue'),
+    component: lazy(() => import('@/pages/Campaign.vue')),
     props: true,
   },
   {
     path: '/:invalidpath',
     name: 'Invalid Page',
-    component: () => import('@/pages/InvalidPage.vue'),
+    component: lazy(() => import('@/pages/InvalidPage.vue')),
   },
   {
     alias: '/donor',
     path: '/donor/view/:viewType?',
     name: 'Donor',
-    component: () => import('@/pages/Donor.vue'),
+    component: lazy(() => import('@/pages/Donor.vue')),
   },
   {
     path: '/donor/:donorId',
     name: 'DonorDetail',
-    component: () => import('@/pages/DonorDetail.vue'),
+    component: lazy(() => import('@/pages/DonorDetail.vue')),
     props: true,
   },
   {
     alias: '/donations',
     path: '/donations/view/:viewType?',
     name: 'Donations',
-    component: () => import('@/pages/Donation.vue'),
+    component: lazy(() => import('@/pages/Donation.vue')),
   },
   {
     path: '/donations/:donationId',
     name: 'DonationDetail',
-    component: () => import('@/pages/DonationDetail.vue'),
+    component: lazy(() => import('@/pages/DonationDetail.vue')),
     props: true,
   },
-  
+  {
+    alias: '/email-template',
+    path: '/email-template/view/:viewType?',
+    name: 'EmailTemplates',
+    component: lazy(() => import('@/pages/EmailTemplates.vue')),
+  },
+  {
+    path: '/email-template/:emailTemplateId',
+    name: 'EmailTemplate',
+    component: lazy(() => import('@/pages/EmailTemplate.vue')),
+    props: true,
+  },
+  {
+    alias: '/email-campaign',
+    path: '/email-campaign/view/:viewType?',
+    name: 'Email Campaign',
+    component: lazy(() => import('@/pages/EmailCampaign.vue')),
+  },
+  {
+    path: '/email-campaign/:emailCampaignId',
+    name: 'EmailCampaignDetail',
+    component: lazy(() => import('@/pages/EmailCampaignDetail.vue')),
+    props: true,
+  },
+  {
+    alias: '/email-group',
+    path: '/email-group/view/:viewType?',
+    name: 'Email Group',
+    component: lazy(() => import('@/pages/EmailGroup.vue')),
+  },
+  {
+    path: '/email-group/:emailGroupId',
+    name: 'EmailGroupDetail',
+    component: lazy(() => import('@/pages/EmailGroupDetail.vue')),
+    props: true,
+  },
+  {
+    path: '/communication',
+    name: 'Communication',
+    component: lazy(() => import('@/pages/Communication.vue')),
+  },
+  {
+    path: '/communication/:communicationId',
+    name: 'CommunicationDetail',
+    component: lazy(() => import('@/pages/CommunicationDetail.vue')),
+    props: true,
+  },
+  {
+    alias: '/email-group-members',
+    path: '/email-group-members/view/:viewType?',
+    name: 'Email Group Members',
+    component: lazy(() => import('@/pages/EmailGroupMembers.vue')),
+  },
+  {
+    path: '/email-group-members/:memberId',
+    name: 'EmailGroupMember',
+    component: lazy(() => import('@/pages/EmailGroupMember.vue')),
+    props: true,
+  },
 ]
 
 let router = createRouter({

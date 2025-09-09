@@ -7,12 +7,12 @@
       getRowRoute: (row) => {
         try {
           return {
-            name: 'DonorDetail',
-            params: { donorId: row.name }
+            name: 'EmailGroupDetail',
+            params: { emailGroupId: row.name }
           }
         } catch (error) {
           console.error('Error in getRowRoute:', error)
-          return { name: 'Donor' }
+          return { name: 'EmailGroup' }
         }
       },
       selectable: options.selectable,
@@ -43,7 +43,7 @@
     <ListRows
       :rows="rows"
       v-slot="{ idx, column, item, row }"
-      doctype="Donor"
+      doctype="Email Group"
     >
       <div v-if="column.key === '_assign'" class="flex items-center">
         <MultipleAvatar
@@ -63,10 +63,10 @@
       </div>
       <ListRowItem v-else :item="item" :align="column.align">
         <template #prefix>
-          <div v-if="column.key === 'status'">
+          <div v-if="column.key === 'total_subscribers'">
             <IndicatorIcon :class="item.color" />
           </div>
-          <div v-else-if="column.key === 'donor_name'">
+          <div v-else-if="column.key === 'title'">
             <Avatar
               v-if="item.label"
               class="flex items-center"
@@ -75,22 +75,11 @@
               size="sm"
             />
           </div>
-          <div v-else-if="column.key === 'donor_owner'">
-            <Avatar
-              v-if="item.full_name"
-              class="flex items-center"
-              :image="item.user_image"
-              :label="item.full_name"
-              size="sm"
-            />
-          </div>
-          <div v-else-if="column.key === 'mobile_no'">
-            <PhoneIcon class="h-4 w-4" />
-          </div>
         </template>
         <template #default="{ label }">
+          <!-- Show "time ago" for modified and creation columns, like EmailTemplatesListView -->
           <div
-            v-if="['modified', 'creation', 'last_donation_date', 'response_by'].includes(column.key)"
+            v-if="['modified', 'creation'].includes(column.key)"
             class="truncate text-base"
             @click="
               (event) =>
@@ -103,12 +92,25 @@
                 })
             "
           >
-            <Tooltip v-if="column.key === 'modified'" :text="item.label">
+            <Tooltip :text="item.label">
               <div>{{ item.timeAgo }}</div>
             </Tooltip>
-            <template v-else>
-              {{ label }}
-            </template>
+          </div>
+          <div
+            v-else-if="column.key === 'welcome_url'"
+            class="truncate text-base"
+            @click="
+              (event) =>
+                emit('applyFilter', {
+                  event,
+                  idx,
+                  column,
+                  item,
+                  firstColumn: columns[0],
+                })
+            "
+          >
+            {{ label }}
           </div>
           <div v-else class="truncate text-base">
             {{ label }}
@@ -118,15 +120,14 @@
     </ListRows>
     <ListSelectBanner>
       <template #actions="{ selections, unselectAll }">
-        <Dropdown
-          :options="listBulkActionsRef.bulkActions(selections, unselectAll)"
-        >
+        <Dropdown :options="listBulkActionsRef.bulkActions(selections, unselectAll)">
           <Button icon="more-horizontal" variant="ghost" />
         </Dropdown>
       </template>
     </ListSelectBanner>
   </ListView>
   <ListFooter
+    v-if="options.rowCount || options.totalCount"
     class="border-t px-3 py-2 sm:px-5"
     v-model="pageLengthCount"
     :options="{
@@ -138,7 +139,7 @@
   <ListBulkActions
     ref="listBulkActionsRef"
     v-model="list"
-    doctype="Donor"
+    doctype="Email Group"
     :options="{
       hideAssign: true,
     }"
@@ -148,7 +149,6 @@
 <script setup>
 import HeartIcon from '@/components/Icons/HeartIcon.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
-import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import MultipleAvatar from '@/components/MultipleAvatar.vue'
 import ListBulkActions from '@/components/ListBulkActions.vue'
 import ListRows from '@/components/ListViews/ListRows.vue'
@@ -233,4 +233,4 @@ defineExpose({
     () => listBulkActionsRef.value?.customListActions,
   ),
 })
-</script>
+</script> 

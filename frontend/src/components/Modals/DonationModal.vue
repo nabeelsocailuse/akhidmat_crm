@@ -98,7 +98,7 @@ import { nextTick } from 'vue'
 import { isMobileView } from '@/composables/settings'
 import { useDocument } from '@/data/document'
 import AppStyling from '@/components/AppStyling.vue'
-import { useDonorSelection } from '@/composables/useDonorSelection'
+// import { useDonorSelection } from '@/composables/useDonorSelection'
 
 const props = defineProps({
   defaults: Object,
@@ -167,10 +167,13 @@ const addPaymentDetailRow = () => {
     co_email: '',
     co_address: '',
     relationship_with_donor: '',
+    area: '',
+    co_city: '',
+    co_country: '',
+    co_designation: '',
     donor_currency: '',
     donation_amount: 0,
     currency: donation.doc.currency || 'PKR',
-    // Generate random_id immediately when adding the row
     random_id: generateRandomId((donation.doc.payment_detail?.length || 0) + 1)
   }
   
@@ -187,6 +190,11 @@ const initializeDonation = () => {
   const now = new Date()
   donation.doc.posting_date = now.toISOString().slice(0, 10) // YYYY-MM-DD format
   donation.doc.posting_time = now.toTimeString().slice(0, 5) // HH:MM format
+  
+  // Set default values for due_date, currency, and exchange_rate (same as backend)
+  donation.doc.due_date = now.toISOString().slice(0, 10) // YYYY-MM-DD format - same as today
+  donation.doc.currency = 'PKR' // Default currency
+  donation.doc.exchange_rate = 1 // Default exchange rate
   
   // Initialize edit_posting_date_time to 0 (false) by default
   if (donation.doc.edit_posting_date_time === undefined) {
@@ -215,7 +223,8 @@ const resetDonationData = () => {
     company: 'Alkhidmat Foundation',
     donor_identity: 'Known',
     donation_type: 'Cash', // Default to Cash
-    currency: 'PKR',
+    currency: 'PKR', // Default currency
+    exchange_rate: 1, // Default exchange rate
     owner: user.value,
     payment_detail: [],
     deduction_breakeven: []
@@ -281,6 +290,21 @@ function createDonorQueryFunction() {
   return function() {
     return getDonorQuery()
   }
+}
+
+// ADD: Function to get cost center filters for donation_cost_center field
+function getCostCenterFilters() {
+  const filters = {
+    is_group: 0,
+    disabled: 0
+  }
+  
+  // Add company filter if available
+  if (donation.doc.company) {
+    filters.company = donation.doc.company
+  }
+  
+  return filters
 }
 
 // UPDATE: Enhanced field filtering to properly configure donor fields
@@ -354,6 +378,18 @@ const filteredTabs = computed(() => {
             console.log('Configured donor field with query filtering for items')
           }
           
+          // Configure donation_cost_center (Branch) field with proper filtering
+          if (field.fieldname === 'donation_cost_center') {
+            enhancedField.get_query = () => ({
+              doctype: 'Cost Center',
+              filters: getCostCenterFilters()
+            })
+            // FIX: Change depends_on to use donation_type while keeping existing filters
+            enhancedField.depends_on = "eval: doc.donation_type==\"Cash\";"
+            enhancedField.filters = getCostCenterFilters()
+            console.log('Configured donation_cost_center field with donation type dependency')
+          }
+          
           return enhancedField
         })
         
@@ -369,7 +405,6 @@ const filteredTabs = computed(() => {
 
 const tabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
-  // FIX: Use unique cache key for DonationModal
   cache: ['DonationModal', 'Donation', 'quick-entry'], 
   params: { doctype: 'Donation', type: 'Quick Entry' },
   auto: true,
@@ -398,9 +433,21 @@ const tabs = createResource({
               donation.doc.donor_identity = 'Known'
             }
             
-            // FIX: Use donation_type instead of select_donation_type
             if (field.fieldname === 'donation_type' && !donation.doc.donation_type) {
               donation.doc.donation_type = 'Cash'  // Default to 'Cash'
+            }
+            
+            // Set default values for due_date, currency, and exchange_rate
+            if (field.fieldname === 'due_date' && !donation.doc.due_date) {
+              donation.doc.due_date = new Date().toISOString().slice(0, 10)
+            }
+            
+            if (field.fieldname === 'currency' && !donation.doc.currency) {
+              donation.doc.currency = 'PKR'
+            }
+            
+            if (field.fieldname === 'exchange_rate' && !donation.doc.exchange_rate) {
+              donation.doc.exchange_rate = 1
             }
             
             // Handle posting_date and posting_time read-only state based on edit_posting_date_time
@@ -444,9 +491,21 @@ const tabs = createResource({
       donation.doc.donor_identity = 'Known'
     }
     
-    // FIX: Use donation_type instead of select_donation_type
     if (!donation.doc.donation_type) {
       donation.doc.donation_type = 'Cash'  // Default to 'Cash'
+    }
+    
+    // Ensure due_date, currency, and exchange_rate are set
+    if (!donation.doc.due_date) {
+      donation.doc.due_date = new Date().toISOString().slice(0, 10)
+    }
+    
+    if (!donation.doc.currency) {
+      donation.doc.currency = 'PKR'
+    }
+    
+    if (!donation.doc.exchange_rate) {
+      donation.doc.exchange_rate = 1
     }
     
     // Initialize posting_date and posting_time
@@ -700,6 +759,16 @@ watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) =>
       row.city = ''
       row.address = ''
       row.cnic = ''
+      // ADD: Clear care-of details fields as well
+      row.co_name = ''
+      row.co_contact_no = ''
+      row.co_email = ''
+      row.co_address = ''
+      row.relationship_with_donor = ''
+      row.area = ''
+      row.co_city = ''
+      row.co_country = ''
+      row.co_designation = ''
       
       // Clear the last donor ID tracker
       row._lastDonorId = null
@@ -717,6 +786,16 @@ watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) =>
       row.donor_name = ''
       row.donor_type = ''
       row.donor_desk = ''
+      // ADD: Clear care-of details fields for items table as well
+      row.co_name = ''
+      row.co_contact_no = ''
+      row.co_email = ''
+      row.co_address = ''
+      row.relationship_with_donor = ''
+      row.area = ''
+      row.co_city = ''
+      row.co_country = ''
+      row.co_designation = ''
       
       // Clear the last donor ID tracker
       row._lastItemsDonorId = null
@@ -936,7 +1015,7 @@ async function fetchFundClassDetails(fundClassId) {
   console.log('Fetching Fund Class details for:', fundClassId)
   
   try {
-    const result = await call('akf_accounts.akf_accounts.doctype.donation.donation.get_fund_class_details', {
+    const result = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
       fund_class_id: fundClassId,
       company: donation.doc.company || 'Alkhidmat Foundation Pakistan'
     })
@@ -1027,20 +1106,32 @@ function clearFundClassFields(row) {
   }
 }
 
+// NEW: Track last selected Fund Class from payment details to sync with deduction_breakeven
+const lastSelectedFundClassId = ref(null)
+// REPLACE pending single value with a FIFO queue to keep order of selections
+const pendingDeductionFundClassQueue = ref([]) // array of fund_class_id in order
+
 // 100% WORKING: Direct Fund Class handling in DonationModal
 async function handleFundClassSelectionDirect(fundClassId, row) {
   console.log('Handling Fund Class selection directly:', { fundClassId, row })
   
   if (!fundClassId) {
     clearFundClassFields(row)
+    // Reset last selected when cleared
+    lastSelectedFundClassId.value = null
     return
   }
+  
+  // Track latest selected (queueing is handled in the payment_detail watcher)
+  lastSelectedFundClassId.value = fundClassId
   
   try {
     const fundClassDetails = await fetchFundClassDetails(fundClassId)
     if (fundClassDetails) {
       updateFundClassFields(row, fundClassDetails)
       console.log('Fund Class fields updated successfully')
+      
+      // Do not assign fund_class_id here; assignment is handled by the deduction row-length watcher to avoid race conditions
       
       // Show success message
       toast.success('Fund Class details loaded successfully')
@@ -1095,7 +1186,7 @@ function updateDonorFields(row, donorDetails) {
   console.log('Updating row with donor details:', donorDetails)
   console.log('Row before update:', { ...row })
   
-  // Map donor fields to payment detail fields
+  // Map donor fields to payment detail fields - INCLUDING ALL CARE-OF DETAILS
   const fieldMappings = {
     'donor_name': 'donor_name',
     'donor_type': 'donor_type',
@@ -1103,7 +1194,17 @@ function updateDonorFields(row, donorDetails) {
     'email': 'email',
     'city': 'city',
     'address': 'address',
-    'cnic': 'cnic'
+    'cnic': 'cnic',
+    // ADD: Care-of details fields that were missing
+    'co_name': 'co_name',
+    'co_contact_no': 'co_contact_no',
+    'co_email': 'co_email',
+    'co_address': 'co_address',
+    'relationship_with_donor': 'relationship_with_donor',
+    'area': 'area',
+    'co_city': 'co_city',
+    'co_country': 'co_country',
+    'co_designation': 'co_designation'
   }
   
   // Update each field with donor data
@@ -1129,7 +1230,10 @@ function clearDonorFields(row) {
   console.log('Clearing donor fields for row')
   
   const donorFields = [
-    'donor_name', 'donor_type', 'contact_no', 'email', 'city', 'address', 'cnic'
+    'donor_name', 'donor_type', 'contact_no', 'email', 'city', 'address', 'cnic',
+    // ADD: Care-of details fields that were missing
+    'co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor',
+    'area', 'co_city', 'co_country', 'co_designation'
   ]
   
   donorFields.forEach(fieldName => {
@@ -1208,6 +1312,9 @@ watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
       if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
         console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
         row._lastFundClassId = row.fund_class_id
+        
+        // Enqueue current fund class for the next deduction row
+        pendingDeductionFundClassQueue.value.push(row.fund_class_id)
         
         // Handle the Fund Class selection
         handleFundClassSelectionDirect(row.fund_class_id, row)
@@ -1357,6 +1464,11 @@ async function prepareDonationForSubmission() {
   // Ensure posting_time is set
   if (!donation.doc.posting_time) {
     donation.doc.posting_time = '00:00:00'
+  }
+  
+  // Ensure due_date is set (same as posting_date if not set)
+  if (!donation.doc.due_date) {
+    donation.doc.due_date = donation.doc.posting_date || new Date().toISOString().split('T')[0]
   }
   
   // Ensure currency is set
@@ -1522,9 +1634,9 @@ function validateDonationForm() {
       items: donation.doc.items
     })
     
-    if (!donation.doc.stock_entry_type) {
-      errors.push('Stock Entry Type is required')
-    }
+    // if (!donation.doc.stock_entry_type) {
+    //   errors.push('Stock Entry Type is required')
+    // }
     if (!donation.doc.warehouse) {
       errors.push('Warehouse is required')
     }
@@ -1549,9 +1661,9 @@ function validateDonationForm() {
         if (!item.basic_rate || item.basic_rate <= 0) {
           errors.push(`Item ${itemNum}: Basic Rate is required`)
         }
-        if (!item.project) {
-          errors.push(`Item ${itemNum}: Project is required`)
-        }
+        // if (!item.project) {
+        //   errors.push(`Item ${itemNum}: Project is required`)
+        // }
         if (!item.asset_category) {
           errors.push(`Item ${itemNum}: Asset Category is required`)
         }
@@ -1579,6 +1691,12 @@ function validateDonationForm() {
       }
       if (!row.fund_class_id) {
         errors.push(`Row ${rowNum}: Fund Class is required`)
+      }
+      if (!row.transaction_type_id) {
+        errors.push(`Row ${rowNum}: Transaction Type Id is required`)
+      }
+      if (!row.intention_id) {  
+        errors.push(`Row ${rowNum}: Intention Id is required`)
       }
       if (!row.donation_amount || row.donation_amount <= 0) {
         errors.push(`Row ${index + 1}: Donation Amount must be greater than 0`)
@@ -1749,16 +1867,7 @@ watch(show, (newVal, oldVal) => {
   console.log('Show value changed:', { old: oldVal, new: newVal })
 })
 
-// Watch for select_donation_type changes to update tabs
-watch(() => donation.doc.donation_type, (newType) => {
-  console.log('Donation type changed to:', newType)
-  // Force re-render of tabs when select_donation_type changes
-  nextTick(() => {
-    // This will trigger the computed filteredTabs to update
-  })
-})
-
-// UPDATE: Enhanced watcher for donation_type changes to clear errors
+// Watch for changes in donation_type
 watch(() => donation.doc.donation_type, (newType) => {
   console.log('Donation type changed to:', newType)
   
@@ -1814,18 +1923,65 @@ watch(() => donation.doc.payment_detail, (newPaymentDetail, oldPaymentDetail) =>
   }
 }, { deep: true })
 
-// Alternative approach: Watch for array length changes
-watch(() => donation.doc.payment_detail?.length, (newLen, oldLen) => {
-  if (newLen && oldLen && newLen > oldLen) {
-    // Assign random_id to the new row(s)
-    for (let i = oldLen; i < newLen; i++) {
-      if (donation.doc.payment_detail[i] && !donation.doc.payment_detail[i].random_id) {
-        donation.doc.payment_detail[i].random_id = generateRandomId(i + 1)
+// NEW: Watcher to auto-fill fund_class_id on newly added deduction_breakeven row
+watch(() => donation.doc.deduction_breakeven?.length, (newLen, oldLen) => {
+  if (typeof newLen === 'number' && typeof oldLen === 'number' && newLen > oldLen) {
+    const newIndex = newLen - 1
+    const newRow = donation.doc.deduction_breakeven[newIndex]
+    if (newRow) {
+      // Consume from queue to match this creation with the latest selection
+      const fcToApply = pendingDeductionFundClassQueue.value.length > 0
+        ? pendingDeductionFundClassQueue.value.shift()
+        : lastSelectedFundClassId.value
+      if (!newRow.fund_class_id && fcToApply) {
+        newRow.fund_class_id = fcToApply
+        newRow._fcAssigned = true
+        console.log('Auto-filled fund_class_id on new deduction_breakeven row (queue):', { index: newIndex, fundClassId: fcToApply })
+        donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven]
       }
+      
+      // Defer as a fallback to catch race conditions (still uses queue head if any)
+      nextTick(() => {
+        setTimeout(() => {
+          if (!newRow.fund_class_id && !newRow._fcAssigned) {
+            const fcFallback = pendingDeductionFundClassQueue.value.length > 0
+              ? pendingDeductionFundClassQueue.value.shift()
+              : lastSelectedFundClassId.value
+            if (fcFallback) {
+              newRow.fund_class_id = fcFallback
+              newRow._fcAssigned = true
+              console.log('Deferred auto-fill fund_class_id on new deduction_breakeven row (queue fallback):', { index: newIndex, fundClassId: fcFallback })
+              donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven]
+            }
+          }
+        }, 0)
+      })
     }
   }
 })
 
+// NEW: Deep watcher to handle rows inserted at arbitrary positions or async updates
+watch(() => donation.doc.deduction_breakeven, (rows) => {
+  if (rows && Array.isArray(rows)) {
+    let changed = false
+    rows.forEach((row, idx) => {
+      if (!row._fcAssigned && !row.fund_class_id) {
+        const fcToApply = pendingDeductionFundClassQueue.value.length > 0
+          ? pendingDeductionFundClassQueue.value.shift()
+          : lastSelectedFundClassId.value
+        if (fcToApply) {
+          row.fund_class_id = fcToApply
+          row._fcAssigned = true
+          console.log('Filled fund_class_id via deep watcher on deduction_breakeven:', { index: idx, fundClassId: fcToApply })
+          changed = true
+        }
+      }
+    })
+    if (changed) {
+      donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven]
+    }
+  }
+}, { deep: true })
 
 // FIX: Listen for the specific QuickEntryModal save event
 onMounted(() => {
@@ -1883,7 +2039,7 @@ function configureAccountPaidToField(row) {
 
 function updateAccountPaidToFieldFilters(row, accountTypes) {
   // This function updates the filtering for the account_paid_to field
-  // It should be implemented based on how your form fields are configured
+  // It should be implemented based on how your form fields are set up
   
   console.log(`Updating account_paid_to filters for row ${row.idx}:`, accountTypes)
   
@@ -1948,6 +2104,67 @@ function updateItemsDonorFields(row, donorDetails) {
   }
 }
 
+// NEW: Function to update Fund Class fields in items table (service_area, subservice_area, product)
+function updateItemsFundClassFields(row, fundClassDetails) {
+  console.log('Updating items row with Fund Class details:', fundClassDetails)
+  console.log('Items row before Fund Class update:', { ...row })
+
+  const fieldMappings = {
+    'service_area': 'service_area',
+    'subservice_area': 'subservice_area',
+    'product': 'product'
+  }
+
+  Object.entries(fieldMappings).forEach(([fcField, rowField]) => {
+    if (fundClassDetails[fcField] !== undefined) {
+      const oldValue = row[rowField]
+      row[rowField] = fundClassDetails[fcField] || ''
+      console.log(`Updated items ${rowField}: ${oldValue} -> ${row[rowField]}`)
+    }
+  })
+
+  // Force reactive update for items table
+  if (donation.doc.items) {
+    console.log('Forcing reactive update of items after Fund Class update')
+    donation.doc.items = [...donation.doc.items]
+  }
+}
+
+// NEW: Clear Fund Class derived fields in items row
+function clearItemsFundClassFields(row) {
+  console.log('Clearing items Fund Class fields for row')
+  const fields = ['service_area', 'subservice_area', 'product']
+  fields.forEach(f => { row[f] = '' })
+
+  if (donation.doc.items) {
+    donation.doc.items = [...donation.doc.items]
+  }
+}
+
+// NEW: Handle Fund Class selection in items table
+async function handleItemsFundClassSelection(fundClassId, row) {
+  console.log('Handling Fund Class selection in items table:', { fundClassId, row })
+  if (!fundClassId) {
+    clearItemsFundClassFields(row)
+    return
+  }
+
+  try {
+    const fundClassDetails = await fetchFundClassDetails(fundClassId)
+    if (fundClassDetails) {
+      updateItemsFundClassFields(row, fundClassDetails)
+      console.log('Items Fund Class fields updated successfully')
+      toast.success('Fund Class details loaded successfully')
+    } else {
+      console.log('No Fund Class details received for items')
+      toast.error('Could not fetch Fund Class details')
+    }
+  } catch (error) {
+    console.error('Error in items Fund Class handling:', error)
+    toast.error('Error loading Fund Class details')
+  }
+}
+
 // ADD: Enhanced watcher to handle items table donor selection
 watch(() => donation.doc.items, (newItems) => {
   if (newItems && Array.isArray(newItems)) {
@@ -1959,6 +2176,22 @@ watch(() => donation.doc.items, (newItems) => {
         // Handle the donor selection in items table
         handleItemsDonorSelection(row.donor, row)
       }
+
+      // UPDATED: Watch for fund_class changes on items (field name is fund_class)
+      if (row.fund_class && row.fund_class !== row._lastItemsFundClass) {
+        console.log(`Fund Class changed in items row ${index}:`, row.fund_class)
+        row._lastItemsFundClass = row.fund_class
+        
+        // Handle the Fund Class selection in items table
+        handleItemsFundClassSelection(row.fund_class, row)
+      }
+
+      // UPDATED: Clear fields if fund_class is cleared
+      if (!row.fund_class && row._lastItemsFundClass) {
+        console.log(`Fund Class cleared in items row ${index}`)
+        row._lastItemsFundClass = null
+        clearItemsFundClassFields(row)
+      }
     })
   }
 }, { deep: true })
@@ -1968,7 +2201,10 @@ function clearItemsDonorFields(row) {
   console.log('Clearing items donor fields for row')
   
   const donorFields = [
-    'donor_name', 'donor_type', 'donor_desk'
+    'donor_name', 'donor_type', 'donor_desk',
+    // ADD: Care-of details fields for items table as well
+    'co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor',
+    'area', 'co_city', 'co_country', 'co_designation'
   ]
   
   donorFields.forEach(fieldName => {
@@ -2024,6 +2260,196 @@ function refreshTabs() {
     tabs.reload()
   }
 }
+
+// ADD: Functionality for deduction_breakeven child table (mirror items table)
+async function handleDeductionDonorSelection(donorId, row) {
+  console.log('Handling donor selection in deduction_breakeven table:', { donorId, row })
+
+  if (!donorId) {
+    clearDeductionDonorFields(row)
+    return
+  }
+
+  try {
+    const donorDetails = await fetchDonorDetails(donorId)
+    if (donorDetails) {
+      updateDeductionDonorFields(row, donorDetails)
+      console.log('Deduction breakeven donor fields updated successfully')
+      toast.success('Donor details loaded successfully')
+    } else {
+      console.log('No donor details received for deduction breakeven')
+      toast.error('Could not fetch donor details')
+    }
+  } catch (error) {
+    console.error('Error in deduction breakeven donor handling:', error)
+    toast.error('Error loading donor details')
+  }
+}
+
+function updateDeductionDonorFields(row, donorDetails) {
+  console.log('Updating deduction_breakeven row with donor details:', donorDetails)
+  console.log('Deduction row before donor update:', { ...row })
+
+  // Prefer *_id fields per UI; gracefully fallback to non-id sources if needed
+  const sourceOptions = {
+    donor_name: ['donor_name'],
+    donor_type_id: ['donor_type_id', 'donor_type'],
+    donor_desk_id: ['donor_desk_id', 'donor_desk'],
+    // Optional care-of details if present in this table schema
+    co_name: ['co_name'],
+    co_contact_no: ['co_contact_no'],
+    co_email: ['co_email'],
+    co_address: ['co_address'],
+    relationship_with_donor: ['relationship_with_donor'],
+    area: ['area'],
+    co_city: ['co_city'],
+    co_country: ['co_country'],
+    co_designation: ['co_designation']
+  }
+
+  Object.entries(sourceOptions).forEach(([rowField, donorFields]) => {
+    let value
+    for (const src of donorFields) {
+      if (donorDetails[src] !== undefined && donorDetails[src] !== null) {
+        value = donorDetails[src]
+        break
+      }
+    }
+    if (value !== undefined) {
+      const oldValue = row[rowField]
+      row[rowField] = value || ''
+      console.log(`Updated deduction ${rowField}: ${oldValue} -> ${row[rowField]}`)
+    }
+  })
+
+  if (donation.doc.deduction_breakeven) {
+    donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven]
+  }
+}
+
+function clearDeductionDonorFields(row) {
+  console.log('Clearing deduction_breakeven donor fields for row')
+  const fields = [
+    'donor_name', 'donor_type_id', 'donor_desk_id',
+    'co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor',
+    'area', 'co_city', 'co_country', 'co_designation'
+  ]
+  fields.forEach(f => { if (f in row) row[f] = '' })
+
+  if (donation.doc.deduction_breakeven) {
+    donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven]
+  }
+}
+
+function updateDeductionFundClassFields(row, fundClassDetails) {
+  console.log('Updating deduction_breakeven row with Fund Class details:', fundClassDetails)
+  console.log('Deduction row before Fund Class update:', { ...row })
+
+  // Map to the exact *_id fields shown in UI; fallback to non-id names if API returns them
+  const sourceOptions = [
+    { target: 'service_area_id', sources: ['service_area_id', 'service_area'] },
+    { target: 'subservice_area_id', sources: ['subservice_area_id', 'subservice_area'] },
+    { target: 'product_id', sources: ['product_id', 'product'] },
+    { target: 'pay_service_area_id', sources: ['service_area_id', 'service_area'] },
+    { target: 'pay_subservice_area_id', sources: ['subservice_area_id', 'subservice_area'] },
+    { target: 'pay_product_id', sources: ['product_id', 'product'] },
+    { target: 'cost_center_id', sources: ['cost_center_id', 'cost_center'] }
+  ]
+
+  sourceOptions.forEach(({ target, sources }) => {
+    let value
+    for (const src of sources) {
+      if (fundClassDetails[src] !== undefined && fundClassDetails[src] !== null) {
+        value = fundClassDetails[src]
+        break
+      }
+    }
+    if (value !== undefined) {
+      const oldValue = row[target]
+      row[target] = value || ''
+      console.log(`Updated deduction ${target}: ${oldValue} -> ${row[target]}`)
+    }
+  })
+
+  if (donation.doc.deduction_breakeven) {
+    console.log('Forcing reactive update of deduction_breakeven after Fund Class update')
+    donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven]
+  }
+}
+
+function clearDeductionFundClassFields(row) {
+  console.log('Clearing deduction_breakeven Fund Class fields for row')
+  const fields = ['service_area_id', 'subservice_area_id', 'product_id', 'pay_service_area_id', 'pay_subservice_area_id', 'pay_product_id', 'cost_center_id']
+  fields.forEach(f => { if (f in row) row[f] = '' })
+
+  // Also clear the selector fields if present
+  if ('fund_class_id' in row) row.fund_class_id = ''
+  if ('fund_class' in row) row.fund_class = ''
+
+  if (donation.doc.deduction_breakeven) {
+    donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven]
+  }
+}
+
+async function handleDeductionFundClassSelection(fundClassId, row) {
+  console.log('Handling Fund Class selection in deduction_breakeven table:', { fundClassId, row })
+  if (!fundClassId) {
+    // Clear id fields as well when cleared
+    if ('fund_class_id' in row) row.fund_class_id = ''
+    if ('fund_class' in row) row.fund_class = ''
+    clearDeductionFundClassFields(row)
+    return
+  }
+
+  // Ensure the selected Fund Class ID is reflected on the row immediately
+  if ('fund_class_id' in row) row.fund_class_id = fundClassId
+  if ('fund_class' in row) row.fund_class = fundClassId
+
+  try {
+    const fundClassDetails = await fetchFundClassDetails(fundClassId)
+    if (fundClassDetails) {
+      updateDeductionFundClassFields(row, fundClassDetails)
+      console.log('Deduction breakeven Fund Class fields updated successfully')
+      toast.success('Fund Class details loaded successfully')
+    } else {
+      console.log('No Fund Class details received for deduction breakeven')
+      toast.error('Could not fetch Fund Class details')
+    }
+  } catch (error) {
+    console.error('Error in deduction breakeven Fund Class handling:', error)
+    toast.error('Error loading Fund Class details')
+  }
+}
+
+// Watcher for deduction_breakeven child table (mirror items watcher)
+watch(() => donation.doc.deduction_breakeven, (newRows) => {
+  if (newRows && Array.isArray(newRows)) {
+    newRows.forEach((row, index) => {
+      // Support either 'donor' or 'donor_id' depending on schema
+      const donorValue = row.donor !== undefined ? row.donor : row.donor_id
+      if (donorValue && donorValue !== row._lastDeductionDonorId) {
+        console.log(`Donor changed in deduction row ${index}:`, donorValue)
+        row._lastDeductionDonorId = donorValue
+        handleDeductionDonorSelection(donorValue, row)
+      }
+
+      // Support either 'fund_class' or 'fund_class_id'
+      const fundClassValue = row.fund_class !== undefined ? row.fund_class : row.fund_class_id
+      if (fundClassValue && fundClassValue !== row._lastDeductionFundClass) {
+        console.log(`Fund Class changed in deduction row ${index}:`, fundClassValue)
+        row._lastDeductionFundClass = fundClassValue
+        handleDeductionFundClassSelection(fundClassValue, row)
+      }
+
+      // Clear when fund class cleared
+      if (!row.fund_class && !row.fund_class_id && row._lastDeductionFundClass) {
+        console.log(`Fund Class cleared in deduction row ${index}`)
+        row._lastDeductionFundClass = null
+        clearDeductionFundClassFields(row)
+      }
+    })
+  }
+}, { deep: true })
 
 </script>
 

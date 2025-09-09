@@ -38,7 +38,7 @@
           class="mx-3 sm:mx-5"
           :rows="rows"
           v-slot="{ idx, column, item }"
-          doctype="FCRM Campaign"
+          doctype="Campaign"
         >
         <ListRowItem :item="item" :align="column.align">
           <template #prefix>
@@ -79,8 +79,8 @@
                   })
               "
             >
-              <Tooltip :text="item.label">
-                <div>{{ item.timeAgo }}</div>
+              <Tooltip :text="item && item.label ? item.label : ''">
+                <div>{{ item && item.timeAgo ? item.timeAgo : label }}</div>
               </Tooltip>
             </div>
             <div
@@ -97,8 +97,8 @@
                   })
               "
             >
-              <Tooltip :text="item.label">
-                <div class="truncate">{{ item.label }}</div>
+              <Tooltip :text="item && item.label ? item.label : ''">
+                <div class="truncate">{{ item && item.label ? item.label : label }}</div>
               </Tooltip>
             </div>
             <div v-else-if="column.type === 'Check'">
@@ -111,12 +111,10 @@
             </div>
             <div v-else-if="column.key === '_liked_by'">
               <Button
-                v-if="column.key == '_liked_by'"
+                v-if="item && typeof item === 'string'"
                 variant="ghosted"
                 :class="isLiked(item) ? 'fill-red-500' : 'fill-white'"
-                @click.stop.prevent="
-                  () => emit('likeDoc', { name: row.name, liked: isLiked(item) })
-                "
+                @click.stop.prevent
               >
                 <HeartIcon class="h-4 w-4" />
               </Button>
@@ -162,7 +160,7 @@
     <ListBulkActions
       ref="listBulkActionsRef"
       v-model="list"
-      doctype="FCRM Campaign"
+      doctype="Campaign"
       :options="{
         hideAssign: true,
       }"
@@ -232,9 +230,12 @@
   const { user } = sessionStore()
   
   function isLiked(item) {
-    if (item) {
-      let likedByMe = JSON.parse(item)
-      return likedByMe.includes(user)
+    if (!item || typeof item !== 'string') return false
+    try {
+      const likedByMe = JSON.parse(item)
+      return Array.isArray(likedByMe) && likedByMe.includes(user)
+    } catch (e) {
+      return false
     }
   }
   

@@ -641,6 +641,190 @@ onMounted(() => {
     })
   }
 })
+
+// ADD: Method to refresh deduction breakeven using the minimal backend method
+async function refreshDeductionBreakeven() {
+  if (!document.doc?.name) {
+    console.log('No document name available')
+    return
+  }
+  
+  try {
+    console.log('Refreshing deduction breakeven for donation:', document.doc.name)
+    
+    // Call the minimal backend method
+    const result = await call('akf_accounts.akf_accounts.doctype.donation.donation.refresh_deduction_breakeven', {
+      name: document.doc.name
+    })
+    
+    console.log('Backend method result:', result)
+    
+    if (result.status === 'success') {
+      toast.success('Deduction breakeven table refreshed successfully')
+      
+      // Reload the document to show updated data
+      document.reload()
+    }
+    
+  } catch (error) {
+    console.error('Error refreshing deduction breakeven:', error)
+    toast.error('Failed to refresh deduction breakeven table')
+  }
+}
+
+// ADD: Auto-refresh deduction breakeven when document loads
+onMounted(async () => {
+  // Wait for document to load
+  await nextTick()
+  
+  // Check if we need to populate deduction breakeven
+  if (shouldPopulateDeductionBreakeven()) {
+    console.log('Auto-refreshing deduction breakeven on mount...')
+    
+    // Add delay to ensure document is fully loaded
+    setTimeout(() => {
+      refreshDeductionBreakeven()
+    }, 2000)
+  }
+})
+
+// ADD: Watch for document changes to auto-refresh when needed
+watch(() => document.doc, (newDoc, oldDoc) => {
+  if (shouldPopulateDeductionBreakeven()) {
+    console.log('Auto-refreshing deduction breakeven on document change...')
+    
+    // Add delay to ensure document is fully loaded
+    setTimeout(() => {
+      refreshDeductionBreakeven()
+    }, 1000)
+  }
+}, { immediate: false, deep: true })
+
+// ADD: Helper function to determine if deduction breakeven should be populated
+function shouldPopulateDeductionBreakeven() {
+  return (
+    document.doc?.donation_type === 'Cash' && 
+    document.doc?.payment_detail && 
+    document.doc?.payment_detail.length > 0 &&
+    (!document.doc?.deduction_breakeven || document.doc?.deduction_breakeven.length === 0)
+  )
+}
+
+// ADD: Manual refresh button function
+async function handleManualRefresh() {
+  await refreshDeductionBreakeven()
+}
+
+// ADD: Frontend-only solution to populate deduction breakeven
+async function populateDeductionBreakevenFrontend() {
+  if (!document.doc || document.doc.donation_type !== 'Cash' || !document.doc.payment_detail) {
+    return
+  }
+  
+  try {
+    console.log('Populating deduction breakeven table using frontend logic...')
+    
+    // Check if deduction breakeven already has data
+    if (document.doc.deduction_breakeven && document.doc.deduction_breakeven.length > 0) {
+      console.log('Deduction breakeven already has data, skipping population')
+      return
+    }
+    
+    const deductionBreakevenRows = []
+    
+    // Process each payment detail row
+    for (const paymentRow of document.doc.payment_detail) {
+      if (paymentRow.fund_class_id && paymentRow.donation_amount) {
+        console.log('Processing payment row:', paymentRow)
+        
+        // Fetch deduction details from the database directly
+        const deductionDetails = await call('frappe.client.get_list', {
+          doctype: 'Deduction Details',
+          filters: {
+            parenttype: 'Fund Class',
+            parent: paymentRow.fund_class_id,
+            company: document.doc.company || 'Alkhidmat Foundation'
+          },
+          fields: ['company', 'income_type', 'project', 'account', 'percentage', 'min_percent', 'max_percent']
+        })
+        
+        if (deductionDetails && deductionDetails.length > 0) {
+          // Create deduction breakeven rows for each deduction detail
+          for (const deductionDetail of deductionDetails) {
+            const percentageAmount = paymentRow.donation_amount * (deductionDetail.percentage / 100)
+            
+            const deductionRow = {
+              random_id: Math.floor((1000 + Math.random() * 9000)),
+              fund_class: paymentRow.fund_class_id,
+              percentage: deductionDetail.percentage || 0,
+              min_percent: deductionDetail.min_percent || 0,
+              max_percent: deductionDetail.max_percent || 0,
+              amount: percentageAmount,
+              company: deductionDetail.company || document.doc.company,
+              income_type: deductionDetail.income_type || '',
+              project: deductionDetail.project || '',
+              account: deductionDetail.account || '',
+              donor: paymentRow.donor_id,
+              service_area: paymentRow.pay_service_area || '',
+              subservice_area: paymentRow.pay_subservice_area || '',
+              product: paymentRow.pay_product || '',
+              donation_amount: paymentRow.donation_amount,
+              base_amount: percentageAmount,
+              cost_center: document.doc.donation_cost_center || '',
+              donor_desk_id: paymentRow.donor_desk_id || '',
+              donation_type_id: paymentRow.donation_type || document.doc.donation_type,
+              __islocal: true,
+              doctype: 'Deduction Breakeven',
+              parentfield: 'deduction_breakeven',
+              parenttype: 'Donation',
+              idx: deductionBreakevenRows.length + 1
+            }
+            
+            deductionBreakevenRows.push(deductionRow)
+          }
+        }
+      }
+    }
+    
+    if (deductionBreakevenRows.length > 0) {
+      console.log('Created deduction breakeven rows:', deductionBreakevenRows)
+      
+      // Update the document with the new deduction breakeven data
+      document.doc.deduction_breakeven = deductionBreakevenRows
+      
+      // Force reactive update
+      document.doc = { ...document.doc }
+      
+      toast.success(`Successfully populated ${deductionBreakevenRows.length} deduction breakeven rows`)
+    } else {
+      console.log('No deduction breakeven rows to create')
+      toast.info('No deduction details found for the selected fund classes')
+    }
+    
+  } catch (error) {
+    console.error('Error populating deduction breakeven:', error)
+    toast.error('Failed to populate deduction breakeven table')
+  }
+}
+
+// ADD: Use frontend-only solution
+onMounted(async () => {
+  await nextTick()
+  
+  if (shouldPopulateDeductionBreakeven()) {
+    setTimeout(() => {
+      populateDeductionBreakevenFrontend()
+    }, 2000)
+  }
+})
+
+watch(() => document.doc, (newDoc) => {
+  if (shouldPopulateDeductionBreakeven()) {
+    setTimeout(() => {
+      populateDeductionBreakevenFrontend()
+    }, 1000)
+  }
+}, { immediate: false, deep: true })
 </script>
 
 <style scoped>

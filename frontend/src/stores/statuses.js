@@ -71,15 +71,53 @@ export const statusesStore = defineStore('crm-statuses', () => {
   }
 
   function getCommunicationStatus(name) {
-    if (!name) {
-      name = communicationStatuses.data[0].name
+    const communicationStatusMap = {
+      'Open': { name: 'Open', color: 'text-red-500' },
+      'Replied': { name: 'Replied', color: 'text-gray-500' },
+      'Closed': { name: 'Closed', color: 'text-green-500' },
+      'Linked': { name: 'Linked', color: 'text-gray-500' },
     }
-    return communicationStatuses[name]
+    return communicationStatusMap[name] || { name: name || 'Open', color: 'text-gray-500' }
+  }
+
+  function getEmailCampaignStatus(name) {
+    const emailCampaignStatuses = {
+      'Scheduled': { name: 'Scheduled', color: 'text-blue-500' },
+      'In Progress': { name: 'In Progress', color: 'text-orange-500' },
+      'Completed': { name: 'Completed', color: 'text-green-500' },
+      'Unsubscribed': { name: 'Unsubscribed', color: 'text-red-500' }
+    }
+    return emailCampaignStatuses[name] || emailCampaignStatuses['Scheduled']
+  }
+
+  function getDonorStatus(name) {
+    const donorStatuses = {
+      'Active': { name: 'Active', color: 'text-green-500' },
+      'Blocked': { name: 'Blocked', color: 'text-red-500' },
+    }
+    return donorStatuses[name] || donorStatuses['Active']
+  }
+
+  function getEnabledStatus(value) {
+    // Accept boolean or 'Yes'/'No' strings (case-insensitive)
+    if (typeof value === 'string') {
+      const normalized = value.toLowerCase()
+      if (normalized === 'yes' || normalized === 'true' || normalized === '1') {
+        return { name: 'Enabled', color: 'text-green-500' }
+      }
+      return { name: 'Disabled', color: 'text-red-500' }
+    }
+    if (typeof value === 'boolean') {
+      return value ? { name: 'Enabled', color: 'text-green-500' } : { name: 'Disabled', color: 'text-red-500' }
+    }
+    return { name: value || 'Disabled', color: 'text-red-500' }
   }
 
   function statusOptions(doctype, statuses = [], triggerStatusChange = null) {
     let statusesByName =
-      doctype == 'deal' ? dealStatusesByName : leadStatusesByName
+      doctype == 'deal' ? dealStatusesByName : 
+      doctype == 'email_campaign' ? { 'Scheduled': { name: 'Scheduled', color: 'text-blue-500' }, 'In Progress': { name: 'In Progress', color: 'text-orange-500' }, 'Completed': { name: 'Completed', color: 'text-green-500' }, 'Unsubscribed': { name: 'Unsubscribed', color: 'text-red-500' } } :
+      leadStatusesByName
 
     if (statuses?.length) {
       statusesByName = statuses.reduce((acc, status) => {
@@ -110,6 +148,9 @@ export const statusesStore = defineStore('crm-statuses', () => {
     getLeadStatus,
     getDealStatus,
     getCommunicationStatus,
+    getEmailCampaignStatus,
+  getDonorStatus,
     statusOptions,
+  getEnabledStatus,
   }
 })

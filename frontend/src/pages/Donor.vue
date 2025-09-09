@@ -85,22 +85,32 @@ export default {
 </script>
 
 <script setup>
+import { defineAsyncComponent } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
+import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
-import DonorListView from '@/components/ListViews/DonorListView.vue'
-import DonorModal from '@/components/Modals/DonorModal.vue'
 import ViewControls from '@/components/ViewControls.vue'
 import ViewBreadcrumbs from '@/components/ViewBreadcrumbs.vue'
 import FeatherIcon from '@/components/Icons/FeatherIcon.vue'
 import CustomActions from '@/components/CustomActions.vue'
-import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
 import FieldLayoutEditor from '@/components/FieldLayoutEditor.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { formatDate, timeAgo } from '@/utils'
+import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { usersStore } from '@/stores/users'
 import AppStyling from '@/components/AppStyling.vue'
 import { Button } from 'frappe-ui'
+
+const DonorListView = defineAsyncComponent({
+  loader: () => import('@/components/ListViews/DonorListView.vue'),
+  loadingComponent: LoadingSpinner,
+})
+const DonorModal = defineAsyncComponent({
+  loader: () => import('@/components/Modals/DonorModal.vue'),
+  loadingComponent: LoadingSpinner,
+})
 
 const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
   getMeta('Donor')
@@ -195,9 +205,11 @@ function parseRows(rows, columns = []) {
             image_label: donor.donor_name,
           }
         } else if (field == 'status') {
+          const { getDonorStatus } = statusesStore()
+          const statusInfo = getDonorStatus(donor.status)
           _rows[field] = {
             label: donor.status,
-            color: donor.status === 'Active' ? 'green' : 'red',
+            color: statusInfo.color || (donor.status === 'Active' ? 'text-green-500' : 'text-red-500'),
           }
         } else if (field == '_assign') {
           try {

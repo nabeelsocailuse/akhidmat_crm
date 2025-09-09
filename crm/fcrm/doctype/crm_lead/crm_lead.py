@@ -191,27 +191,33 @@ class CRMLead(Document):
 		)
 
 	def contact_exists(self, throw=True):
-		email_exist = frappe.db.exists("Contact Email", {"email_id": self.email})
-		phone_exist = frappe.db.exists("Contact Phone", {"phone": self.phone})
-		mobile_exist = frappe.db.exists("Contact Phone", {"phone": self.mobile_no})
+		# Use get_value to fetch child row names to avoid boolean/None ambiguity from frappe.db.exists
+		email_row = frappe.db.get_value("Contact Email", {"email_id": self.email}, "name") if self.email else None
+		phone_row = frappe.db.get_value("Contact Phone", {"phone": self.phone}, "name") if self.phone else None
+		mobile_row = frappe.db.get_value("Contact Phone", {"phone": self.mobile_no}, "name") if self.mobile_no else None
 
-		doctype = "Contact Email" if email_exist else "Contact Phone"
-		name = email_exist or phone_exist or mobile_exist
-
-		if name:
-			text = "Email" if email_exist else "Phone" if phone_exist else "Mobile No"
-			data = self.email if email_exist else self.phone if phone_exist else self.mobile_no
+		if email_row or phone_row or mobile_row:
+			if email_row:
+				text = "Email"
+				data = self.email
+				parent = frappe.db.get_value("Contact Email", email_row, "parent")
+			elif phone_row:
+				text = "Phone"
+				data = self.phone
+				parent = frappe.db.get_value("Contact Phone", phone_row, "parent")
+			else:
+				text = "Mobile No"
+				data = self.mobile_no
+				parent = frappe.db.get_value("Contact Phone", mobile_row, "parent")
 
 			value = "{0}: {1}".format(text, data)
-
-			contact = frappe.db.get_value(doctype, name, "parent")
 
 			if throw:
 				frappe.throw(
 					_("Contact already exists with {0}").format(value),
 					title=_("Contact Already Exists"),
 				)
-			return contact
+			return parent
 
 		return False
 
@@ -356,6 +362,7 @@ class CRMLead(Document):
 				"contacts": [{"contact": contact}],
 				"donor_type": "Individual",
 				"donor_name": donor_name,
+				"email": self.email,
 				"custom_campaign": self.custom_campaign,
 				"owner_id": self.lead_owner,
 				"identification_type": self.custom_identification_type,
@@ -411,7 +418,7 @@ class CRMLead(Document):
 			sla.apply(self)
 
 	def convert_to_deal(self, deal=None):
-		return convert_to_deal(lead=self.name, doc=self, deal=deal)
+		return convert_to_deal(lead=self.name, doc=self, donor=deal)
 
 	# def convert_to_donor(self, donor=None):
 	# 	return convert_to_donor(lead=self.name, doc=self, donor=donor)
@@ -537,4 +544,4 @@ def convert_to_deal(lead, doc=None, donor=None, existing_contact=None, existing_
 # 			lead.lead_name or lead.name, _donor
 # 		),
 # 	)
-	
+

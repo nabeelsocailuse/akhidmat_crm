@@ -137,12 +137,9 @@ const value = computed({
       newValue = val?.value || val || ''
     }
     
-    // Emit the change event with the proper value
-    if (valuePropPassed.value) {
-      emit('change', newValue)
-    } else {
-      emit('update:modelValue', newValue)
-    }
+    // CRITICAL FIX: Always emit both events for backward compatibility
+    emit('update:modelValue', newValue)
+    emit('change', newValue)
   },
 })
 
@@ -170,11 +167,6 @@ watchDebounced(
 watch(
   () => props.filters,
   (newFilters, oldFilters) => {
-    console.log('Link component filters changed:', {
-      newFilters,
-      oldFilters,
-      doctype: props.doctype
-    })
     // Force reload when filters change
     reload(text.value || '')
   },
@@ -185,11 +177,6 @@ watch(
 watch(
   () => props.get_query,
   (newGetQuery, oldGetQuery) => {
-    console.log('Link component get_query changed:', {
-      newGetQuery: typeof newGetQuery,
-      oldGetQuery: typeof oldGetQuery,
-      doctype: props.doctype
-    })
     // Force reload when get_query changes
     reload(text.value || '')
   }
@@ -200,11 +187,6 @@ watch(
   () => props.key,
   (newKey, oldKey) => {
     if (newKey !== oldKey) {
-      console.log('Link component key changed:', {
-        newKey,
-        oldKey,
-        doctype: props.doctype
-      })
       // Clear current options and force reload
       options.data = []
       reload(text.value || '')

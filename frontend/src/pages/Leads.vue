@@ -44,7 +44,7 @@
       }"
       @update="(data) => viewControls.updateKanbanSettings(data)"
       @loadMore="(columnName) => viewControls.loadMoreKanban(columnName)"
-    >
+    > 
       <template #title="{ titleField, itemName }">
         <div class="flex items-center gap-2">
           <div v-if="titleField === 'status'">

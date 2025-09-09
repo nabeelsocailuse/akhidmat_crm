@@ -88,12 +88,7 @@
     >
       <!-- ADD: Debug logging for Link component props -->
       <div v-if="field.fieldname === 'donor_id'" style="display: none;">
-        {{ console.log('FieldLayout: Rendering donor_id Link component with props:', {
-          doctype: field.fieldtype == 'Link' ? field.options : data[field.options],
-          filters: getFieldFilters(field),
-          get_query: typeof field.get_query,
-          field: field
-        }) }}
+        <!-- Debug info removed -->
       </div>
       
       <Link
@@ -158,20 +153,36 @@
       </template>
     </Link>
     <DateTimePicker
-      v-else-if="field.fieldtype === 'Datetime'"
+      v-else-if="field.fieldtype === 'Datetime' && !field.read_only"
       :value="data[field.fieldname]"
       :formatter="(date) => getFormat(date, '', true, true)"
       :placeholder="getPlaceholder(field)"
       input-class="border-none"
       @change="(v) => fieldChange(v, field)"
     />
+    <FormControl
+      v-else-if="field.fieldtype === 'Datetime' && field.read_only"
+      type="text"
+      :placeholder="getPlaceholder(field)"
+      :value="data[field.fieldname] ? getFormat(data[field.fieldname], '', true, true) : ''"
+      :disabled="true"
+      :description="getDescription(field)"
+    />
     <DatePicker
-      v-else-if="field.fieldtype === 'Date'"
+      v-else-if="field.fieldtype === 'Date' && !field.read_only"
       :value="data[field.fieldname]"
       :formatter="(date) => getFormat(date, '', true)"
       :placeholder="getPlaceholder(field)"
       input-class="border-none"
       @change="(v) => fieldChange(v, field)"
+    />
+    <FormControl
+      v-else-if="field.fieldtype === 'Date' && field.read_only"
+      type="text"
+      :placeholder="getPlaceholder(field)"
+      :value="data[field.fieldname] ? getFormat(data[field.fieldname], '', true) : ''"
+      :disabled="true"
+      :description="getDescription(field)"
     />
     <FormControl
       v-else-if="
@@ -225,15 +236,6 @@
       :disabled="Boolean(field.read_only)"
       :description="getDescription(field)"
       @change="fieldChange(flt($event.target.value), field)"
-    />
-    <FormControl
-      v-else
-      type="text"
-      :placeholder="getPlaceholder(field)"
-      :value="getDataValue(data[field.fieldname], field)"
-      :disabled="Boolean(field.read_only)"
-      :description="getDescription(field)"
-      @change="fieldChange($event.target.value, field)"
     />
     <FormControl
       v-else
@@ -401,7 +403,7 @@ function isFieldVisible(field) {
   
   return (
     (field.fieldtype == 'Check' ||
-      (field.read_only && data.value[field.fieldname]) ||
+      field.read_only ||
       !field.read_only) &&
     (!field.depends_on || field.display_via_depends_on) &&
     !field.hidden
@@ -435,29 +437,13 @@ const getDescription = (field) => {
 }
 
 function fieldChange(value, df) {
-  // Debug logging for link fields
-  if (['Link', 'Dynamic Link', 'User'].includes(df.fieldtype)) {
-    console.log(`🔗 Link field change: ${df.fieldname} = ${value}`)
-    console.log(`🔗 Previous value: ${data.value[df.fieldname]}`)
-  }
-  
   // CRITICAL FIX: Always update the data first
   data.value[df.fieldname] = value
   
-  // Debug logging after update
-  if (['Link', 'Dynamic Link', 'User'].includes(df.fieldtype)) {
-    console.log(`🔗 After update: ${df.fieldname} = ${data.value[df.fieldname]}`)
-  }
-  
-  // Force reactivity update for link fields specifically
-  if (['Link', 'Dynamic Link', 'User'].includes(df.fieldtype)) {
-    // Ensure the value persists by forcing a reactive update
-    nextTick(() => {
-      if (data.value[df.fieldname] !== value) {
-        console.log(`🔗 Value lost, restoring: ${df.fieldname} = ${value}`)
-        data.value[df.fieldname] = value
-      }
-    })
+  // Emit field change to parent component
+  const onFieldChange = inject('onFieldChange')
+  if (onFieldChange) {
+    onFieldChange(df.fieldname, value)
   }
   
   if (isGridRow) {
@@ -468,7 +454,6 @@ function fieldChange(value, df) {
       triggerOnChange(df.fieldname, value)
     } else {
       // Fallback: directly update the data and force reactivity
-      console.log(`Field ${df.fieldname} updated to:`, value)
       
       // Force a reactive update by triggering Vue's reactivity system
       nextTick(() => {
@@ -580,26 +565,14 @@ function getSelectOptions(field) {
 }
 
 function getFieldFilters(field) {
-  // ADD: Debug logging to see what field configuration is received
-  console.log('FieldLayout: getFieldFilters called for field:', {
-    fieldname: field.fieldname,
-    fieldtype: field.fieldtype,
-    options: field.options,
-    filters: field.filters,
-    link_filters: field.link_filters,
-    get_query: typeof field.get_query
-  })
-  
   // Apply filter to link_doctype field in the links child table
   // This ensures only "Donor" doctype shows up in the link_doctype dropdown
   if (parentFieldname === 'links' && field.fieldname === 'link_doctype' && field.fieldtype === 'Link' && field.options === 'DocType') {
-    console.log('FieldLayout: Applying link_doctype filter for links table')
     return { name: 'Donor' }
   }
   
   // Return existing filters if available
   if (field.filters) {
-    console.log('FieldLayout: Using field.filters:', field.filters)
     return field.filters
   }
   
@@ -607,33 +580,26 @@ function getFieldFilters(field) {
   if (field.link_filters) {
     try {
       const parsedFilters = JSON.parse(field.link_filters)
-      console.log('FieldLayout: Using parsed link_filters:', parsedFilters)
       return parsedFilters
     } catch (e) {
-      console.log('FieldLayout: Error parsing link_filters:', e)
       return {}
     }
   }
   
-  console.log('FieldLayout: No filters found, returning empty object')
   return {}
 }
 
-// ADD: Function to get donor filtering from data
+// Function to get donor filtering from data
 function getDonorFilteringFromData() {
-  console.log('Field: Getting donor filtering from data:', data.value)
-  
   if (data.value) {
     const donorFiltering = {
       donor_identity: data.value.donor_identity,
       currency: data.value.currency
     }
     
-    console.log('Field: Extracted donor filtering:', donorFiltering)
     return donorFiltering
   }
   
-  console.log('Field: No data available for donor filtering')
   return {}
 }
 

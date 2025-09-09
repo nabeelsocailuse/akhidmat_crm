@@ -3,14 +3,14 @@
     <template #target>
       <div class="flex items-center">
         <AppStyling
-          type="button"
+          type="button" 
           buttonType="filter"
-          buttonLabel="Filter"
-          :class="filters?.size ? 'rounded-r-none' : ''"
-          @click="$emit('click')"
+          buttonLabel="Filters"
         >
-          <template #prefix><FilterIcon class="h-4" /></template>
-          <template v-if="filters?.size" #suffix>
+          <template #prefix>
+            <FilterIcon class="h-4" />
+          </template>
+          <template #suffix v-if="filters?.size">
             <div
               class="flex h-5 w-5 items-center justify-center rounded-[5px] bg-surface-white pt-px text-xs font-medium text-ink-gray-8 shadow-sm"
             >
@@ -18,15 +18,16 @@
             </div>
           </template>
         </AppStyling>
-        <Tooltip v-if="filters?.size" :text="__('Clear all Filter')">
-          <div>
-            <Button
-              class="rounded-l-none border-l"
-              icon="x"
-              @click.stop="clearfilter(false)"
-            />
-          </div>
-        </Tooltip>
+        <Button
+          v-if="filters?.size"
+          class="ml-1 !h-7 !w-7 !p-1"
+          variant="ghost"
+          @click="clearAllFilters"
+        >
+          <template #icon>
+            <FeatherIcon name="x" class="h-4" />
+          </template>
+        </Button>
       </div>
     </template>
     <template #body="{ close }">
@@ -44,7 +45,7 @@
             <div v-if="isMobileView" class="flex flex-col gap-2">
               <div class="-mb-2 flex w-full items-center justify-between">
                 <div class="text-base text-ink-gray-5">
-                  {{ i == 0 ? __('Where') : __('And') }}
+                  {{ i == 0 ? __('Where') : __('And') }} 
                 </div>
                 <Button
                   class="flex"
@@ -171,6 +172,8 @@ import {
   DatePicker,
   DateTimePicker,
   DateRangePicker,
+  Button,
+  FeatherIcon,
 } from 'frappe-ui'
 import { h, computed, onMounted } from 'vue'
 import { isMobileView } from '@/composables/settings'
@@ -490,6 +493,11 @@ function clearfilter(close) {
   filters.value.clear()
   apply()
   close && close()
+}
+
+function clearAllFilters() {
+  filters.value.clear()
+  apply()
 }
 
 function updateValue(value, filter) {

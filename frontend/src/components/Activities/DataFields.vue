@@ -97,6 +97,27 @@ const tabs = createResource({
   cache: ['DataFields', props.doctype],
   params: { doctype: props.doctype, type: 'Data Fields' },
   auto: true,
+  transform: (tabs) => {
+    if (!tabs || !Array.isArray(tabs)) return tabs
+    const allowed = ['Donor', 'CRM Lead', 'Contact']
+    tabs.forEach((tab) => {
+      if (!tab.sections || !Array.isArray(tab.sections)) return
+      tab.sections.forEach((section) => {
+        if (!section.columns || !Array.isArray(section.columns)) return
+        section.columns.forEach((column) => {
+          if (!column.fields || !Array.isArray(column.fields)) return
+          column.fields.forEach((field) => {
+            if (field.fieldtype === 'Link' && field.fieldname === 'reference_doctype') {
+              field.options = 'DocType'
+              field.link_filters = JSON.stringify({ name: ['in', allowed] })
+              field.get_query = () => ({ doctype: 'DocType', filters: { name: ['in', allowed] } })
+            }
+          })
+        })
+      })
+    })
+    return tabs
+  },
 })
 
 function saveChanges() {

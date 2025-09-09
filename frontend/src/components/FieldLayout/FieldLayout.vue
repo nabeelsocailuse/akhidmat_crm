@@ -48,6 +48,8 @@ const props = defineProps({
   },
 })
 
+const emit = defineEmits(['open-create-modal', 'donor-selected', 'field-change'])
+
 const tabIndex = ref(0)
 
 const hasTabs = computed(() => {
@@ -64,6 +66,11 @@ const reactiveData = computed(() => {
   return props.data
 })
 
+// Function to handle field changes and emit to parent
+const handleFieldChange = (fieldName, value) => {
+  emit('field-change', fieldName, value)
+}
+
 provide(
   'data',
   reactiveData,
@@ -73,6 +80,7 @@ provide('doctype', props.doctype)
 provide('preview', props.preview)
 provide('isGridRow', props.isGridRow)
 provide('parentFieldname', props.parentFieldname)
+provide('onFieldChange', handleFieldChange)
 
 // Add fallback for missing data
 onMounted(() => {
@@ -80,8 +88,6 @@ onMounted(() => {
     console.warn('FieldLayout: No data provided, using empty object')
   }
 })
-
-const emit = defineEmits(['open-create-modal', 'donor-selected'])
 </script>
 <style scoped>
 .section:not(:has(.field)) {

@@ -257,17 +257,28 @@
 </template>
 
 <script setup>
+import { defineAsyncComponent } from 'vue'
+import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Breadcrumbs from '@/components/Breadcrumbs.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import AssignTo from '@/components/AssignTo.vue'
-import Activities from '@/components/Activities/Activities.vue'
-import SidePanelLayout from '@/components/SidePanelLayout.vue'
+const Activities = defineAsyncComponent({
+  loader: () => import('@/components/Activities/Activities.vue'),
+  loadingComponent: LoadingSpinner,
+})
+const SidePanelLayout = defineAsyncComponent({
+  loader: () => import('@/components/SidePanelLayout.vue'),
+  loadingComponent: LoadingSpinner,
+})
 import Resizer from '@/components/Resizer.vue'
 import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
-import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
+const FilesUploader = defineAsyncComponent({
+  loader: () => import('@/components/FilesUploader/FilesUploader.vue'),
+  loadingComponent: LoadingSpinner,
+})
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import SLASection from '@/components/SLASection.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
@@ -324,7 +335,10 @@ import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import { useDocument } from '@/data/document'
 import ViewBreadcrumbs from '@/components/ViewBreadcrumbs.vue'
-import CreateDocumentModal from '@/components/Modals/CreateDocumentModal.vue'
+const CreateDocumentModal = defineAsyncComponent({
+  loader: () => import('@/components/Modals/CreateDocumentModal.vue'),
+  loadingComponent: LoadingSpinner,
+})
 
 import { useInputMask } from '@/composables/useInputMask'
 import { useDonorFieldValidation } from '@/composables/useDonorFieldValidation'

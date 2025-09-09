@@ -25,7 +25,7 @@
       v-model:loadMore="loadMore"
       v-model:resizeColumn="triggerResize"
       v-model:updatedPageCount="updatedPageCount"
-      doctype="FCRM Campaign"
+      doctype="Campaign"
       :filters="{}"
       :options="{
         allowedViews: ['list', 'group_by', 'kanban'],
@@ -165,7 +165,7 @@
       @updatePageCount="(count) => (updatedPageCount = count)"
       @applyFilter="(data) => viewControls.applyFilter(data)"
       @applyLikeFilter="(data) => viewControls.applyLikeFilter(data)"
-      @likeDoc="(data) => viewControls.likeDoc(data)"
+      @likeDoc="() => {}"
       @selectionsChanged="
         (selections) => viewControls.updateSelections(selections)
       "
@@ -190,14 +190,14 @@
       v-if="showNoteModal"
       v-model="showNoteModal"
       :note="note"
-      doctype="FCRM Campaign"
+      doctype="Campaign"
       :doc="docname"
     />
     <TaskModal
       v-if="showTaskModal"
       v-model="showTaskModal"
       :task="task"
-      doctype="FCRM Campaign"
+      doctype="Campaign"
       :doc="docname"
     />
   </AppStyling>
@@ -232,7 +232,7 @@ import { ref, computed, reactive, h } from 'vue'
 import AppStyling from '@/components/AppStyling.vue'
 
 const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
-  getMeta('FCRM Campaign')
+  getMeta('Campaign')
 const { makeCall } = globalStore()
 const { getUser, users } = usersStore()
 const caseofficerUsers = computed(() =>

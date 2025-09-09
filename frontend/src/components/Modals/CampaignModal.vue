@@ -32,7 +32,7 @@
               v-if="tabs.data" 
               :tabs="tabs.data" 
               :data="campaign.doc" 
-              :doctype="'FCRM Campaign'" 
+              :doctype="'Campaign'" 
               @field-change="onFieldChange"
             />
           </div>
@@ -82,13 +82,13 @@ const router = useRouter()
 const error = ref(null)
 const isCampaignCreating = ref(false)
 
-const { document: campaign, triggerOnBeforeCreate } = useDocument('FCRM Campaign')
+const { document: campaign, triggerOnBeforeCreate } = useDocument('Campaign')
 
 // Add tabs resource for field layout
 const tabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
-  cache: ['QuickEntryModal', 'FCRM Campaign', false], 
-  params: { doctype: 'FCRM Campaign', type: 'Quick Entry' },
+    cache: ['QuickEntryModal', 'Campaign', false],
+  params: { doctype: 'Campaign', type: 'Quick Entry' },
   auto: true,
 })
 
@@ -108,7 +108,7 @@ async function createNewCampaign() {
   createCampaign.submit(
     {
       doc: {
-        doctype: 'FCRM Campaign',
+        doctype: 'Campaign',
         ...campaign.doc,
       },
     },
@@ -144,7 +144,7 @@ async function createNewCampaign() {
 
 function openQuickEntryModal() {
   showQuickEntryModal.value = true
-  quickEntryProps.value = { doctype: 'FCRM Campaign' }
+          quickEntryProps.value = { doctype: 'Campaign' }
   nextTick(() => (show.value = false))
 }
 

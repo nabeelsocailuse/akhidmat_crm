@@ -170,6 +170,7 @@ import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import CampaignIcon from '@/components/Icons/CampaignIcon.vue'
 import CollapseSidebar from '@/components/Icons/CollapseSidebar.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
+import CommunicationIcon from '../Icons/CommunicationIcon.vue'
 import HelpIcon from '@/components/Icons/HelpIcon.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
 import Notifications from '@/components/Notifications.vue'
@@ -199,6 +200,7 @@ import router from '@/router'
 import { useStorage } from '@vueuse/core'
 import { ref, reactive, computed, h, markRaw, onMounted } from 'vue'
 import DonorIcon from '../Icons/DonorIcon.vue'
+import EmailGroupIcon from '../Icons/EmailGroupIcon.vue'
 import AppStyling from '../AppStyling.vue'
 
 const { getPinnedViews, getPublicViews } = viewsStore()
@@ -234,7 +236,7 @@ const allViews = computed(() => {
     },
     {
       label: 'Addresses',
-      icon: DonorIcon,
+      icon: LeadsIcon,
       to: 'Addresses',
     },
     // {
@@ -258,11 +260,6 @@ const allViews = computed(() => {
       to: 'Call Logs',
     },
     {
-      label: 'Campaigns',
-      icon: CampaignIcon,
-      to: 'Campaigns',
-    },
-    {
       label: 'Donor',
       icon: DonorIcon,
       to: 'Donor',
@@ -272,7 +269,6 @@ const allViews = computed(() => {
     icon: DonationIcon,
     to: 'Donations',
     },
-
   ]
 
   let _views = [
@@ -286,6 +282,42 @@ const allViews = computed(() => {
         }
         return true
       }),
+    },
+    {
+      name: 'Fundraising Campaign',
+      opened: false,
+      views: [
+        {
+          label: 'Campaigns',
+          icon: CampaignIcon,
+          to: 'Campaigns',
+        },
+        {
+          label: 'Email Campaign',
+          icon: CampaignIcon,
+          to: 'Email Campaign',
+        },
+        {
+          label: 'Email Template',
+          icon: EmailIcon,
+          to: 'EmailTemplates',
+        },
+        {
+          label: 'Email Group',
+          icon: EmailGroupIcon,
+          to: 'Email Group',
+        },
+        {
+          label: 'Email Group Members',
+          icon: EmailGroupIcon,
+          to: 'Email Group Members',
+        },
+        {
+          label: 'Communication',
+          icon: CommunicationIcon,
+          to: 'Communication',
+        },
+      ],
     },
   ]
   if (getPublicViews().length) {
@@ -336,14 +368,26 @@ function getIcon(routeName, icon) {
       return NoteIcon
     case 'Call Logs':
       return PhoneIcon
-    case 'Campaign':
+    case 'Campaigns':
       return CampaignIcon
     case 'Donor':
       return DonorIcon
     case 'Addresses':
-      return DonorIcon
+      return LeadsIcon
     case 'Donation':
       return DonationIcon
+    case 'Email Template':
+      return EmailIcon
+    case 'Email Campaign':
+      return CampaignIcon
+    case 'Email Group':
+      return EmailGroupIcon
+    case 'Communication':
+      return CommunicationIcon
+    case 'Email Group Members':
+      return EmailGroupIcon
+    case 'EmailCampaignDetail':
+      return CampaignIcon
     default:
       return PinIcon
   }

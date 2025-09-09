@@ -360,9 +360,10 @@ import {
   Tooltip,
   dayjs,
   call,
+  toast,
 } from 'frappe-ui'
 import Draggable from 'vuedraggable'
-import { ref, reactive, computed, inject, provide, watch } from 'vue'
+import { ref, reactive, computed, inject, provide, watch, nextTick, onMounted, getCurrentInstance } from 'vue'
 import { useDonorSelection } from '@/composables/useDonorSelection'
 
 const props = defineProps({
@@ -440,6 +441,14 @@ const fields = computed(() => {
   )
 })
 
+// Debug: Log fields for deduction breakeven table
+if (props.parentFieldname === 'deduction_breakeven') {
+  console.log('=== DEDUCTION BREAKEVEN FIELDS ===')
+  console.log('Grid view settings:', getGridViewSettings(props.parentDoctype))
+  console.log('All fields:', getFields())
+  console.log('Computed fields:', fields.value)
+}
+
 const allFields = computed(() => {
   return getFields()?.map((f) => getFieldObj(f)) || []
 })
@@ -480,6 +489,124 @@ watch(
   { deep: true }
 )
 
+// ADD: Watch for company changes in parent document to refresh deduction fields
+watch(
+  () => parentDoc.value?.company,
+  (newCompany, oldCompany) => {
+    if (newCompany && newCompany !== oldCompany && props.parentFieldname === 'deduction_breakeven') {
+      console.log('Company changed in parent document, refreshing deduction fields')
+      
+      // Refresh deduction fields for all rows that have fund_class selected
+      if (rows.value && Array.isArray(rows.value)) {
+        let refreshCount = 0
+        rows.value.forEach(async (row) => {
+          if (row.fund_class) {
+            console.log('Refreshing deduction fields for row with fund_class:', row.fund_class)
+            try {
+              // Company is no longer required, only fund class ID
+              const deductionDetails = await fetchDeductionDetails(row.fund_class)
+              if (deductionDetails && Object.keys(deductionDetails).length > 0) {
+                updateDeductionFields(row, deductionDetails)
+                refreshCount++
+              } else {
+                // Clear fields when no deduction details found
+                clearDeductionFields(row)
+              }
+            } catch (error) {
+              console.error('Error refreshing deduction fields for row:', error)
+              // Clear fields on error
+              clearDeductionFields(row)
+            }
+          }
+        })
+        
+        // Force reactive update
+        forceReactiveUpdate()
+        
+        // Show user feedback
+        if (refreshCount > 0) {
+          toast.success(`Refreshed deduction fields for ${refreshCount} row(s)`)
+        }
+      }
+    }
+  }
+)
+
+// Debug: Watch for any changes in the deduction breakeven table
+if (props.parentFieldname === 'deduction_breakeven') {
+  watch(
+    () => rows.value,
+    (newRows) => {
+      console.log('=== DEDUCTION BREAKEVEN ROWS CHANGED ===')
+      console.log('New rows:', newRows)
+      console.log('Rows length:', newRows?.length)
+      if (newRows && Array.isArray(newRows)) {
+        newRows.forEach((row, index) => {
+          console.log(`Row ${index}:`, row)
+        })
+      }
+    },
+    { deep: true }
+  )
+  
+  // Test API accessibility when component mounts
+  onMounted(async () => {
+    console.log('=== TESTING API ACCESSIBILITY ===')
+    try {
+      const testResult = await call('crm.fcrm.doctype.donation.api.test_api')
+      console.log('Test API result:', testResult)
+      
+      // Also test the deduction details API directly
+      console.log('=== TESTING DEDUCTION DETAILS API ===')
+      try {
+        const deductionResult = await call('crm.fcrm.doctype.donation.api.get_deduction_details', {
+          fund_class: 'AKFP'
+        })
+        console.log('Deduction details test result:', deductionResult)
+      } catch (deductionError) {
+        console.error('Deduction details test error:', deductionError)
+      }
+    } catch (error) {
+      console.error('Test API error:', error)
+    }
+  })
+}
+
+// ADD: Watch for donation_amount changes in deduction_breakeven rows to recalculate amounts
+watch(
+  () => rows.value,
+  (newRows) => {
+    if (newRows && Array.isArray(newRows) && props.parentFieldname === 'deduction_breakeven') {
+      newRows.forEach((row) => {
+        if (row.donation_amount && row.percentage) {
+          // Watch for changes in donation_amount or percentage
+          watch(
+            () => [row.donation_amount, row.percentage],
+            () => {
+              if (row.donation_amount && row.percentage) {
+                calculateDeductionAmount(row)
+              }
+            },
+            { immediate: false }
+          )
+        }
+      })
+    }
+  },
+  { deep: true }
+)
+
+// ADD: Watch for parent document changes to sync donation amount
+watch(
+  () => [parentDoc.value?.donation_amount, parentDoc.value?.payment_detail],
+  () => {
+    if (props.parentFieldname === 'deduction_breakeven') {
+      syncDonationAmount()
+    }
+  },
+  { deep: true }
+)
+
 // ADD: Enhanced setQueryForField function specifically for donor_id
 function setQueryForField(field, parentDoc) {
   console.log('Grid setQueryForField called for:', field.fieldname, 'with parent doc:', parentDoc)
@@ -514,7 +641,6 @@ function setQueryForField(field, parentDoc) {
   return field
 }
 
-// UPDATE: Enhanced getFieldObj function to always apply setQueryForField
 function getFieldObj(field) {
   if (field.fieldtype === 'Link' && field.options !== 'User') {
     if (!field.create) {
@@ -535,7 +661,6 @@ function getFieldObj(field) {
     })
   }
 
-  // CRITICAL: Always apply setQueryForField with current parent document values
   setQueryForField(field, parentDoc.value)
 
   // Apply filter to link_doctype field in the links child table
@@ -624,6 +749,15 @@ const addRow = () => {
       newRow[field.fieldname] = 'Donor'
     }
   })
+  
+  // Generate random ID for deduction breakeven table (similar to payment detail)
+  if (props.parentFieldname === 'deduction_breakeven') {
+    newRow.random_id = Math.floor((1000 + rows.value.length + 1) + (Math.random() * 9000))
+    console.log('=== ADDING DEDUCTION BREAKEVEN ROW ===')
+    console.log('New row:', newRow)
+    console.log('Parent fieldname:', props.parentFieldname)
+  }
+  
   newRow.name = getRandom(10)
   showRowList.value.push(false)
   newRow['__islocal'] = true
@@ -643,13 +777,876 @@ const deleteRows = () => {
   selectedRows.clear()
 }
 
-const emit = defineEmits(['donor-selected'])
+const emit = defineEmits(['donor-selected', 'deduction-row-added', 'add-deduction-row', 'deduction-table-cleared'])
 
 const { fetchDonorDetails, updateDonorFields, clearDonorFields } = useDonorSelection()
 
+// Function to fetch deduction details for a fund class
+async function fetchDeductionDetails(fundClassId) {
+  try {
+    console.log('=== FETCHING DEDUCTION DETAILS ===')
+    console.log('Fund class ID:', fundClassId)
+    console.log('Fund class type:', typeof fundClassId)
+    
+    if (!fundClassId) {
+      console.warn('No fund class ID provided')
+      return null
+    }
+    
+    const params = { fund_class: fundClassId }
+    console.log('API parameters:', params)
+    console.log('API endpoint: crm.fcrm.doctype.donation.api.get_deduction_details')
+    
+    const result = await call('crm.fcrm.doctype.donation.api.get_deduction_details', params)
+    
+    console.log('API response:', result)
+    console.log('Result type:', typeof result)
+    console.log('Result keys:', result ? Object.keys(result) : 'null')
+    
+    if (result && Object.keys(result).length > 0) {
+      console.log('Deduction details found:', result)
+      return result
+    } else {
+      console.log('No deduction details found in response')
+      return null
+    }
+  } catch (error) {
+    console.error('=== ERROR FETCHING DEDUCTION DETAILS ===')
+    console.error('Error details:', error)
+    console.error('Error message:', error.message)
+    
+    // Check if it's a network error, API error, or other type
+    if (error.response) {
+      console.error('Error response:', error.response)
+    }
+    if (error.status) {
+      console.error('Error status:', error.status)
+    }
+    
+    toast.error('Error fetching deduction details. Please try again.')
+    return null
+  }
+}
+
+// Function to add a new row to deduction breakeven table from payment detail
+// This function is now simplified to just emit events - the parent component will handle the actual row addition
+async function addDeductionBreakevenRow(deductionDetails, fundClassId) {
+  console.log('=== ADDING DEDUCTION BREAKEVEN ROW FROM PAYMENT DETAIL ===')
+  console.log('Deduction details:', deductionDetails)
+  console.log('Fund class ID:', fundClassId)
+  
+  // Create the row data structure
+  const newDeductionRow = {
+    random_id: Math.floor((1000 + Math.random() * 9000)),
+    fund_class: fundClassId,
+    percentage: deductionDetails.percentage || 0,
+    min_percent: deductionDetails.min_percent || 0,
+    max_percent: deductionDetails.max_percent || 0,
+    amount: 0, // Will be calculated based on percentage and donation amount
+    company: deductionDetails.company || '',
+    income_type: deductionDetails.income_type || ''
+    // Note: project and account are intentionally not populated as requested
+  }
+  
+  console.log('New deduction row data created:', newDeductionRow)
+  
+  // Emit event to parent component to handle the actual row addition
+  emit('add-deduction-row', {
+    fundClassId: fundClassId,
+    deductionDetails: deductionDetails,
+    newRowData: newDeductionRow,
+    sourceTable: 'payment_detail'
+  })
+  
+  console.log('Event emitted to parent component')
+  return newDeductionRow
+}
+
+// Function to add deduction row directly to parent document
+async function addDeductionRowToParent(deductionDetails, fundClassId, paymentRowRandomId) {
+  console.log('=== ADDING DEDUCTION ROW DIRECTLY TO PARENT ===')
+  console.log('Deduction details:', deductionDetails)
+  console.log('Fund class ID:', fundClassId)
+  console.log('Parent doc:', parentDoc.value)
+  
+  try {
+    // Check if parent document is available
+    if (!parentDoc.value) {
+      console.error('Parent document not available')
+      return false
+    }
+    
+    // Check if deduction_breakeven table exists in parent document
+    if (!parentDoc.value.deduction_breakeven) {
+      console.log('Creating deduction_breakeven array in parent document')
+      parentDoc.value.deduction_breakeven = []
+    }
+    
+    console.log('Current deduction_breakeven rows:', parentDoc.value.deduction_breakeven)
+    
+    // Create new deduction breakeven row (without project and account as requested)
+    const newDeductionRow = {
+      random_id: paymentRowRandomId || Math.floor((1000 + parentDoc.value.deduction_breakeven.length + 1) + (Math.random() * 9000)),
+      fund_class: fundClassId,
+      percentage: deductionDetails.percentage || 0,
+      min_percent: deductionDetails.min_percent || 0,
+      max_percent: deductionDetails.max_percent || 0,
+      amount: 0, // Will be calculated based on percentage and donation amount
+      company: deductionDetails.company || '',
+      income_type: deductionDetails.income_type || '',
+      // Note: project and account are intentionally not populated as requested
+      __islocal: true,
+      doctype: 'Deduction Breakeven',
+      parentfield: 'deduction_breakeven',
+      parenttype: props.parentDoctype || 'Donation',
+      idx: (parentDoc.value.deduction_breakeven.length + 1)
+    }
+    
+    console.log('New deduction row created:', newDeductionRow)
+    
+    // Add the new row to the deduction breakeven table
+    parentDoc.value.deduction_breakeven.push(newDeductionRow)
+    
+    // Force reactive update by creating new array reference
+    parentDoc.value.deduction_breakeven = [...parentDoc.value.deduction_breakeven]
+    
+    console.log('Deduction breakeven row added successfully to parent')
+    console.log('Total deduction rows in parent:', parentDoc.value.deduction_breakeven.length)
+    console.log('Updated parent doc deduction_breakeven:', parentDoc.value.deduction_breakeven)
+    
+    // Emit event to notify parent component about the change
+    emit('deduction-row-added', {
+      row: newDeductionRow,
+      fundClassId: fundClassId,
+      deductionDetails: deductionDetails
+    })
+    
+    return true
+    
+  } catch (error) {
+    console.error('Error adding deduction row to parent:', error)
+    return false
+  }
+}
+
+// Function to clear the deduction breakeven table when intention is Zakat
+async function clearDeductionBreakevenTable() {
+  console.log('=== CLEARING DEDUCTION BREAKEVEN TABLE ===')
+  console.log('Parent doc:', parentDoc.value)
+  
+  try {
+    // Check if parent document is available
+    if (!parentDoc.value) {
+      console.error('Parent document not available')
+      return false
+    }
+    
+    // Check if deduction_breakeven table exists
+    if (parentDoc.value.deduction_breakeven && Array.isArray(parentDoc.value.deduction_breakeven)) {
+      console.log('Current deduction_breakeven rows before clearing:', parentDoc.value.deduction_breakeven.length)
+      
+      // Clear all rows from the deduction breakeven table
+      parentDoc.value.deduction_breakeven = []
+      
+      // Force reactive update by creating new array reference
+      parentDoc.value.deduction_breakeven = [...parentDoc.value.deduction_breakeven]
+      
+      console.log('Deduction breakeven table cleared successfully')
+      console.log('Total deduction rows after clearing:', parentDoc.value.deduction_breakeven.length)
+      
+      // Emit event to notify parent component about the clearing
+      emit('deduction-table-cleared', {
+        reason: 'Zakat intention',
+        tableName: 'deduction_breakeven'
+      })
+      
+      return true
+    } else {
+      console.log('Deduction breakeven table does not exist or is not an array')
+      return true // Consider it successful if there's nothing to clear
+    }
+    
+  } catch (error) {
+    console.error('Error clearing deduction breakeven table:', error)
+    return false
+  }
+}
+
+// Function to update deduction fields in a row
+function updateDeductionFields(row, deductionDetails) {
+  if (!deductionDetails) return
+  
+  console.log('Updating deduction fields with:', deductionDetails)
+  
+  // Update percentage fields
+  if (deductionDetails.percentage !== undefined) {
+    row.percentage = deductionDetails.percentage
+  }
+  if (deductionDetails.min_percent !== undefined) {
+    row.min_percent = deductionDetails.min_percent
+  }
+  if (deductionDetails.max_percent !== undefined) {
+    row.max_percent = deductionDetails.max_percent
+  }
+  
+  // // Update other related fields if available
+  // if (deductionDetails.account) {
+  //   row.account = deductionDetails.account
+  // }
+  if (deductionDetails.income_type) {
+    row.income_type = deductionDetails.income_type
+  }
+  // if (deductionDetails.project) {
+  //   row.project = deductionDetails.project
+  // }
+  
+  console.log('Deduction fields updated successfully')
+  
+  // Validate the updated fields
+  const validationErrors = validateDeductionFields(row)
+  if (validationErrors.length > 0) {
+    console.warn('Validation warnings for deduction fields:', validationErrors)
+  }
+  
+  // Calculate amount based on percentage and donation amount
+  calculateDeductionAmount(row)
+}
+
+// Function to validate deduction fields after update
+function validateDeductionFields(row) {
+  const errors = []
+  
+  // Validate percentage ranges
+  if (row.percentage !== undefined && (row.percentage < 0 || row.percentage > 100)) {
+    errors.push('Percentage should be between 0 and 100')
+  }
+  
+  if (row.min_percent !== undefined && (row.min_percent < 0 || row.min_percent > 100)) {
+    errors.push('Min Percent should be between 0 and 100')
+  }
+  
+  if (row.max_percent !== undefined && (row.max_percent < 0 || row.max_percent > 100)) {
+    errors.push('Max Percent should be between 0 and 100')
+    }
+  
+  // Validate min/max relationship
+  if (row.min_percent !== undefined && row.max_percent !== undefined && 
+      row.min_percent > row.max_percent) {
+    errors.push('Min Percent cannot be greater than Max Percent')
+  }
+  
+  // Validate percentage is within min/max range
+  if (row.percentage !== undefined && row.min_percent !== undefined && 
+      row.max_percent !== undefined) {
+    if (row.percentage < row.min_percent) {
+      errors.push('Percentage cannot be less than Min Percent')
+    }
+    if (row.percentage > row.max_percent) {
+      errors.push('Percentage cannot be greater than Max Percent')
+    }
+  }
+  
+  if (errors.length > 0) {
+    console.warn('Deduction field validation errors:', errors)
+  }
+  
+  return errors
+}
+
+// Function to validate all deduction breakeven rows
+function validateAllDeductionRows() {
+  if (props.parentFieldname !== 'deduction_breakeven') return []
+  
+  const allErrors = []
+  
+  if (rows.value && Array.isArray(rows.value)) {
+    rows.value.forEach((row, index) => {
+      if (row.fund_class) {
+        const rowErrors = validateDeductionFields(row)
+        if (rowErrors.length > 0) {
+          allErrors.push({
+            row: index + 1,
+            errors: rowErrors
+          })
+        }
+      }
+    })
+  }
+  
+  return allErrors
+}
+
+// Function to get validation summary for deduction breakeven table
+function getDeductionValidationSummary() {
+  const validationErrors = validateAllDeductionRows()
+  
+  if (validationErrors.length === 0) {
+    return { valid: true, message: 'All deduction fields are valid' }
+  }
+  
+  const totalErrors = validationErrors.reduce((sum, item) => sum + item.errors.length, 0)
+  const message = `Found ${totalErrors} validation error(s) in ${validationErrors.length} row(s)`
+  
+  return {
+    valid: false,
+    message,
+    details: validationErrors
+  }
+}
+
+// Function to get summary of all deduction data
+function getDeductionDataSummary() {
+  if (props.parentFieldname !== 'deduction_breakeven') return null
+  
+  if (!rows.value || !Array.isArray(rows.value)) return null
+  
+  const summary = {
+    totalRows: rows.value.length,
+    rowsWithFundClass: 0,
+    totalPercentage: 0,
+    totalAmount: 0,
+    validationStatus: getDeductionValidationSummary()
+  }
+  
+  rows.value.forEach((row) => {
+    if (row.fund_class) {
+      summary.rowsWithFundClass++
+      
+      if (row.percentage) {
+        summary.totalPercentage += parseFloat(row.percentage) || 0
+      }
+      
+      if (row.amount) {
+        summary.totalAmount += parseFloat(row.amount) || 0
+      }
+    }
+  })
+  
+  return summary
+}
+
+// Function to export deduction data for debugging
+function exportDeductionData() {
+  if (props.parentFieldname !== 'deduction_breakeven') return null
+  
+  const data = {
+    timestamp: new Date().toISOString(),
+    parentDocument: parentDoc.value ? {
+      company: parentDoc.value.company,
+      donation_amount: parentDoc.value.donation_amount
+    } : null,
+    rows: rows.value ? [...rows.value] : [],
+    summary: getDeductionDataSummary()
+  }
+  
+  console.log('Deduction data export:', data)
+  return data
+}
+
+// Manual test function for deduction details fetching
+async function testDeductionDetailsFetching(fundClassId = 'AKFP') {
+  console.log('=== MANUAL TEST: DEDUCTION DETAILS FETCHING ===')
+  console.log('Testing with fund class:', fundClassId)
+  
+  try {
+    const result = await fetchDeductionDetails(fundClassId)
+    console.log('Manual test result:', result)
+    return result
+  } catch (error) {
+    console.error('Manual test error:', error)
+    return null
+  }
+}
+
+// Make the test function globally accessible for debugging
+if (typeof window !== 'undefined') {
+  window.testDeductionDetailsFetching = testDeductionDetailsFetching
+  window.testAPI = async () => {
+    console.log('=== MANUAL API TEST ===')
+    try {
+      const result = await call('crm.fcrm.doctype.donation.api.test_api')
+      console.log('Test API result:', result)
+      
+      const deductionResult = await call('crm.fcrm.doctype.donation.api.get_deduction_details', {
+        fund_class: 'AKFP'
+      })
+      console.log('Deduction API test result:', deductionResult)
+      
+      return { test: result, deduction: deductionResult }
+    } catch (error) {
+      console.error('Manual API test error:', error)
+      return null
+    }
+  }
+  
+  window.testSimpleDeduction = async (fundClass = 'AKFP') => {
+    console.log('=== SIMPLE DEDUCTION TEST ===')
+    try {
+      const result = await call('crm.fcrm.doctype.donation.api.test_deduction_simple', {
+        fund_class: fundClass
+      })
+      console.log('Simple deduction test result:', result)
+      return result
+    } catch (error) {
+      console.error('Simple deduction test error:', error)
+      return null
+    }
+  }
+  
+  window.testAddDeductionRow = async (fundClass = 'AKFP') => {
+    console.log('=== TEST ADDING DEDUCTION ROW ===')
+    try {
+      const deductionDetails = await fetchDeductionDetails(fundClass)
+      if (deductionDetails) {
+        const newRow = await addDeductionBreakevenRow(deductionDetails, fundClass)
+        console.log('Test deduction row added:', newRow)
+        return newRow
+      } else {
+        console.log('No deduction details found for testing')
+        return null
+      }
+    } catch (error) {
+      console.error('Test add deduction row error:', error)
+      return null
+    }
+  }
+  
+  window.testFundClassIdChange = async (fundClassId = 'AKFP') => {
+    console.log('=== TESTING FUND CLASS ID CHANGE SIMULATION ===')
+    try {
+      // Simulate the field change event
+      const mockField = { fieldname: 'fund_class_id', fieldtype: 'Link' }
+      const mockRow = { random_id: 9999 }
+      
+      // Call the field change handler directly
+      await fieldChange(fundClassId, mockField, mockRow)
+      console.log('Field change simulation completed')
+      return true
+    } catch (error) {
+      console.error('Field change simulation error:', error)
+      return false
+    }
+  }
+  
+  window.manualAddDeductionRow = async (fundClassId = 'AKFP') => {
+    console.log('=== MANUAL DEDUCTION ROW ADDITION ===')
+    try {
+      // Fetch deduction details
+      const deductionDetails = await fetchDeductionDetails(fundClassId)
+      console.log('Deduction details fetched:', deductionDetails)
+      
+      if (deductionDetails) {
+        // Try direct addition to parent first
+        const success = await addDeductionRowToParent(deductionDetails, fundClassId)
+        
+        if (success) {
+          console.log('Manual deduction row added successfully to parent')
+          return true
+        } else {
+          console.log('Direct addition failed, falling back to event emission')
+          // Create row data
+          const newRow = {
+            random_id: Math.floor((1000 + Math.random() * 9000)),
+            fund_class: fundClassId,
+            percentage: deductionDetails.percentage || 0,
+            min_percent: deductionDetails.min_percent || 0,
+            max_percent: deductionDetails.max_percent || 0,
+            amount: 0,
+            company: deductionDetails.company || '',
+            income_type: deductionDetails.income_type || ''
+          }
+          
+          console.log('New row data created:', newRow)
+          
+          // Emit event
+          emit('add-deduction-row', {
+            fundClassId: fundClassId,
+            deductionDetails: deductionDetails,
+            newRowData: newRow,
+            sourceTable: 'manual'
+          })
+          
+          console.log('Manual deduction row event emitted')
+          return newRow
+        }
+      } else {
+        console.log('No deduction details found')
+        return null
+      }
+    } catch (error) {
+      console.error('Manual deduction row error:', error)
+      return null
+    }
+  }
+  
+  window.testParentDocAccess = () => {
+    console.log('=== TESTING PARENT DOC ACCESS ===')
+    console.log('Parent doc available:', !!parentDoc.value)
+    console.log('Parent doc type:', typeof parentDoc.value)
+    console.log('Parent doc keys:', parentDoc.value ? Object.keys(parentDoc.value) : 'none')
+    
+    if (parentDoc.value) {
+      console.log('Parent doc company:', parentDoc.value.company)
+      console.log('Parent doc payment_detail:', parentDoc.value.payment_detail)
+      console.log('Parent doc deduction_breakeven:', parentDoc.value.deduction_breakeven)
+      console.log('Parent doc intention_id:', parentDoc.value.intention_id)
+    }
+    
+    return parentDoc.value
+  }
+  
+  window.testIntentionZakat = async () => {
+    console.log('=== TESTING INTENTION ZAKAT FUNCTIONALITY ===')
+    try {
+      // Test clearing the deduction breakeven table
+      const success = await clearDeductionBreakevenTable()
+      console.log('Clear table result:', success)
+      return success
+    } catch (error) {
+      console.error('Test intention Zakat error:', error)
+      return false
+    }
+  }
+  
+  window.testIntentionNonZakat = async (fundClassId = 'AKFP') => {
+    console.log('=== TESTING INTENTION NON-ZAKAT FUNCTIONALITY ===')
+    try {
+      // Test adding deduction row (existing functionality)
+      const deductionDetails = await fetchDeductionDetails(fundClassId)
+      if (deductionDetails) {
+        const success = await addDeductionRowToParent(deductionDetails, fundClassId)
+        console.log('Add row result:', success)
+        return success
+      } else {
+        console.log('No deduction details found for testing')
+        return false
+      }
+    } catch (error) {
+      console.error('Test intention non-Zakat error:', error)
+      return false
+    }
+  }
+
+  window.testMultipleDeductionRows = async (fundClassId = 'Community Service') => {
+    console.log('=== TESTING MULTIPLE DEDUCTION ROWS FUNCTIONALITY ===')
+    try {
+      // Test fetching multiple deduction details
+      const deductionDetails = await fetchDeductionDetails(fundClassId)
+      console.log('API response:', deductionDetails)
+      
+      if (deductionDetails && Object.keys(deductionDetails).length > 0) {
+        const isArray = Array.isArray(deductionDetails)
+        const detailsArray = isArray ? deductionDetails : [deductionDetails]
+        
+        console.log(`Found ${detailsArray.length} deduction detail row(s) for fund class: ${fundClassId}`)
+        console.log('Details array:', detailsArray)
+        
+        // Test adding rows for each detail
+        let addedRowsCount = 0
+        for (const detail of detailsArray) {
+          const success = await addDeductionRowToParent(detail, fundClassId)
+          if (success) addedRowsCount++
+        }
+        
+        console.log(`Successfully added ${addedRowsCount} rows`)
+        return { success: true, addedRows: addedRowsCount, totalDetails: detailsArray.length }
+      } else {
+        console.log('No deduction details found for testing')
+        return { success: false, addedRows: 0, totalDetails: 0 }
+      }
+    } catch (error) {
+      console.error('Test multiple deduction rows error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+}
+
+// Function to reset all deduction fields in the table
+function resetAllDeductionFields() {
+  if (props.parentFieldname !== 'deduction_breakeven') return
+  
+  if (rows.value && Array.isArray(rows.value)) {
+    rows.value.forEach((row) => {
+      clearDeductionFields(row)
+    })
+    
+    // Force reactive update
+    forceReactiveUpdate()
+    
+    toast.success('All deduction fields have been reset')
+    console.log('All deduction fields reset')
+  }
+}
+
+// Function to refresh all deduction fields from fund class data
+async function refreshAllDeductionFields() {
+  if (props.parentFieldname !== 'deduction_breakeven') return
+  
+  if (!parentDoc.value?.company) {
+    toast.error('Company is required to refresh deduction fields')
+    return
+  }
+  
+  if (rows.value && Array.isArray(rows.value)) {
+    let refreshCount = 0
+    let errorCount = 0
+    
+    for (const row of rows.value) {
+      if (row.fund_class) {
+        try {
+          const deductionDetails = await fetchDeductionDetails(row.fund_class)
+          if (deductionDetails && Object.keys(deductionDetails).length > 0) {
+            updateDeductionFields(row, deductionDetails)
+            refreshCount++
+          } else {
+            clearDeductionFields(row)
+          }
+        } catch (error) {
+          console.error('Error refreshing deduction fields for row:', error)
+          clearDeductionFields(row)
+          errorCount++
+        }
+      }
+    }
+    
+    // Force reactive update
+    forceReactiveUpdate()
+    
+    // Show user feedback
+    if (refreshCount > 0) {
+      toast.success(`Refreshed deduction fields for ${refreshCount} row(s)`)
+    }
+    if (errorCount > 0) {
+      toast.error(`Failed to refresh ${errorCount} row(s)`)
+    }
+    
+    console.log(`Deduction fields refresh completed: ${refreshCount} successful, ${errorCount} failed`)
+  }
+}
+
+// Function to check if all required deduction fields are filled
+function checkRequiredDeductionFields() {
+  if (props.parentFieldname !== 'deduction_breakeven') return { valid: true, missing: [] }
+  
+  const missing = []
+  
+  if (rows.value && Array.isArray(rows.value)) {
+    rows.value.forEach((row, index) => {
+      if (row.fund_class) {
+        // Check required fields for rows with fund class
+        if (!row.percentage && row.percentage !== 0) {
+          missing.push(`Row ${index + 1}: Percentage is required`)
+        }
+        if (!row.account) {
+          missing.push(`Row ${index + 1}: Account is required`)
+        }
+        if (!row.income_type) {
+          missing.push(`Row ${index + 1}: Income Type is required`)
+        }
+      }
+    })
+  }
+  
+  return {
+    valid: missing.length === 0,
+    missing
+  }
+}
+
+// Function to get comprehensive validation report for deduction breakeven table
+function getDeductionValidationReport() {
+  if (props.parentFieldname !== 'deduction_breakeven') return null
+  
+  const fieldValidation = checkRequiredDeductionFields()
+  const percentageValidation = getDeductionValidationSummary()
+  const dataSummary = getDeductionDataSummary()
+  
+  return {
+    timestamp: new Date().toISOString(),
+    requiredFields: fieldValidation,
+    percentageValidation: percentageValidation,
+    dataSummary: dataSummary,
+    overallValid: fieldValidation.valid && percentageValidation.valid,
+    recommendations: []
+  }
+}
+
+// Function to get total deduction amount
+function getTotalDeductionAmount() {
+  if (props.parentFieldname !== 'deduction_breakeven') return 0
+  
+  if (!rows.value || !Array.isArray(rows.value)) return 0
+  
+  let totalAmount = 0
+  
+  rows.value.forEach((row) => {
+    if (row.fund_class && row.amount) {
+      totalAmount += parseFloat(row.amount) || 0
+    }
+  })
+  
+  return totalAmount
+}
+
+// Function to get total deduction percentage
+function getTotalDeductionPercentage() {
+  if (props.parentFieldname !== 'deduction_breakeven') return 0
+  
+  if (!rows.value || !Array.isArray(rows.value)) return 0
+  
+  let totalPercentage = 0
+  
+  rows.value.forEach((row) => {
+    if (row.fund_class && row.percentage) {
+      totalPercentage += parseFloat(row.percentage) || 0
+    }
+  })
+  
+  return totalPercentage
+}
+
+// Function to check if total deduction percentage exceeds 100%
+function checkDeductionPercentageLimit() {
+  const totalPercentage = getTotalDeductionPercentage()
+  
+  if (totalPercentage > 100) {
+    toast.warning(`Total deduction percentage (${totalPercentage.toFixed(2)}%) exceeds 100%`)
+    return false
+  }
+  
+  return true
+}
+
+// Function to get net donation amount after deductions
+function getNetDonationAmount() {
+  if (props.parentFieldname !== 'deduction_breakeven') return 0
+  
+  const totalDonationAmount = getDonationAmountFromParent()
+  const totalDeductionAmount = getTotalDeductionAmount()
+  
+  return totalDonationAmount - totalDeductionAmount
+}
+
+// Function to get deduction summary for display
+function getDeductionSummary() {
+  if (props.parentFieldname !== 'deduction_breakeven') return null
+  
+  const totalDonationAmount = getDonationAmountFromParent()
+  const totalDeductionAmount = getTotalDeductionAmount()
+  const totalDeductionPercentage = getTotalDeductionPercentage()
+  const netAmount = getNetDonationAmount()
+  
+  return {
+    totalDonationAmount,
+    totalDeductionAmount,
+    totalDeductionPercentage,
+    netAmount,
+    deductionRatio: totalDonationAmount > 0 ? (totalDeductionAmount / totalDonationAmount) * 100 : 0
+  }
+}
+
+// Function to clear deduction fields in a row
+function clearDeductionFields(row) {
+  console.log('Clearing deduction fields')
+  
+  // Reset percentage fields to default values
+  row.percentage = 0
+  row.min_percent = 0
+  row.max_percent = 0
+  
+  // Clear other related fields
+  row.account = ''
+  row.income_type = ''
+  row.project = ''
+  
+  // Reset amount fields
+  row.amount = 0
+  row.base_amount = 0
+  
+  console.log('Deduction fields cleared')
+}
+
+// Function to calculate amount based on percentage and donation amount
+function calculateDeductionAmount(row) {
+  if (row.percentage && row.donation_amount) {
+    const percentage = parseFloat(row.percentage) || 0
+    const donationAmount = parseFloat(row.donation_amount) || 0
+    
+    if (percentage > 0 && donationAmount > 0) {
+      const calculatedAmount = (percentage / 100) * donationAmount
+      row.amount = calculatedAmount
+      row.base_amount = calculatedAmount
+      
+      console.log(`Calculated deduction amount: ${calculatedAmount} (${percentage}% of ${donationAmount})`)
+      return calculatedAmount
+    }
+  }
+  
+  // Reset amount if calculation not possible
+  row.amount = 0
+  row.base_amount = 0
+  return 0
+}
+
+// Function to get donation amount from parent document or payment detail
+function getDonationAmountFromParent() {
+  if (!parentDoc.value) return 0
+  
+  // Try to get donation amount from parent document
+  if (parentDoc.value.donation_amount) {
+    return parseFloat(parentDoc.value.donation_amount) || 0
+  }
+  
+  // Try to get from payment detail table if available
+  if (parentDoc.value.payment_detail && Array.isArray(parentDoc.value.payment_detail)) {
+    const totalAmount = parentDoc.value.payment_detail.reduce((sum, row) => {
+      return sum + (parseFloat(row.donation_amount) || 0)
+    }, 0)
+    return totalAmount
+  }
+  
+  return 0
+}
+
+// Function to sync donation amount across deduction breakeven rows
+function syncDonationAmount() {
+  if (props.parentFieldname !== 'deduction_breakeven') return
+  
+  const donationAmount = getDonationAmountFromParent()
+  
+  if (rows.value && Array.isArray(rows.value)) {
+    rows.value.forEach((row) => {
+      if (row.donation_amount !== donationAmount) {
+        row.donation_amount = donationAmount
+        // Recalculate amount if percentage is set
+        if (row.percentage) {
+          calculateDeductionAmount(row)
+        }
+      }
+    })
+  }
+}
+
 // Enhanced fieldChange function with donor_id handling
 async function fieldChange(value, field, row) {
-  console.log('Grid fieldChange called:', { value, field: field.fieldname, row })
+  console.log('=== GRID FIELD CHANGE ===')
+  console.log('Field name:', field.fieldname)
+  console.log('Field type:', field.fieldtype)
+  console.log('Parent fieldname:', props.parentFieldname)
+  console.log('Value:', value)
+  console.log('Row:', row)
+  
+  // Special debug for deduction breakeven table
+  if (props.parentFieldname === 'deduction_breakeven') {
+    console.log('=== DEDUCTION BREAKEVEN FIELD CHANGE ===')
+    console.log('Field details:', {
+      fieldname: field.fieldname,
+      fieldtype: field.fieldtype,
+      options: field.options,
+      value: value,
+      row: row
+    })
+  }
   
   if (field.fieldname === 'donor_id' && props.parentFieldname === 'payment_detail') {
     console.log('Processing donor_id change in Grid:', { value, row })
@@ -679,6 +1676,181 @@ async function fieldChange(value, field, row) {
     
     return
   }
+  
+  // Handle fund_class change in deduction_breakeven table
+  if (field.fieldname === 'fund_class' && props.parentFieldname === 'deduction_breakeven') {
+    console.log('=== FUND CLASS CHANGE DETECTED ===')
+    console.log('Fund class value:', value)
+    
+    if (value) {
+      // Fetch deduction details for the selected fund class
+      const deductionDetails = await fetchDeductionDetails(value)
+      console.log('Deduction details response:', deductionDetails)
+      
+      if (deductionDetails && Object.keys(deductionDetails).length > 0) {
+        console.log('Updating deduction fields with:', deductionDetails)
+        updateDeductionFields(row, deductionDetails)
+        toast.success('Deduction details fetched successfully')
+      } else {
+        console.log('No deduction details found, clearing fields')
+        toast.info('No deduction details found for this fund class')
+        clearDeductionFields(row)
+      }
+    } else {
+      // Clear deduction fields when fund class is cleared
+      clearDeductionFields(row)
+      toast.info('Deduction fields cleared')
+    }
+    
+    // Force reactive update
+    forceReactiveUpdate()
+    
+    // Call the original triggerOnChange
+    triggerOnChange(field.fieldname, value, row)
+    
+    return
+  }
+  
+  // Handle fund_class_id change in payment_detail table
+  if (field.fieldname === 'fund_class_id' && props.parentFieldname === 'payment_detail') {
+    console.log('=== FUND CLASS ID CHANGE IN PAYMENT DETAIL ===')
+    console.log('Field name:', field.fieldname)
+    console.log('Parent fieldname:', props.parentFieldname)
+    console.log('Fund class ID value:', value)
+    console.log('Parent doc available:', !!parentDoc.value)
+    console.log('Parent doc keys:', parentDoc.value ? Object.keys(parentDoc.value) : 'none')
+    
+          if (value) {
+        // Do not auto-set intention_id here; rely on actual selection
+        
+        // Check intention_id to determine behavior
+        const intentionId = row.intention_id || parentDoc.value?.intention_id
+        console.log('Current intention_id:', intentionId)
+        
+        if (intentionId === 'Zakat') {
+          console.log('Intention is Zakat - clearing deduction breakeven table')
+          await clearDeductionBreakevenTable()
+          toast.info('Deduction breakeven table cleared (Zakat intention)')
+        } else {
+          console.log('Intention is not Zakat - running existing functionality')
+        // Fetch deduction details for the selected fund class
+        const deductionDetails = await fetchDeductionDetails(value)
+        console.log('Deduction details for payment detail:', deductionDetails)
+        
+        if (deductionDetails && Object.keys(deductionDetails).length > 0) {
+          // Check if deductionDetails is an array (multiple rows) or single object
+          const isArray = Array.isArray(deductionDetails)
+          const detailsArray = isArray ? deductionDetails : [deductionDetails]
+          
+          console.log(`Found ${detailsArray.length} deduction detail row(s) for fund class: ${value}`)
+          console.log('Deduction details:', detailsArray)
+          
+          // Add rows for each deduction detail
+          let addedRowsCount = 0
+          let failedRowsCount = 0
+          
+          for (const detail of detailsArray) {
+            try {
+              const success = await addDeductionRowToParent(detail, value, row.random_id)
+              if (success) {
+                addedRowsCount++
+                console.log(`Successfully added row ${addedRowsCount} for deduction detail:`, detail)
+              } else {
+                failedRowsCount++
+                console.log(`Failed to add row for deduction detail:`, detail)
+              }
+            } catch (error) {
+              failedRowsCount++
+              console.error(`Error adding row for deduction detail:`, error, detail)
+            }
+          }
+          
+          // Show appropriate toast message
+          if (addedRowsCount > 0) {
+            if (addedRowsCount === 1) {
+              toast.success('New deduction row added successfully')
+            } else {
+              toast.success(`${addedRowsCount} deduction rows added successfully`)
+            }
+          }
+          
+          if (failedRowsCount > 0) {
+            toast.error(`Failed to add ${failedRowsCount} deduction rows`)
+          }
+          
+          // If all direct additions failed, emit event to parent as fallback
+          if (addedRowsCount === 0 && failedRowsCount > 0) {
+            console.log('All direct additions failed, emitting event to parent')
+            emit('add-deduction-row', {
+              fundClassId: value,
+              deductionDetails: deductionDetails,
+              sourceTable: 'payment_detail',
+              sourceRow: row
+            })
+          }
+        } else {
+          toast.info('No deduction details found for this fund class')
+        }
+      }
+    }
+    
+    // Force reactive update
+    forceReactiveUpdate()
+    
+    // Call the original triggerOnChange
+    triggerOnChange(field.fieldname, value, row)
+    
+    return
+  }
+  
+  // Handle intention_id change to clear deduction breakeven table when set to Zakat
+  if (field.fieldname === 'intention_id') {
+    console.log('=== INTENTION ID CHANGE DETECTED ===')
+    console.log('New intention_id value:', value)
+    console.log('Parent fieldname:', props.parentFieldname)
+    
+    // Skip validation errors by ensuring valid value
+    if (!value || value === 'Cash' || value === '') {
+      console.log('Invalid intention_id detected, setting to valid value')
+      value = ''
+      row.intention_id = ''
+    }
+    
+    if (value === 'Zakat') {
+      console.log('Intention changed to Zakat - clearing deduction breakeven table')
+      await clearDeductionBreakevenTable()
+      toast.info('Deduction breakeven table cleared (Zakat intention)')
+    } else {
+      console.log('Intention changed from Zakat to:', value)
+      // Optionally, you could restore previous deduction rows here if needed
+    }
+    
+    // Force reactive update
+    forceReactiveUpdate()
+    
+    // Call the original triggerOnChange
+    triggerOnChange(field.fieldname, value, row)
+    
+    return
+  }
+  
+  // Debug: Log all field changes to see what's happening
+if (props.parentFieldname === 'deduction_breakeven') {
+  console.log('=== DEDUCTION BREAKEVEN FIELD CHANGE ===')
+  console.log('Field name:', field.fieldname)
+  console.log('Field type:', field.fieldtype)
+  console.log('Field options:', field.options)
+  console.log('Value:', value)
+  console.log('Row:', row)
+  
+  // Special debug for fund_class field
+  if (field.fieldname === 'fund_class') {
+    console.log('=== FUND CLASS FIELD CHANGE DETECTED ===')
+    console.log('Field object:', field)
+    console.log('Field value:', value)
+    console.log('Row data:', row)
+  }
+}
   
   // Regular field change handling
   triggerOnChange(field.fieldname, value, row)

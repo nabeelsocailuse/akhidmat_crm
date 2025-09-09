@@ -20,7 +20,7 @@
         <AssignTo
           v-model="assignees.data"
           :data="document.doc"
-          doctype="FCRM Campaign"
+          doctype="Campaign"
         />
       </template>
     </LayoutHeader>
@@ -31,7 +31,7 @@
           <template #tab-panel>
             <Activities
               ref="activities"
-              doctype="FCRM Campaign"
+              doctype="Campaign"
               :tabs="tabs"
               v-model:reload="reload"
               v-model:tabIndex="tabIndex"
@@ -50,136 +50,59 @@
       >
         {{ __(title) }}
       </div>
-      <FileUploader
-        @success="(file) => updateField('image', file.file_url)"
-        :validateFile="validateIsImageFile"
-      >
-        <template #default="{ openFileSelector, error }">
-          <div class="flex items-center justify-start gap-5 border-b p-5">
-            <div class="group relative size-12">
-              <Avatar
-                size="3xl"
-                class="size-12"
-                :label="title"
-                :image="campaign.data.image"
-              />
-              <component
-                :is="campaign.data.image ? Dropdown : 'div'"
-                v-bind="
-                  campaign.data.image
-                    ? {
-                        options: [
-                          {
-                            icon: 'upload',
-                            label: campaign.data.image
-                              ? __('Change image')
-                              : __('Upload image'),
-                            onClick: openFileSelector,
-                          },
-                          {
-                            icon: 'trash-2',
-                            label: __('Remove image'),
-                            onClick: () => updateField('image', ''),
-                          },
-                        ],
-                      }
-                    : { onClick: openFileSelector }
-                "
-                class="!absolute bottom-0 left-0 right-0"
-              >
-                <div
-                  class="z-1 absolute bottom-0.5 left-0 right-0.5 flex h-9 cursor-pointer items-center justify-center rounded-b-full bg-black bg-opacity-40 pt-3 opacity-0 duration-300 ease-in-out group-hover:opacity-100"
-                  style="
-                    -webkit-clip-path: inset(12px 0 0 0);
-                    clip-path: inset(12px 0 0 0);
-                  "
-                >
-                  <CameraIcon class="size-4 cursor-pointer text-white" />
-                </div>
-              </component>
+      <div class="flex items-center justify-start gap-5 border-b p-5">
+        <div class="group relative size-12">
+          <Avatar
+            size="3xl"
+            class="size-12"
+            :label="title"
+          />
+        </div>
+        <div class="flex flex-col gap-2.5 truncate">
+          <Tooltip :text="campaign.data.campaign_name || __('Set campaign name')">
+            <div class="truncate text-2xl font-medium text-ink-gray-9">
+              {{ title }}
             </div>
-            <div class="flex flex-col gap-2.5 truncate">
-              <Tooltip :text="campaign.data.campaign_name || __('Set campaign name')">
-                <div class="truncate text-2xl font-medium text-ink-gray-9">
-                  {{ title }}
-                </div>
-              </Tooltip>
-              <div class="flex gap-1.5">
-                <Tooltip :text="__('Send an email')">
-                  <div>
-                    <Button
-                      @click="
-                        campaign.data.email
-                          ? openEmailBox()
-                          : toast.error(__('No email set'))
-                      "
-                    >
-                      <template #icon>
-                        <EmailIcon />
-                      </template>
-                    </Button>
-                  </div>
-                </Tooltip>
-                <Tooltip :text="__('Go to website')">
-                  <div>
-                    <Button
-                      @click="
-                        campaign.data.website
-                          ? openWebsite(campaign.data.website)
-                          : toast.error(__('No website set'))
-                      "
-                    >
-                      <template #icon>
-                        <WebsiteIcon />
-                      </template>
-                    </Button>
-                  </div>
-                </Tooltip>
-                <Tooltip :text="__('Copy link')">
-                  <div>
-                    <Button @click="copyToClipboard(campaign.data.name)">
-                      <template #icon>
-                        <LinkIcon />
-                      </template>
-                    </Button>
-                  </div>
-                </Tooltip>
-                <Tooltip :text="__('Attach a file')">
-                  <div>
-                    <Button @click="showFilesUploader = true">
-                      <template #icon>
-                        <AttachmentIcon />
-                      </template>
-                    </Button>
-                  </div>
-                </Tooltip>
-                <Tooltip :text="__('Delete')">
-                  <div>
-                    <Button
-                      @click="deleteCampaignWithModal(campaign.data.name)"
-                      variant="subtle"
-                      theme="red"
-                      icon="trash-2"
-                    />
-                  </div>
-                </Tooltip>
+          </Tooltip>
+          <div class="flex gap-1.5">
+            <Tooltip :text="__('Copy link')">
+              <div>
+                <Button @click="copyToClipboard(campaign.data.name)">
+                  <template #icon>
+                    <LinkIcon />
+                  </template>
+                </Button>
               </div>
-            </div>
+            </Tooltip>
+            <Tooltip :text="__('Attach a file')">
+              <div>
+                <Button @click="showFilesUploader = true">
+                  <template #icon>
+                    <AttachmentIcon />
+                  </template>
+                </Button>
+              </div>
+            </Tooltip>
+            <Tooltip :text="__('Delete')">
+              <div>
+                <Button
+                  @click="deleteCampaignWithModal(campaign.data.name)"
+                  variant="subtle"
+                  theme="red"
+                  icon="trash-2"
+                />
+              </div>
+            </Tooltip>
           </div>
-        </template>
-      </FileUploader>
-      <SLASection
-        v-if="campaign.data.sla_status"
-        v-model="campaign.data"
-        @updateField="updateField"
-      />
+        </div>
+      </div>
       <div
         v-if="sections.data && sections.data.length > 0"
         class="flex flex-1 flex-col justify-between overflow-hidden"
       >
         <SidePanelLayout
           :sections="sections.data"
-          doctype="FCRM Campaign"
+          doctype="Campaign"
           :docname="campaign.data.name"
           @reload="sections.reload"
           @afterFieldChange="reloadAssignees"
@@ -198,7 +121,7 @@
       <div v-else-if="!sections.data || sections.data.length === 0" class="flex flex-1 flex-col justify-between overflow-hidden">
         <SidePanelLayout
           :sections="campaignSidebarSections"
-          doctype="FCRM Campaign"
+          doctype="Campaign"
           :docname="campaign.data.name"
           @reload="sections.reload"
           @afterFieldChange="reloadAssignees"
@@ -215,7 +138,7 @@
   <FilesUploader
     v-if="campaign.data?.name"
     v-model="showFilesUploader"
-    doctype="FCRM Campaign"
+    doctype="Campaign"
     :docname="props.campaignId"
     @after="
       () => {
@@ -227,7 +150,7 @@
   <DeleteLinkedDocModal
     v-if="showDeleteLinkedDocModal"
     v-model="showDeleteLinkedDocModal"
-    :doctype="'FCRM Campaign'"
+    :doctype="'Campaign'"
     :docname="props.campaignId"
     name="Campaigns"
   />
@@ -291,7 +214,7 @@ import { useActiveTabManager } from '@/composables/useActiveTabManager'
 const { brand } = getSettings()
 const { $dialog, $socket, makeCall } = globalStore()
 const { statusOptions } = statusesStore
-const { doctypeMeta } = getMeta('FCRM Campaign')
+const { doctypeMeta } = getMeta('Campaign')
 
 const route = useRoute()
 const router = useRouter()
@@ -308,7 +231,7 @@ const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
 
 const { triggerOnChange, assignees, document } = useDocument(
-  'FCRM Campaign',
+  'Campaign',
   props.campaignId,
 )
 
@@ -318,8 +241,8 @@ async function triggerStatusChange(value) {
 }
 
 const campaign = createResource({
-  url: 'akfp_crm.akfp_crm.doctype.fcrm_campaign.api.get_campaign',
-  params: { name: props.campaignId },
+  url: 'frappe.client.get',
+  params: { doctype: 'Campaign', name: props.campaignId },
   cache: ['campaign', props.campaignId],
   onSuccess: (data) => {
     errorTitle.value = ''
@@ -364,7 +287,7 @@ function updateCampaign(fieldname, value, callback) {
   createResource({
     url: 'frappe.client.set_value',
     params: {
-      doctype: 'FCRM Campaign',
+      doctype: 'Campaign',
       name: props.campaignId,
       fieldname,
       value,
@@ -395,7 +318,7 @@ const breadcrumbs = computed(() => {
   let items = [{ label: __('Campaigns'), route: { name: 'Campaigns' } }]
 
   if (route.query.view || route.query.viewType) {
-            let view = getView(route.query.view, route.query.viewType, 'FCRM Campaign')
+            let view = getView(route.query.view, route.query.viewType, 'Campaign')
     if (view) {
       items.push({
         label: __(view.label),
@@ -417,7 +340,7 @@ const breadcrumbs = computed(() => {
 })
 
 const title = computed(() => {
-  // For FCRM Campaign, use campaign_name as the title field
+  // For standard Campaign, use campaign_name as the title field
   let t = 'campaign_name'
   return campaign.data?.[t] || props.campaignId
 })
@@ -524,45 +447,6 @@ const campaignSidebarSections = computed(() => [
     ]
   },
   {
-    label: __('Campaign Information'),
-    name: 'campaign_info_section',
-    opened: true,
-    columns: [
-      {
-        name: 'column_campaign_info',
-        fields: [
-          {
-            fieldname: 'website',
-            label: __('Website'),
-            fieldtype: 'Data',
-            value: campaign.data?.website || '',
-            placeholder: __('Enter website URL'),
-            create: () => {
-              if (campaign.data?.website) {
-                openWebsite(campaign.data.website)
-              }
-            }
-          },
-          {
-            fieldname: 'email',
-            label: __('Email'),
-            fieldtype: 'Data',
-            value: campaign.data?.email || '',
-            placeholder: __('Enter email address')
-          },
-          {
-            fieldname: 'sla_status',
-            label: __('SLA Status'),
-            fieldtype: 'Link',
-            options: 'CRM SLA Status',
-            value: campaign.data?.sla_status || '',
-            placeholder: __('Select SLA Status')
-          }
-        ]
-      }
-    ]
-  },
-  {
     label: __('System Information'),
     name: 'system_info_section',
     opened: true,
@@ -611,8 +495,8 @@ watch(tabs, (value) => {
 
 const sections = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
-  cache: ['sidePanelSections', 'FCRM Campaign'],
-  params: { doctype: 'FCRM Campaign' },
+  cache: ['sidePanelSections', 'Campaign'],
+  params: { doctype: 'Campaign' },
   auto: true,
   onSuccess: (data) => {
     console.log('Sections loaded:', data)
@@ -631,7 +515,7 @@ function updateField(name, value, callback) {
 
 async function deleteCampaign(name) {
   await call('frappe.client.delete', {
-    doctype: 'FCRM Campaign',
+    doctype: 'Campaign',
     name,
   })
   router.push({ name: 'Campaigns' })

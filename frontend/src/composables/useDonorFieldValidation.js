@@ -569,27 +569,21 @@ export function useDonorFieldValidation() {
               inputElement.placeholder = 'Enter phone number'
             }
             
-            // Handle existing value - remove 92 prefix if switching from Pakistan
             if (inputElement.value && inputElement.value.startsWith('92')) {
               inputElement.value = inputElement.value.slice(2)
             }
             
-            // Add input handler for other countries with strict digit limit
             inputElement._otherCountryHandler = (e) => {
               let value = e.target.value
               const cleanValue = value.replace(/\D/g, '')
               
-              // If we have a full mask, enforce the exact digit count
               if (fullMask && requiredDigits > 0) {
-                // Limit to required digits
                 if (cleanValue.length > requiredDigits) {
                   value = cleanValue.slice(0, requiredDigits)
                   e.target.value = value
                 }
                 
-                // Format according to full mask if we have the full number
                 if (cleanValue.length === requiredDigits) {
-                  // Apply mask formatting using the full mask (dialCode + phoneMask)
                   let formattedValue = fullMask
                   let digitIndex = 0
                   
@@ -605,30 +599,25 @@ export function useDonorFieldValidation() {
                 }
               }
               
-              // Store the formatted value
               if (setFieldValue) {
                 setFieldValue(fieldName, value)
               }
             }
             inputElement.addEventListener('input', inputElement._otherCountryHandler)
             
-            // Add keydown handler with strict digit limit
             inputElement._otherCountryKeydownHandler = (e) => {
               const currentValue = e.target.value.replace(/\D/g, '')
               
-              // Allow navigation keys always
               if ([8, 9, 27, 37, 38, 39, 40, 46].includes(e.keyCode)) {
                 return true
               }
               
-              // If we have a full mask, enforce the exact digit count
               if (fullMask && requiredDigits > 0) {
                 if (currentValue.length >= requiredDigits) {
                 e.preventDefault()
                 return false
                 }
               } else {
-                // Fallback limit for countries without mask
                 if (currentValue.length > 15) {
                   e.preventDefault()
                   return false
@@ -637,21 +626,18 @@ export function useDonorFieldValidation() {
             }
             inputElement.addEventListener('keydown', inputElement._otherCountryKeydownHandler)
             
-            // Add paste handler for other countries
             inputElement._otherCountryPasteHandler = (e) => {
               let paste = (e.originalEvent || e).clipboardData.getData('text')
               paste = paste.replace(/\D/g, '')
               
-              // If we have a full mask, limit to required digits
               if (fullMask && requiredDigits > 0) {
                 paste = paste.slice(0, requiredDigits)
               } else {
-                paste = paste.slice(0, 15) // Fallback limit
+                paste = paste.slice(0, 15) 
               }
               
               e.target.value = paste
               
-              // Store the value
               if (setFieldValue) {
                 setFieldValue(fieldName, paste)
               }
@@ -665,16 +651,13 @@ export function useDonorFieldValidation() {
     })
   }
 
-  // Apply phone masks when country changes
   async function applyPhoneMasksForCountry(country, setFieldValue, fieldFilter = null) {
     if (!country) return
     
-    // Wait for fields to be rendered
     await new Promise(resolve => setTimeout(resolve, 500))
     
     let fields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'phone_no', 'mobile_no', 'org_representative_contact_number', 'org_contact', 'company_ownerceo_conatct']
     
-    // If fieldFilter is provided, only apply to those specific fields
     if (fieldFilter && Array.isArray(fieldFilter)) {
       fields = fields.filter(field => fieldFilter.includes(field))
     }
@@ -687,7 +670,6 @@ export function useDonorFieldValidation() {
     }
   }
 
-  // Validate phone number format based on country
   async function validatePhoneNumber(phoneNumber, country) {
     if (!country) {
       return { isValid: true, message: '' }
@@ -700,14 +682,12 @@ export function useDonorFieldValidation() {
       }
       
       if (country === 'Pakistan' || country === 'pakistan') {
-        // Special validation for Pakistan
         if (!phoneNumber) {
           return { isValid: true, message: '' }
         }
         
         const cleanPhone = phoneNumber.replace(/\D/g, '')
         
-        // Check if it's international format (starts with 92)
         if (cleanPhone.startsWith('92')) {
           const after92 = cleanPhone.substring(2)
           if (after92.length !== 10) {
@@ -716,7 +696,6 @@ export function useDonorFieldValidation() {
               message: 'Pakistan phone number must be 10 digits after country code (92).'
             }
           }
-          // Check if it starts with valid Pakistani mobile prefixes
           const validPrefixes = ['30', '31', '32', '33', '34', '35', '36', '37', '38', '39']
           const firstDigits = after92.substring(0, 2)
           if (!validPrefixes.includes(firstDigits)) {
@@ -738,7 +717,6 @@ export function useDonorFieldValidation() {
               message: 'Pakistan phone number must start with valid mobile prefix (30-39).'
             }
           }
-          // This is valid - it will be treated as an international number
           return { isValid: true, message: '' }
         } else {
           return {
@@ -747,17 +725,13 @@ export function useDonorFieldValidation() {
           }
         }
       } else if (country === 'Algeria') {
-        // Special validation for Algeria - use backend mask approach
         const dialCode = countryMask.dialCode || '213'
         const phoneMask = countryMask.phoneMask || '11097'
         
-        // Backend concatenates dialCode + phoneMask, so we do the same
         const fullMask = dialCode + phoneMask
         
-        // For Algeria, we need to count digits ONLY in the phoneMask part (not including dialCode)
         const requiredDigits = phoneMask ? phoneMask.replace(/\D/g, '').length : 0
         
-        // If no phone number provided, show required message
         if (!phoneNumber) {
           return {
             isValid: false,
@@ -765,13 +739,11 @@ export function useDonorFieldValidation() {
           }
         }
         
-        // Remove + prefix if present
         let phoneToValidate = phoneNumber
         if (phoneNumber.startsWith('+')) {
           phoneToValidate = phoneNumber.slice(1)
         }
         
-        // Check if number starts with country code
         if (!phoneToValidate.startsWith(dialCode)) {
           return {
             isValid: false,
@@ -779,11 +751,9 @@ export function useDonorFieldValidation() {
           }
         }
         
-        // Remove country code for validation
         const numberWithoutCode = phoneToValidate.slice(dialCode.length)
         const cleanNumber = numberWithoutCode.replace(/\D/g, '')
         
-        // Strict validation: check exact digit count from phoneMask (not fullMask)
         if (cleanNumber.length !== requiredDigits) {
           return {
             isValid: false,
@@ -791,23 +761,19 @@ export function useDonorFieldValidation() {
           }
         }
         
-        // If we reach here, the number is valid
         return { isValid: true, message: '' }
       } else {
-        // For other countries, use backend validation approach (dialCode + phoneMask)
         if (!phoneNumber) {
-          return { isValid: true, message: '' } // Allow empty for other countries
+          return { isValid: true, message: '' } 
         }
         
         const cleanNumber = phoneNumber.replace(/\D/g, '')
         const dialCode = countryMask.dialCode || ''
         const phoneMask = countryMask.phoneMask || ''
         
-        // Backend concatenates dialCode + phoneMask, so we do the same
         const fullMask = dialCode + phoneMask
         const requiredDigits = fullMask ? fullMask.replace(/\D/g, '').length : 0
         
-        // If we have a specific full mask, validate against it strictly
         if (fullMask && requiredDigits > 0) {
           if (cleanNumber.length !== requiredDigits) {
             return {
@@ -816,7 +782,6 @@ export function useDonorFieldValidation() {
             }
           }
           
-          // Check if the number matches the full mask format
           let isValidFormat = true
           let digitIndex = 0
           
@@ -839,7 +804,6 @@ export function useDonorFieldValidation() {
           
           return { isValid: true, message: '' }
         } else {
-          // Fallback validation for countries without specific mask
         if (cleanNumber.length < 7) {
           return {
             isValid: false,
@@ -863,12 +827,10 @@ export function useDonorFieldValidation() {
     }
   }
 
-  // Show visual feedback for phone number validation
   function showPhoneValidationFeedback(fieldName, isValid, message) {
     nextTick(() => {
       let inputElement = null
       
-      // Try multiple selectors to find the phone input field
       inputElement = document.querySelector(`input[name="${fieldName}"]`)
       
       if (!inputElement) {
@@ -879,7 +841,6 @@ export function useDonorFieldValidation() {
         inputElement = document.querySelector(`[data-fieldname="${fieldName}"] input`)
       }
       
-      // Try to find by label text as fallback
       if (!inputElement) {
         const labels = document.querySelectorAll('label, .text-sm')
         for (let label of labels) {
@@ -893,15 +854,12 @@ export function useDonorFieldValidation() {
         }
       }
       
-      // Clear existing validation messages first - search more broadly
       if (inputElement) {
-        // Clear messages from the input's parent and also from the field container
         const fieldContainer = inputElement.closest('.field') || inputElement.parentNode
         if (fieldContainer) {
           const existingMessages = fieldContainer.querySelectorAll('.phone-error-message')
         existingMessages?.forEach(msg => msg.remove())
           
-          // Also clear any duplicate messages that might be in the parent
           const parentContainer = fieldContainer.parentNode
           if (parentContainer) {
             const parentMessages = parentContainer.querySelectorAll('.phone-error-message')
@@ -909,13 +867,10 @@ export function useDonorFieldValidation() {
           }
         }
         
-        // Remove error styling
         inputElement.classList.remove('border-red-500', 'border-red-300')
         inputElement.classList.add('border-gray-300')
         
-        // If the field is valid, ensure any existing error messages are cleared
         if (isValid) {
-          // Clear any error messages that might exist for this field
           const allErrorMessages = document.querySelectorAll('.phone-error-message')
           allErrorMessages?.forEach(msg => {
             if (msg.getAttribute('data-field') === fieldName) {
@@ -925,30 +880,24 @@ export function useDonorFieldValidation() {
         }
         
         if (!isValid && message) {
-          // Check if error message already exists for this field
           const existingError = fieldContainer?.querySelector(`.phone-error-message[data-field="${fieldName}"]`)
           if (existingError) {
-            // Update existing error message instead of creating a new one
             existingError.textContent = message
           } else {
-          // Add error styling
           inputElement.classList.remove('border-gray-300')
           inputElement.classList.add('border-red-500')
           
-          // Create and show error message
           const errorMessage = document.createElement('div')
           errorMessage.className = 'phone-error-message text-red-500 text-sm mt-1'
           errorMessage.textContent = message
-            errorMessage.setAttribute('data-field', fieldName) // Add data attribute to identify the field
+            errorMessage.setAttribute('data-field', fieldName) 
           
-          // Insert after the input field
           if (fieldContainer) {
             fieldContainer.appendChild(errorMessage)
           }
         }
         }
       } else {
-        // If we can't find the input, try to clear messages by field name
         const allErrorMessages = document.querySelectorAll('.phone-error-message')
         allErrorMessages?.forEach(msg => {
           if (msg.getAttribute('data-field') === fieldName) {

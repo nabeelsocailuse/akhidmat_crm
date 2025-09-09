@@ -538,7 +538,7 @@ const attrs = instance?.vnode?.props ?? {}
 watch(
   () => doc.value?.department,
   (newDepartment, oldDepartment) => {
-    if (props.doctype === 'Donor' && newDepartment !== oldDepartment) {
+    if (props.doctype === 'Donor' && oldDepartment !== undefined && newDepartment !== oldDepartment) {
       console.log('Department changed, clearing donor_desk field:', {
         oldDepartment,
         newDepartment

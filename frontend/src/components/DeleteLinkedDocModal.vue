@@ -260,12 +260,10 @@ const deleteDoc = async () => {
     name: props.docname,
   })
   
-  // Try to call the reload function if available
   if (props?.reload) {
     props.reload()
   }
   
-  // Navigate back to the list page with a refresh parameter to force reload
   router.push({ 
     name: props.name,
     query: { refresh: Date.now() }

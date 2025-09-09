@@ -213,6 +213,9 @@ const selectedValue = computed({
       // CRITICAL FIX: Always emit update:modelValue when using v-model
       emit('update:modelValue', valueToEmit)
       
+      // CRITICAL FIX: Also emit change event for backward compatibility
+      emit('change', val)
+      
       // Clear query and close options after emitting the value
       nextTick(() => {
         query.value = ''
@@ -221,6 +224,7 @@ const selectedValue = computed({
     } else {
       // Handle clearing the value
       emit('update:modelValue', val)
+      emit('change', val)
       query.value = ''
       showOptions.value = false
     }

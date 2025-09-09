@@ -100,6 +100,8 @@ const tabs = createResource({
   },
 })
 
+// ...existing code...
+
 watch(
   () => tabs?.data,
   () => {

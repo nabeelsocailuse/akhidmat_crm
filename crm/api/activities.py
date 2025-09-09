@@ -12,6 +12,30 @@ from crm.fcrm.doctype.crm_call_log.crm_call_log import parse_call_log
 
 @frappe.whitelist()
 def get_activities(name):
+	# If a Communication name is provided, try to resolve its referenced parent
+	if frappe.db.exists("Communication", name):
+		try:
+			comm = frappe.get_doc("Communication", name)
+			reference_doctype = getattr(comm, "reference_doctype", None) or getattr(comm, "reference_doctype", None)
+			reference_name = getattr(comm, "reference_docname", None) or getattr(comm, "reference_name", None)
+			if reference_doctype and reference_name and frappe.db.exists(reference_doctype, reference_name):
+				# Delegate to the matching parent doctype activity getter
+				if reference_doctype == "CRM Deal":
+					return get_deal_activities(reference_name)
+				elif reference_doctype == "CRM Lead":
+					return get_lead_activities(reference_name)
+				elif reference_doctype == "Donor":
+					return get_donor_activities(reference_name)
+				elif reference_doctype == "Donation":
+					return get_donation_activities(reference_name)
+				elif reference_doctype == "Campaign":
+					return get_campaign_activities(reference_name)
+				elif reference_doctype == "Email Template":
+					return get_email_template_activities(reference_name)
+			# If no referenced parent, fall through to return communication-specific activities
+		except Exception:
+			# If anything goes wrong resolving the Communication, continue to normal flow
+			pass
 	if frappe.db.exists("CRM Deal", name):
 		return get_deal_activities(name)
 	elif frappe.db.exists("CRM Lead", name):
@@ -20,10 +44,15 @@ def get_activities(name):
 		return get_donor_activities(name)
 	elif frappe.db.exists("Donation", name):  # type: ignore
 		return get_donation_activities(name)
-	elif frappe.db.exists("FCRM Campaign", name):
+	elif frappe.db.exists("Campaign", name):
 		return get_campaign_activities(name)
+	elif frappe.db.exists("Email Template", name):
+		return get_email_template_activities(name)
 	else:
-		# Try to create the document if it doesn't exist
+		# If name is a Communication (and referenced parent wasn't resolved), return communication activities
+		if frappe.db.exists("Communication", name):
+			return get_communication_activities(name)
+		# Try to create the document if it doesn't exist (for donation/donor patterns)
 		created_doc = create_missing_document(name)
 		if created_doc:
 			return get_donation_activities(created_doc.name)
@@ -615,15 +644,15 @@ def get_donation_activities(name):
 	return activities, calls, notes, tasks, attachments
 
 def get_campaign_activities(name):
-	get_docinfo("", "FCRM Campaign", name)
+	get_docinfo("", "Campaign", name)
 	docinfo = frappe.response["docinfo"]
-	campaign_meta = frappe.get_meta("FCRM Campaign")
+	campaign_meta = frappe.get_meta("Campaign")
 	campaign_fields = {
 		field.fieldname: {"label": field.label, "options": field.options} for field in campaign_meta.fields
 	}
 	avoid_fields = []
 
-	doc = frappe.db.get_values("FCRM Campaign", name, ["creation", "owner"])[0]
+	doc = frappe.db.get_values("Campaign", name, ["creation", "owner"])[0]
 	activities = [
 		{
 			"activity_type": "creation",
@@ -730,11 +759,74 @@ def get_campaign_activities(name):
 	calls = get_linked_calls(name).get("calls", [])
 	notes = get_linked_notes(name) + get_linked_calls(name).get("notes", [])
 	tasks = get_linked_tasks(name) + get_linked_calls(name).get("tasks", [])
-	attachments = get_attachments("FCRM Campaign", name)
+	attachments = get_attachments("Campaign", name)
 
 	activities.sort(key=lambda x: x["creation"], reverse=True)
 	activities = handle_multiple_versions(activities)
 
+	return activities, calls, notes, tasks, attachments
+
+
+def get_communication_activities(name):
+	"""Return activity-like structure for a Communication document when asked directly.
+	This will include the communication itself as a single 'communication' activity and any attachments/comments linked to it.
+	"""
+	try:
+		comm = frappe.get_doc("Communication", name)
+	except Exception:
+		frappe.throw(_("Communication not found"), DoesNotExistError)
+
+	activities = []
+	calls = []
+	notes = []
+	tasks = []
+	attachments = []
+
+	# communication as an activity
+	activity = {
+		"activity_type": "communication",
+		"communication_type": getattr(comm, "communication_type", None),
+		"communication_date": getattr(comm, "communication_date", None) or getattr(comm, "creation", None),
+		"creation": getattr(comm, "creation", None),
+		"data": {
+			"subject": getattr(comm, "subject", None),
+			"content": getattr(comm, "content", None),
+			"sender_full_name": getattr(comm, "sender_full_name", None),
+			"sender": getattr(comm, "sender", None),
+			"recipients": getattr(comm, "recipients", None),
+			"attachments": get_attachments("Communication", name),
+		},
+		"is_lead": False,
+	}
+
+	activities.append(activity)
+
+	# comments and attachment logs are available via docinfo
+	try:
+		get_docinfo("", "Communication", name)
+		docinfo = frappe.response.get("docinfo", {})
+		for comment in docinfo.get("comments", []):
+			notes.append({
+				"name": comment.name,
+				"activity_type": "comment",
+				"creation": comment.creation,
+				"owner": comment.owner,
+				"content": comment.content,
+				"attachments": get_attachments("Comment", comment.name),
+			})
+		for attachment_log in docinfo.get("attachment_logs", []):
+			attachments.append({
+				"name": attachment_log.name,
+				"activity_type": "attachment_log",
+				"creation": attachment_log.creation,
+				"owner": attachment_log.owner,
+				"data": parse_attachment_log(attachment_log.content, attachment_log.comment_type),
+			})
+	except Exception:
+		# docinfo may not be available; ignore
+		pass
+
+	activities = handle_multiple_versions(activities)
 	return activities, calls, notes, tasks, attachments
 
 def get_attachments(doctype, name):
@@ -938,3 +1030,127 @@ def parse_attachment_log(html, type):
 		"file_url": a_tag["href"],
 		"is_private": is_private,
 	}
+
+
+def get_email_template_activities(name):
+	get_docinfo("", "Email Template", name)
+	docinfo = frappe.response["docinfo"]
+	email_template_meta = frappe.get_meta("Email Template")
+	email_template_fields = {
+		field.fieldname: {"label": field.label, "options": field.options} for field in email_template_meta.fields
+	}
+	avoid_fields = []
+
+	doc = frappe.db.get_values("Email Template", name, ["creation", "owner"])[0]
+	activities = [
+		{
+			"activity_type": "creation",
+			"creation": doc[0],
+			"owner": doc[1],
+			"data": "created this email template",
+			"is_lead": False,
+		}
+	]
+
+	docinfo.versions.reverse()
+
+	for version in docinfo.versions:
+		version_data = json.loads(version.data)
+		if not version_data.get("changed"):
+			continue
+
+		if change := version_data.get("changed")[0]:
+			field = email_template_fields.get(change[0], None)
+			if not field or change[0] in avoid_fields or (not change[1] and not change[2]):
+				continue
+
+			field_label = field.get("label") or change[0]
+			field_option = field.get("options") or None
+
+			activity_type = "changed"	
+			field_data = {
+				"field": change[0],
+				"field_label": field_label,
+				"old_value": change[1],
+				"value": change[2],
+			}
+
+			if not change[1] and change[2]:
+				activity_type = "added"
+				field_data = {
+					"field": change[0],
+					"field_label": field_label,
+					"value": change[2],
+				}
+			elif change[1] and not change[2]:
+				activity_type = "removed"
+				field_data = {
+					"field": change[0],
+					"field_label": field_label,
+					"value": change[1],
+				}
+
+		activity = {
+			"activity_type": activity_type,
+			"creation": version.creation,
+			"owner": version.owner,
+			"data": field_data,
+			"is_lead": False,
+			"options": field_option,
+		}
+		activities.append(activity)
+
+	for comment in docinfo.comments:
+		activity = {
+			"name": comment.name,
+			"activity_type": "comment",
+			"creation": comment.creation,
+			"owner": comment.owner,
+			"content": comment.content,
+			"attachments": get_attachments("Comment", comment.name),
+			"is_lead": False,
+		}
+		activities.append(activity)
+
+	for communication in docinfo.communications + docinfo.automated_messages:
+		activity = {
+			"activity_type": "communication",
+			"communication_type": communication.communication_type,
+			"communication_date": communication.communication_date or communication.creation,
+			"creation": communication.creation,
+			"data": {
+				"subject": communication.subject,
+				"content": communication.content,
+				"sender_full_name": communication.sender_full_name,
+				"sender": communication.sender,
+				"recipients": communication.recipients,
+				"cc": communication.cc,
+				"bcc": communication.bcc,
+				"attachments": get_attachments("Communication", communication.name),
+				"read_by_recipient": communication.read_recipient,
+				"delivery_status": communication.delivery_status,
+			},
+			"is_lead": False,
+		}
+		activities.append(activity)
+
+	for attachment_log in docinfo.attachment_logs:
+		activity = {
+			"name": attachment_log.name,
+			"activity_type": "attachment_log",
+			"creation": attachment_log.creation,
+			"owner": attachment_log.owner,
+			"data": parse_attachment_log(attachment_log.content, attachment_log.comment_type),
+			"is_lead": False,
+		}
+		activities.append(activity)
+
+	calls = get_linked_calls(name).get("calls", [])
+	notes = get_linked_notes(name) + get_linked_calls(name).get("notes", [])
+	tasks = get_linked_tasks(name) + get_linked_calls(name).get("tasks", [])
+	attachments = get_attachments("Email Template", name)
+
+	activities.sort(key=lambda x: x["creation"], reverse=True)
+	activities = handle_multiple_versions(activities)
+
+	return activities, calls, notes, tasks, attachments
