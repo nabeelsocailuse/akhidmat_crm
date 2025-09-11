@@ -123,6 +123,18 @@ const filteredTabs = computed(() => {
             console.log('GridRowModal: Configured donor_id field with comprehensive filtering')
           }
           
+          // FIX: Simple approach - hide donor detail fields if they're empty
+          if (isDonorDetailField(field.fieldname)) {
+            const rowData = props.data || {}
+            const fieldValue = rowData[field.fieldname]
+            
+            // Hide field if it's empty or null
+            if (!fieldValue || fieldValue.toString().trim() === '') {
+              enhancedField.hidden = true
+              console.log('GridRowModal: Hiding empty donor detail field:', field.fieldname)
+            }
+          }
+          
           return enhancedField
         })
         
@@ -306,5 +318,15 @@ onMounted(() => {
 function openGridRowFieldsModal() {
   showGridRowFieldsModal.value = true
   nextTick(() => (show.value = false))
+}
+
+// Simple helper function to check if a field is a donor detail field
+function isDonorDetailField(fieldname) {
+  return [
+    'donor_name', 'donor_type', 'donor_desk', 'donor_desk_id',
+    'contact_no', 'email', 'city', 'address', 'cnic',
+    'co_name', 'co_contact_no', 'co_email', 'co_address',
+    'relationship_with_donor', 'area', 'co_city', 'co_country', 'co_designation'
+  ].includes(fieldname)
 }
 </script>

@@ -313,14 +313,14 @@ function getContributionTypeOptions() {
   // If donor_identity is not 'Known', force contribution_type to 'Donation' and make it read-only elsewhere
   if (donation.doc.donor_identity !== 'Known') {
     // Auto-select "Donation" if not already set
-    if (donation.doc.contribution_type !== 'Donation') {
       donation.doc.contribution_type = 'Donation'
-      donation.doc.contribution_type.readonly = 1
-    }
     return ['Donation']
   }
-  // If donor_identity is 'Known', allow both options
-  return ['Donation', 'Pledge']
+  else {
+        // If donor_identity is 'Known', allow both options
+        return ['Donation', 'Pledge'] 
+       }
+  
 }
 
 // ADD: Function to create a dynamic contribution type query function

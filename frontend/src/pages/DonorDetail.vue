@@ -755,21 +755,55 @@ async function validateBeforeSave() {
     }
   }
   
-  // Contact number validation - this is the field mentioned in the user's issue
+  // Phone validations (mirror DonorModal behavior)
   if (donorDocument.doc?.country) {
-    const phoneFields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person']
-    
-    for (const fieldName of phoneFields) {
-      if (donorDocument.doc[fieldName] && donorDocument.doc[fieldName].trim() !== '') {
-        const validation = await validatePhoneNumber(donorDocument.doc[fieldName], donorDocument.doc.country)
+    const generalPhoneFields = [
+      'contact_no',
+      'company_contact_number',
+      'organization_contact_person',
+      'representative_mobile',
+      'mobile_no',
+      'phone_no',
+      'company_ownerceo_conatct',
+    ]
+
+    for (const fieldName of generalPhoneFields) {
+      const value = donorDocument.doc[fieldName]
+      if (value && value.toString().trim() !== '') {
+        const validation = await validatePhoneNumber(value.toString().trim(), donorDocument.doc.country)
         if (!validation.isValid) {
           const fieldLabels = {
-            'contact_no': 'Contact Number',
-            'co_contact_no': 'C/O Contact Number',
-            'company_contact_number': 'Company Contact Number',
-            'organization_contact_person': 'Organization Contact Person'
+            contact_no: 'Contact Number',
+            company_contact_number: 'Company Contact Number',
+            organization_contact_person: 'Organization Contact Person',
+            representative_mobile: 'Representative Mobile Number',
+            mobile_no: 'Mobile No',
+            phone_no: 'Phone No',
+            company_ownerceo_conatct: 'Company Owner/CEO Contact',
           }
-          errors.push(`${fieldLabels[fieldName]}: ${validation.message}`)
+          if (donorDocument.doc.country === 'Pakistan') {
+            errors.push(`${fieldLabels[fieldName] || fieldName}: Pakistan phone number must be 10 digits and start with valid mobile prefix (30-39). Example: 348-8903564`)
+          } else {
+            errors.push(`${fieldLabels[fieldName] || fieldName}: ${validation.message}`)
+          }
+        }
+      }
+    }
+  }
+
+  // Organization-specific phone validations (use orgs_country)
+  if (donorDocument.doc?.orgs_country) {
+    const orgPhoneFields = ['org_representative_contact_number', 'org_contact']
+    for (const fieldName of orgPhoneFields) {
+      const value = donorDocument.doc[fieldName]
+      if (value && value.toString().trim() !== '') {
+        const validation = await validatePhoneNumber(value.toString().trim(), donorDocument.doc.orgs_country)
+        if (!validation.isValid) {
+          const fieldLabels = {
+            org_representative_contact_number: 'Organization Representative Contact Number',
+            org_contact: 'Organization Contact Number',
+          }
+          errors.push(`${fieldLabels[fieldName] || fieldName}: ${validation.message}`)
         }
       }
     }
