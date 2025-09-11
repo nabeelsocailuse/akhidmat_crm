@@ -92,7 +92,7 @@ export default {
 <script setup>
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { createResource, Dialog, Button, ErrorMessage } from 'frappe-ui'
+import { createResource, Dialog, Button, ErrorMessage, call } from 'frappe-ui'
 import { useDocument } from '@/data/document'
 import { getMeta } from '@/stores/meta'
 import { globalStore } from '@/stores/global'
@@ -180,6 +180,14 @@ const tabs = createResource({
                   }
                   if (field.fieldname === 'sender' && field.fieldtype === 'Link') {
                     field.options = 'User'
+                    field.read_only = true
+                    // ensure value is current user if not set
+                    if (!document.doc.sender) {
+                      try {
+                        const u = (window.frappe && window.frappe.session && window.frappe.session.user) ? window.frappe.session.user : null
+                        if (u) document.doc.sender = u
+                      } catch {}
+                    }
                   }
                   // Ensure Dynamic Link fields have proper options
                   if (field.fieldname === 'recipient' && field.fieldtype === 'Dynamic Link') {
@@ -400,7 +408,7 @@ watch(controlledShow, (show) => {
     document.doc = { 
       ...props.defaults,
       status: 'Scheduled',
-      sender: '__user'
+      sender: (window.frappe && window.frappe.session && window.frappe.session.user) ? window.frappe.session.user : '__user'
     }
     error.value = ''
   }
@@ -412,7 +420,7 @@ onMounted(() => {
     document.doc = { 
       ...props.defaults,
       status: 'Scheduled',
-      sender: '__user'
+      sender: (window.frappe && window.frappe.session && window.frappe.session.user) ? window.frappe.session.user : '__user'
     }
   }
 })

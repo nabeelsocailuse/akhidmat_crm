@@ -318,6 +318,16 @@ const triggerResize = ref(1)
 const updatedPageCount = ref(20)
 const viewControls = ref(null)
 
+// Utility: strip HTML tags from a string for safe list display
+function stripHtmlTags(value) {
+  if (!value || typeof value !== 'string') return value || ''
+  try {
+    return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  } catch {
+    return value
+  }
+}
+
 function getRow(name, field) {
   const row = rows.value?.find((row) => row.name == name)
   if (!row) return { label: '' }
@@ -436,6 +446,10 @@ function parseRows(rows, columns = []) {
       } else if (row == 'subject') {
         _rows[row] = {
           label: emailTemplate.subject,
+        }
+      } else if (row == 'response') {
+        _rows[row] = {
+          label: stripHtmlTags(emailTemplate.response || ''),
         }
       } else if (row == 'use_html') {
         _rows[row] = {

@@ -493,79 +493,21 @@ async function reapplyAllMasksNow() {
   if (donorDocument.doc?.country) {
     await applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
   }
+  // Reapply orgs_country masks for organization-specific fields
+  if (donorDocument.doc?.orgs_country) {
+    await applyPhoneMasksForCountry(
+      donorDocument.doc.orgs_country,
+      setFieldValue,
+      ['org_representative_contact_number','org_contact']
+    )
+  }
   
   console.log('All masks reapplied')
 }
 
 
 
-// Add a more comprehensive mask reapplication function that can be called manually
-window.forceReapplyAllMasks = async () => {
-  console.log('Force reapplying all masks...')
-  
-  // Wait a bit for DOM to be ready
-  await new Promise(resolve => setTimeout(resolve, 100))
-  
-  // Try to find and reapply masks to all relevant fields
-  const cnicInput = findInputField('cnic')
-  const contactInput = findInputField('contact_no')
-  
-  if (cnicInput && donorDocument.doc?.identification_type) {
-    console.log('Reapplying CNIC mask...')
-    applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
-  }
-  
-  if (contactInput && donorDocument.doc?.country) {
-    console.log('Reapplying phone masks...')
-    await applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
-  }
-  
-  console.log('Force mask reapplication completed')
-}
-
-// Add a function specifically for the Activities component to call
-window.reapplyMasksForActivities = async () => {
-  console.log('Activities component requesting mask reapplication...')
-  
-  // Wait for DOM to be ready
-  await nextTick()
-  
-  // Try multiple times with increasing delays
-  setTimeout(reapplyAllMasksNow, 100)
-  setTimeout(reapplyAllMasksNow, 300)
-  setTimeout(reapplyAllMasksNow, 500)
-  setTimeout(reapplyAllMasksNow, 1000)
-  
-  // Also run aggressive monitoring
-  if (window.aggressiveMaskMonitor) {
-    window.aggressiveMaskMonitor()
-  }
-}
-
-// Add a function that can be called from any component to reapply masks
-window.reapplyMasksImmediately = async () => {
-  console.log('Immediate mask reapplication requested...')
-  
-  // Run aggressive monitoring immediately
-  if (window.aggressiveMaskMonitor) {
-    window.aggressiveMaskMonitor()
-  }
-  
-  // Also try to reapply all masks
-  await reapplyAllMasksNow()
-  
-  // Set up a more aggressive monitoring for the next few seconds
-  for (let i = 1; i <= 10; i++) {
-    setTimeout(() => {
-      if (window.aggressiveMaskMonitor) {
-        window.aggressiveMaskMonitor()
-      }
-    }, i * 200)
-  }
-}
-
-// Make the aggressive mask monitor available globally
-window.aggressiveMaskMonitor = null // Will be set in onMounted
+// Removed global reapply utilities
 
 
 
@@ -790,6 +732,12 @@ function setFieldValue(fieldName, value) {
     case 'organization_contact_person':
       donorDocument.doc.organization_contact_person = value
       break
+    case 'org_representative_contact_number':
+      donorDocument.doc.org_representative_contact_number = value
+      break
+    case 'org_contact':
+      donorDocument.doc.org_contact = value
+      break
   }
 }
 
@@ -910,7 +858,7 @@ async function validateBeforeSave() {
   }
   
   if (errors.length > 0) {
-    const errorMessage = `Please fix the following validation errors:\n\n${errors.map(error => `• ${error}`).join('\n')}`
+    const errorMessage = `\n\n${errors.map(error => `• ${error}`).join('\n')}`
     toast.error(errorMessage)
     return false
   }
@@ -1104,7 +1052,7 @@ watch(tabIndex, async (newTabIndex, oldTabIndex) => {
           mutations.forEach((mutation) => {
             if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
               // New nodes were added, reapply masks
-              setTimeout(reapplyMasks, 100)
+              setTimeout(reapplyAllMasksNow, 100)
             }
           })
         })
@@ -1680,13 +1628,35 @@ watch(() => route.query.refresh, (newRefresh) => {
   }
 }, { immediate: true })
 
-// Country change watcher for phone masks removed
+// Reapply masks when orgs_country changes for org-specific fields
+watch(() => donorDocument.doc?.orgs_country, async (newCountry, oldCountry) => {
+  if (newCountry && oldCountry && newCountry !== oldCountry) {
+    const clearPhoneField = (el) => {
+      if (!el) return
+      el.parentNode?.querySelectorAll('.country-prefix, .pakistan-prefix, .phone-error-message')?.forEach(n => n.remove())
+      el.style.paddingLeft = ''
+      el.style.position = ''
+      if (el.parentNode) el.parentNode.style.position = ''
+      el.classList.remove('border-red-500', 'border-green-500')
+    }
+    clearPhoneField(findInputField('org_representative_contact_number'))
+    clearPhoneField(findInputField('org_contact'))
 
-// Identification type change watcher for CNIC masks removed
+    setTimeout(async () => {
+      await applyPhoneMasksForCountry(newCountry, setFieldValue, ['org_representative_contact_number','org_contact'])
+    }, 200)
+  }
+}, { immediate: true })
 
-// Donor type change watcher for phone masks removed
+// Apply org masks when donor type implies organization
+watch(() => donorDocument.doc?.donor_type, async (newType) => {
+  if (!newType) return
+  if ((newType === 'Organizational' || newType === 'Organization' || newType === 'Corporate Donors') && donorDocument.doc?.orgs_country) {
+    setTimeout(() => applyPhoneMasksForCountry(donorDocument.doc.orgs_country, setFieldValue, ['org_representative_contact_number','org_contact']), 200)
+  }
+})
 
-// Watch for email fields to provide real-time validation
+
 watch(() => donorDocument.doc?.email, (newEmail) => {
   if (newEmail && newEmail.trim() !== '' && donorDocument.doc) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -1820,6 +1790,28 @@ watch(() => donorDocument.doc?.organization_contact_person, async (newOrgContact
       showPhoneValidationFeedback('organization_contact_person', validation.isValid, validation.message)
     }
   }
+  
+})
+
+// Organization contacts: real-time validation based on orgs_country
+watch(() => donorDocument.doc?.org_representative_contact_number, async (newVal) => {
+  const country = donorDocument.doc?.orgs_country
+  if (newVal && country && donorDocument.doc) {
+    const validation = await validatePhoneNumber(newVal, country)
+    if (validation && validation.isValid !== undefined) {
+      showPhoneValidationFeedback('org_representative_contact_number', validation.isValid, validation.message)
+    }
+  }
+})
+
+watch(() => donorDocument.doc?.org_contact, async (newVal) => {
+  const country = donorDocument.doc?.orgs_country
+  if (newVal && country && donorDocument.doc) {
+    const validation = await validatePhoneNumber(newVal, country)
+    if (validation && validation.isValid !== undefined) {
+      showPhoneValidationFeedback('org_contact', validation.isValid, validation.message)
+    }
+  }
 })
 
 watch(() => donorDocument.doc, (newDoc) => {
@@ -1827,6 +1819,9 @@ watch(() => donorDocument.doc, (newDoc) => {
     setTimeout(async () => {
       if (newDoc.country) {
         await applyPhoneMasksForCountry(newDoc.country, setFieldValue)
+      }
+      if (newDoc.orgs_country) {
+        await applyPhoneMasksForCountry(newDoc.orgs_country, setFieldValue, ['org_representative_contact_number','org_contact'])
       }
       if (newDoc.identification_type) {
         applyCnicMaskToInput('cnic', newDoc.identification_type, setFieldValue)
@@ -1897,35 +1892,39 @@ onMounted(() => {
     if (donorDocument.doc?.country) {
       await applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
     }
+    if (donorDocument.doc?.orgs_country) {
+      await applyPhoneMasksForCountry(donorDocument.doc.orgs_country, setFieldValue, ['org_representative_contact_number','org_contact'])
+    }
     
-    interceptSave()
+    // removed save interception
     
     const fieldLayout = globalThis.document.querySelector('.field-layout-wrapper')
     if (fieldLayout) {
       const fieldLayoutObserver = new MutationObserver(() => {
-        // Only reapply masks if they're actually missing, not on every DOM change
         setTimeout(() => {
           const cnicInput = findInputField('cnic')
           const contactInput = findInputField('contact_no')
-          
-          // Only reapply CNIC mask if it's missing
+
           if (cnicInput && !cnicInput._maskHandler && donorDocument.doc?.identification_type) {
             applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
           }
-          
-          // Only reapply phone masks if they're missing
-          if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donorDocument.doc?.country) {
+
+          if (donorDocument.doc?.country) {
             applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
           }
-        }, 500) // Increased delay to reduce frequency
+          if (donorDocument.doc?.orgs_country) {
+            applyPhoneMasksForCountry(donorDocument.doc.orgs_country, setFieldValue, ['org_representative_contact_number','org_contact'])
+          }
+        }, 200)
       })
-      
+
       fieldLayoutObserver.observe(fieldLayout, {
         childList: true,
-        subtree: false, // Don't watch entire subtree
-        attributes: false // Don't watch attribute changes
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class','style']
       })
-      
+
       window.fieldLayoutObserver = fieldLayoutObserver
     }
     
@@ -1958,79 +1957,7 @@ onMounted(() => {
       window.modalObserver = modalObserver
     }
     
-    // Set up periodic mask check to ensure masks don't get lost
-    const maskCheckInterval = setInterval(() => {
-      const cnicInput = findInputField('cnic')
-      const contactInput = findInputField('contact_no')
-      
-      // Only reapply CNIC mask if it's missing
-      if (cnicInput && !cnicInput._maskHandler && donorDocument.doc?.identification_type) {
-        applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
-      }
-      
-      // Only reapply phone masks if they're missing
-      if (contactInput && !contactInput._pakistanHandler && !contactInput._otherCountryHandler && donorDocument.doc?.country) {
-        applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
-      }
-    }, 10000) // Check every 10 seconds to reduce performance impact
-    
-    // Store interval for cleanup
-    window.maskCheckInterval = maskCheckInterval
-    
-    // Set up a more aggressive mask monitoring system
-    const aggressiveMaskMonitor = () => {
-      // Check for CNIC field and apply mask if needed
-      const cnicInput = findInputField('cnic')
-      if (cnicInput && donorDocument.doc?.identification_type) {
-        // Check if mask is missing or if the input has been recreated
-        if (!cnicInput._maskHandler || !cnicInput._maskApplied) {
-          console.log('Aggressive monitor: CNIC mask missing, reapplying...')
-          applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
-          cnicInput._maskApplied = true
-        }
-      }
-      
-      // Check for contact number field and apply mask if needed
-      const contactInput = findInputField('contact_no')
-      if (contactInput && donorDocument.doc?.country) {
-        // Check if phone masks are missing or if the input has been recreated
-        if (!contactInput._pakistanHandler && !contactInput._otherCountryHandler || !contactInput._phoneMaskApplied) {
-          console.log('Aggressive monitor: Phone masks missing, reapplying...')
-          applyPhoneMasksForCountry(donorDocument.doc.country, setFieldValue)
-          contactInput._phoneMaskApplied = true
-        }
-      }
-    }
-    
-    // Make the aggressive mask monitor available globally
-    window.aggressiveMaskMonitor = aggressiveMaskMonitor
-    
-    // Run aggressive monitoring more frequently
-    const aggressiveMaskInterval = setInterval(aggressiveMaskMonitor, 1000) // Check every second
-    window.aggressiveMaskInterval = aggressiveMaskInterval
-    
-    // Also run aggressive monitoring immediately after any DOM changes
-    const aggressiveMaskObserver = new MutationObserver(() => {
-      // Debounce the aggressive monitoring to avoid excessive calls
-      clearTimeout(window.aggressiveMaskTimeout)
-      window.aggressiveMaskTimeout = setTimeout(aggressiveMaskMonitor, 100)
-    })
-    
-    aggressiveMaskObserver.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: false
-    })
-    
-    window.aggressiveMaskObserver = aggressiveMaskObserver
-    
-    // Set up periodic save button interception to catch dynamically added buttons
-    const saveCheckInterval = setInterval(() => {
-      interceptSave()
-    }, 5000) // Check every 5 seconds for new save buttons
-    
-    // Store interval for cleanup
-    window.saveCheckInterval = saveCheckInterval
+    // Removed periodic/aggressive mask monitors
     
     // Set up a global event listener for field layout changes
     const handleFieldLayoutChange = () => {
@@ -2050,131 +1977,9 @@ onMounted(() => {
       { event: 'activitiesReloaded', handler: handleFieldLayoutChange }
     ]
     
-    // Set up a more comprehensive observer for save-related elements
-    const saveObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'childList') {
-          mutation.addedNodes.forEach((node) => {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              // Check for new save buttons
-              const saveButtons = node.querySelectorAll && node.querySelectorAll('button[data-action="save"], button[data-action="Save"], button[data-action="submit"], button[data-action="Submit"], button[type="submit"]')
-              if (saveButtons && saveButtons.length > 0) {
-                console.log('New save buttons detected, intercepting...')
-                setTimeout(interceptSave, 100)
-              }
-              
-              // Check if the node itself is a save button
-              if (node.matches && node.matches('button[data-action="save"], button[data-action="Save"], button[data-action="submit"], button[data-action="Submit"], button[type="submit"]')) {
-                console.log('New save button detected, intercepting...')
-                setTimeout(interceptSave, 100)
-              }
-            }
-          })
-        }
-      })
-    })
+    // removed save interception and global submit/keyboard overrides
     
-    // Start observing the entire document for new save buttons
-    saveObserver.observe(document.body, {
-      childList: true,
-      subtree: true
-    })
-    
-    window.saveObserver = saveObserver
-    
-    // Set up global form submission interceptor
-    const originalSubmit = HTMLFormElement.prototype.submit
-    HTMLFormElement.prototype.submit = async function() {
-      // Check if this form is related to the donor document
-      if (this.closest('[data-doctype="Donor"]') || this.closest('.donor-form') || this.closest('.field-layout-wrapper')) {
-        console.log('Form submission intercepted, validating...')
-        const isValid = await validateBeforeSave()
-        if (!isValid) {
-          console.log('Form validation failed, preventing submission')
-          return
-        }
-      }
-      
-      // Call the original submit method
-      return originalSubmit.call(this)
-    }
-    
-    // Store the original submit method for cleanup
-    window.originalFormSubmit = originalSubmit
-    
-    // Also intercept any save-related events
-    const submitEventListener = async (e) => {
-      // Check if this is a donor-related form submission
-      if (e.target.closest('[data-doctype="Donor"]') || e.target.closest('.donor-form') || e.target.closest('.field-layout-wrapper')) {
-        console.log('Submit event intercepted, validating...')
-        const isValid = await validateBeforeSave()
-        if (!isValid) {
-          console.log('Submit validation failed, preventing submission')
-          e.preventDefault()
-          e.stopPropagation()
-          return false
-        }
-      }
-    }
-    
-    document.addEventListener('submit', submitEventListener, true) // Use capture phase to intercept early
-    window.submitEventListener = submitEventListener
-    
-    // Intercept keyboard shortcuts (Ctrl+S, Cmd+S)
-    const keyboardEventListener = async (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        // Check if we're in a donor-related context
-        if (document.activeElement && (
-          document.activeElement.closest('[data-doctype="Donor"]') || 
-          document.activeElement.closest('.donor-form') || 
-          document.activeElement.closest('.field-layout-wrapper')
-        )) {
-          console.log('Keyboard save shortcut intercepted, validating...')
-          e.preventDefault()
-          e.stopPropagation()
-          
-          const isValid = await validateBeforeSave()
-          if (!isValid) {
-            console.log('Keyboard save validation failed')
-            return false
-          }
-          
-          // If validation passes, trigger the save manually
-          if (donorDocument && donorDocument.save && donorDocument.save.submit) {
-            donorDocument.save.submit()
-          }
-        }
-      }
-    }
-    
-    document.addEventListener('keydown', keyboardEventListener, true)
-    window.keyboardEventListener = keyboardEventListener
-    
-    // Add beforeunload event handler to prevent navigation if form has validation errors
-    const beforeUnloadHandler = (e) => {
-      // Check if we're in a donor form context
-      if (document.activeElement && (
-        document.activeElement.closest('[data-doctype="Donor"]') || 
-        document.activeElement.closest('.donor-form') || 
-        document.activeElement.closest('.field-layout-wrapper')
-      )) {
-        // Check if there are any validation errors
-        const hasValidationErrors = document.querySelector('.text-red-500, .border-red-500, .email-error-message')
-        if (hasValidationErrors) {
-          e.preventDefault()
-          e.returnValue = 'You have validation errors. Please fix them before leaving the page.'
-          return 'You have validation errors. Please fix them before leaving the page.'
-        }
-      }
-    }
-    
-    window.addEventListener('beforeunload', beforeUnloadHandler)
-    window.beforeUnloadHandler = beforeUnloadHandler
-    
-    // Set up global window functions for external access
-    window.validateDonorForm = validateFormNow
-    window.validateDonorField = validateField
-    window.reapplyDonorMasks = reapplyAllMasksNow
+    // Removed global window bindings
     
     // Add comprehensive mask reapplication functions
     window.forceReapplyAllMasks = async () => {
@@ -2200,199 +2005,23 @@ onMounted(() => {
       console.log('Force mask reapplication completed')
     }
     
-    // Add function specifically for Activities component
-    window.reapplyMasksForActivities = async () => {
-      console.log('Activities component requesting mask reapplication...')
-      
-      // Wait for DOM to be ready
-      await nextTick()
-      
-      // Try multiple times with increasing delays
-      setTimeout(reapplyAllMasksNow, 100)
-      setTimeout(reapplyAllMasksNow, 300)
-      setTimeout(reapplyAllMasksNow, 500)
-      setTimeout(reapplyAllMasksNow, 1000)
-      
-      // Also run aggressive monitoring
-      if (window.aggressiveMaskMonitor) {
-        window.aggressiveMaskMonitor()
-      }
-    }
     
-    // Add function for immediate mask reapplication
-    window.reapplyMasksImmediately = async () => {
-      console.log('Immediate mask reapplication requested...')
-      
-      // Run aggressive monitoring immediately
-      if (window.aggressiveMaskMonitor) {
-        window.aggressiveMaskMonitor()
-      }
-      
-      // Also try to reapply all masks
-      await reapplyAllMasksNow()
-      
-      // Set up a more aggressive monitoring for the next few seconds
-      for (let i = 1; i <= 10; i++) {
-        setTimeout(() => {
-          if (window.aggressiveMaskMonitor) {
-            window.aggressiveMaskMonitor()
-          }
-        }, i * 200)
-      }
-    }
-    
-    // Add comprehensive debugging function
-    // window.debugDonorMasks = () => {
-    //   console.log('=== Donor Mask Debugging ===')
-      
-    //   const cnicInput = findInputField('cnic')
-    //   const contactInput = findInputField('contact_no')
-      
-    //   console.log('CNIC Input:', cnicInput)
-    //   if (cnicInput) {
-    //     console.log('CNIC Mask Handler:', cnicInput._maskHandler)
-    //     console.log('CNIC Mask Applied:', cnicInput._maskApplied)
-    //     console.log('CNIC Value:', cnicInput.value)
-    //   }
-      
-    //   console.log('Contact Input:', contactInput)
-    //   if (contactInput) {
-    //     console.log('Pakistan Handler:', contactInput._pakistanHandler)
-    //     console.log('Other Country Handler:', contactInput._otherCountryHandler)
-    //     console.log('Phone Mask Applied:', contactInput._phoneMaskApplied)
-    //     console.log('Contact Value:', contactInput.value)
-    //   }
-      
-    //   console.log('Document Data:', {
-    //     identification_type: document.doc?.identification_type,
-    //     country: document.doc?.country,
-    //     cnic: document.doc?.cnic,
-    //     contact_no: document.doc?.contact_no
-    //   })
-      
-    //   console.log('Available Functions:', {
-    //     reapplyAllMasksNow: typeof reapplyAllMasksNow,
-    //     applyCnicMaskToInput: typeof applyCnicMaskToInput,
-    //     applyPhoneMasksForCountry: typeof applyPhoneMasksForCountry,
-    //     findInputField: typeof findInputField
-    //   })
-    // }
-    
-    // Add a simple test function to check if masking is working
-    // window.testMasks = () => {
-    //   console.log('Testing masks...')
-      
-    //   // Check if we can find the input fields
-    //   const cnicInput = findInputField('cnic')
-    //   const contactInput = findInputField('contact_no')
-      
-    //   if (cnicInput) {
-    //     console.log('✅ CNIC input found')
-    //     if (cnicInput._maskHandler) {
-    //       console.log('✅ CNIC mask handler present')
-    //     } else {
-    //       console.log('❌ CNIC mask handler missing')
-    //     }
-    //   } else {
-    //     console.log('❌ CNIC input not found')
-    //   }
-      
-    //   if (contactInput) {
-    //     console.log('✅ Contact input found')
-    //     if (contactInput._pakistanHandler || contactInput._otherCountryHandler) {
-    //       console.log('✅ Phone mask handlers present')
-    //     } else {
-    //       console.log('❌ Phone mask handlers missing')
-    //     }
-    //   } else {
-    //     console.log('❌ Contact input not found')
-    //   }
-      
-    //   // Try to reapply masks
-    //   console.log('Attempting to reapply masks...')
-    //   reapplyAllMasksNow()
-    // }
-    
-  //   const endTime = performance.now()
-  //   console.log(`onMounted: Initialization completed in ${(endTime - startTime).toFixed(2)}ms`)
   }, 500)
   
 })
 
-// Clean up observers and intervals when component unmounts
 onUnmounted(() => {
-  // Clean up field layout observer
   if (window.fieldLayoutObserver) {
     window.fieldLayoutObserver.disconnect()
     window.fieldLayoutObserver = null
   }
   
-  // Clean up modal observer
   if (window.modalObserver) {
     window.modalObserver.disconnect()
     window.modalObserver = null
   }
   
-  // Clean up mask check interval
-  if (window.maskCheckInterval) {
-    clearInterval(window.maskCheckInterval)
-    window.maskCheckInterval = null
-  }
-  
-  // Clean up aggressive mask monitoring
-  if (window.aggressiveMaskInterval) {
-    clearInterval(window.aggressiveMaskInterval)
-    window.aggressiveMaskInterval = null
-  }
-  
-  if (window.aggressiveMaskObserver) {
-    window.aggressiveMaskObserver.disconnect()
-    window.aggressiveMaskObserver = null
-  }
-  
-  if (window.aggressiveMaskTimeout) {
-    clearTimeout(window.aggressiveMaskTimeout)
-    window.aggressiveMaskTimeout = null
-  }
-  
-  // Clean up save check interval
-  if (window.saveCheckInterval) {
-    clearInterval(window.saveCheckInterval)
-    window.saveCheckInterval = null
-  }
-  
-  // Restore original form submit method
-  if (window.originalFormSubmit) {
-    HTMLFormElement.prototype.submit = window.originalFormSubmit
-    window.originalFormSubmit = null
-  }
-  
-  // Remove submit event listener
-  if (window.submitEventListener) {
-    document.removeEventListener('submit', window.submitEventListener, true)
-    window.submitEventListener = null
-  }
-  
-  // Remove keyboard event listener
-  if (window.keyboardEventListener) {
-    document.removeEventListener('keydown', window.keyboardEventListener, true)
-    window.keyboardEventListener = null
-  }
-  
-  // Disconnect save observer
-  if (window.saveObserver) {
-    window.saveObserver.disconnect()
-    window.saveObserver = null
-  }
-  
-  // Remove beforeunload handler
-  if (window.beforeUnloadHandler) {
-    window.removeEventListener('beforeunload', window.beforeUnloadHandler)
-    window.beforeUnloadHandler = null
-  }
-  
-  // Clean up tab change observers
-  if (window.tabChangeObservers) {
+    if (window.tabChangeObservers) {
     window.tabChangeObservers.forEach(observer => {
       if (observer) {
         observer.disconnect()
@@ -2415,7 +2044,6 @@ let saveInterceptRetryCount = 0
 const MAX_SAVE_INTERCEPT_RETRIES = 5
 
 function interceptSave() {
-  // Find all possible save buttons
   const saveSelectors = [
     'button[data-action="save"]',
     'button[data-action="Save"]',

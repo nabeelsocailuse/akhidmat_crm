@@ -100,7 +100,8 @@ import Autocomplete from '@/components/frappe-ui/Autocomplete.vue'
 import { getMeta } from '@/stores/meta'
 import Draggable from 'vuedraggable'
 import { Dialog, ErrorMessage } from 'frappe-ui'
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { call } from 'frappe-ui'
 
 const props = defineProps({
   doctype: String,
@@ -138,8 +139,43 @@ const oldFields = computed(() => {
 
 const fields = ref(JSON.parse(JSON.stringify(oldFields.value || [])))
 
+// Fallback: fetch full doctype meta to ensure ALL fields are available (union with store)
+const fullDoctypeFields = ref([])
+onMounted(async () => {
+  try {
+    const meta = await call('frappe.client.get_meta', { doctype: props.doctype })
+    if (meta && Array.isArray(meta.fields)) {
+      fullDoctypeFields.value = meta.fields
+    }
+  } catch (e) {
+    // Ignore errors; fallback to store fields only
+  }
+})
+
 const dropdownFields = computed(() => {
-  return getFields()?.filter((field) => {
+  const storeFields = getFields() || []
+  const fetchedFields = fullDoctypeFields.value || []
+  // Union by fieldname
+  const byName = new Map()
+  ;[...storeFields, ...fetchedFields].forEach((f) => {
+    if (f && f.fieldname && !byName.has(f.fieldname)) {
+      byName.set(f.fieldname, f)
+    }
+  })
+  // Ensure Transaction Attachment appears even if hidden/conditional in meta
+  if (!byName.has('transaction_attachment')) {
+    byName.set('transaction_attachment', {
+      label: 'Transaction Attachment',
+      fieldname: 'transaction_attachment',
+      fieldtype: 'Attach Image',
+      options: 'Attach',
+      in_list_view: false,
+      columns: 2,
+      value: 'transaction_attachment',
+    })
+  }
+  const base = Array.from(byName.values())
+  const filtered = base.filter((field) => {
     return (
       !fields.value.find((f) => f.fieldname === field.fieldname) &&
       !['Tab Break', 'Section Break', 'Column Break', 'Table'].includes(
@@ -147,6 +183,21 @@ const dropdownFields = computed(() => {
       )
     )
   })
+  // Ensure Transaction Attachment appears in dropdown if not already present
+  const alreadyInLayout = fields.value.find((f) => f.fieldname === 'transaction_attachment')
+  const alreadyInDropdown = filtered.find((f) => f.fieldname === 'transaction_attachment')
+  if (!alreadyInLayout && !alreadyInDropdown) {
+    filtered.unshift({
+      label: 'Transaction Attachment',
+      fieldname: 'transaction_attachment',
+      fieldtype: 'Attach Image',
+      options: 'Attach',
+      in_list_view: false,
+      columns: 2,
+      value: 'transaction_attachment',
+    })
+  }
+  return filtered
 })
 
 function reset() {

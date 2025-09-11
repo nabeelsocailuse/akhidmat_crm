@@ -15,7 +15,7 @@
     <FormControl
       v-if="
         field.read_only &&
-        !['Int', 'Float', 'Currency', 'Percent', 'Check'].includes(
+        !['Int', 'Float', 'Currency', 'Percent', 'Check', 'Attach', 'Attach Image'].includes(
           field.fieldtype,
         )
       "
@@ -237,6 +237,22 @@
       :description="getDescription(field)"
       @change="fieldChange(flt($event.target.value), field)"
     />
+    <!-- Attach / Attach Image -->
+    <div v-else-if="field.fieldtype === 'Attach' || field.fieldtype === 'Attach Image' || (field.fieldtype === 'Data' && field.options === 'Attach')" class="flex items-center gap-2">
+      <div v-if="data[field.fieldname]" class="flex items-center gap-2">
+        <a :href="data[field.fieldname]" target="_blank" rel="noopener" class="truncate text-ink-blue-6 underline">
+          {{ data[field.fieldname] }}
+        </a>
+        <Button size="sm" variant="subtle" @click.stop="() => fieldChange('', field)">{{ __('Clear') }}</Button>
+      </div>
+      <div v-else class="w-full">
+        <FileUploader @success="(file) => onAttachSuccess(file, field)">
+          <template #default="{ openFileSelector }">
+            <Button variant="outline" class="w-full justify-center" @click="openFileSelector">{{ __('Attach') }}</Button>
+          </template>
+        </FileUploader>
+      </div>
+    </div>
     <FormControl
       v-else
       type="text"
@@ -263,7 +279,7 @@ import { flt } from '@/utils/numberFormat.js'
 import { getMeta } from '@/stores/meta'
 import { usersStore } from '@/stores/users'
 import { useDocument } from '@/data/document'
-import { Tooltip, DatePicker, DateTimePicker } from 'frappe-ui'
+import { Tooltip, DatePicker, DateTimePicker, FileUploader, Button } from 'frappe-ui'
 import { computed, provide, inject, watch, onMounted, nextTick } from 'vue'
 
 const props = defineProps({
@@ -565,10 +581,13 @@ function getSelectOptions(field) {
 }
 
 function getFieldFilters(field) {
-  // Apply filter to link_doctype field in the links child table
-  // This ensures only "Donor" doctype shows up in the link_doctype dropdown
-  if (parentFieldname === 'links' && field.fieldname === 'link_doctype' && field.fieldtype === 'Link' && field.options === 'DocType') {
-    return { name: 'Donor' }
+  // Apply filter to link_doctype field in links/timeline_links child tables
+  // Only allow Donor, CRM Lead, Contact doctypes
+  if ((parentFieldname === 'links' || parentFieldname === 'timeline_links')
+    && field.fieldname === 'link_doctype'
+    && field.fieldtype === 'Link'
+    && field.options === 'DocType') {
+    return { name: ['in', ['Donor', 'CRM Lead', 'Contact']] }
   }
   
   // Return existing filters if available
@@ -601,6 +620,11 @@ function getDonorFilteringFromData() {
   }
   
   return {}
+}
+
+function onAttachSuccess(file, df) {
+  const fileUrl = file?.file_url || file?.name || ''
+  fieldChange(fileUrl, df)
 }
 
 </script>

@@ -172,15 +172,12 @@ const tabs = createResource({
             section.columns.forEach((column) => {
               if (column.fields && Array.isArray(column.fields)) {
                 column.fields.forEach((field) => {
-                  // Ensure proper field configuration
-                  // If this is the name field, make sure it's visible and editable so create modal can show it
                   if (field.fieldname === 'name') {
                     field.read_only = false
                     field.hidden = false
                     field.reqd = field.reqd || 1
                     field.placeholder = field.placeholder || 'Enter Template Name'
                   }
-                  // Hide response fields - we render custom editors below
                   if (['response', 'response_html'].includes(field.fieldname)) {
                     field.hidden = true
                   }
@@ -188,14 +185,11 @@ const tabs = createResource({
                     if (field.fieldname === 'reference_doctype') {
                       field.options = 'DocType'
                       field.placeholder = field.placeholder || 'Select Reference DocType'
-                      // Restrict reference_doctype to specific doctypes
                       const allowed = ['Donor', 'CRM Lead', 'Contact']
-                      // Provide a get_query for runtime filtering
                       field.get_query = () => ({
                         doctype: 'DocType',
                         filters: { name: ['in', allowed] },
                       })
-                      // Also set link_filters so fallbacks and static layouts respect the restriction
                       field.link_filters = JSON.stringify({ name: ['in', allowed] })
                     }
                   }
@@ -220,7 +214,6 @@ const tabs = createResource({
         })
       }
     
-    // If no `name` field exists in the layout, inject it at the top of the first tab/section/column
     let hasName = false
     _tabs.forEach((tab) => {
       tab.sections?.forEach((section) => {
@@ -387,6 +380,11 @@ async function createEmailTemplateFn() {
   }
   if (!emailTemplate.value.subject) {
     errorMessage.value = __('Subject is required')
+    isCreating.value = false
+    return
+  }
+  if (!emailTemplate.value.response) {
+    errorMessage.value = __('Response is required')
     isCreating.value = false
     return
   }

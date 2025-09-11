@@ -700,6 +700,146 @@ watch(() => document.doc, (newDoc, oldDoc) => {
   }
 }, { immediate: false, deep: true })
 
+// === ENRICHERS ===
+async function safeFetchDonor(donorId) {
+  try { return donorId ? await call('frappe.client.get', { doctype: 'Donor', name: donorId }) : null } catch { return null }
+}
+async function safeFetchFundClass(fcId) {
+  try { return fcId ? await call('crm.fcrm.doctype.donation.api.get_fund_class_details', { fund_class_id: fcId, company: document.doc?.company || 'Alkhidmat Foundation Pakistan' }) : null } catch { return null }
+}
+async function safeFetchMOP(mopId) {
+  try { return mopId ? await call('frappe.client.get', { doctype: 'Mode of Payment', name: mopId }) : null } catch { return null }
+}
+
+function mapDonor(row, donor) {
+  if (!row || !donor) return
+  const map = ['donor_name','donor_type','contact_no','email','city','address','cnic','co_name','co_contact_no','co_email','co_address','relationship_with_donor','area','co_city','co_country','co_designation']
+  map.forEach(k => { if (donor[k] !== undefined) row[k] = donor[k] || '' })
+}
+function mapFundClass(row, fc) {
+  if (!row || !fc) return
+  const pairs = { service_area:'pay_service_area', subservice_area:'pay_subservice_area', product:'pay_product', equity_account:'equity_account', receivable_account:'receivable_account', cost_center:'cost_center' }
+  Object.entries(pairs).forEach(([src,tgt]) => { if (fc[src] !== undefined) row[tgt] = fc[src] || '' })
+}
+
+async function enrichOnceAfterLoad() {
+  if (didEnrichOnce || !document.doc) return
+  didEnrichOnce = true
+  try {
+    // Payment Details
+    if (Array.isArray(document.doc.payment_detail)) {
+      for (let i = 0; i < document.doc.payment_detail.length; i++) {
+        const row = document.doc.payment_detail[i]
+        if (row && !row.random_id) row.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
+        if (row?.donor_id) { const d = await safeFetchDonor(row.donor_id); mapDonor(row, d) }
+        if (row?.fund_class_id) { const fc = await safeFetchFundClass(row.fund_class_id); mapFundClass(row, fc) }
+        if (row?.mode_of_payment) {
+          const mop = await safeFetchMOP(row.mode_of_payment)
+          if (mop?.accounts && document.doc.company) {
+            const comp = mop.accounts.find(a => a.company === document.doc.company)
+            if (comp?.default_account) row.account_paid_to = comp.default_account
+          }
+        }
+      }
+      document.doc.payment_detail = [...document.doc.payment_detail]
+    }
+
+    // Deduction Breakeven
+    if (Array.isArray(document.doc.deduction_breakeven)) {
+      for (let i = 0; i < document.doc.deduction_breakeven.length; i++) {
+        const r = document.doc.deduction_breakeven[i]
+        if (r && !r.random_id) r.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
+        const fcid = r.fund_class_id || r.fund_class
+        if (fcid) { const fc = await safeFetchFundClass(fcid); if (fc) {
+          const pairs = [ ['service_area','service_area'], ['subservice_area','subservice_area'], ['product','product'], ['service_area','pay_service_area'], ['subservice_area','pay_subservice_area'], ['product','pay_product'], ['cost_center','cost_center'] ]
+          pairs.forEach(([src,tgt]) => { if (tgt in r && fc[src] !== undefined) r[tgt] = fc[src] || '' })
+        } }
+      }
+      document.doc.deduction_breakeven = [...document.doc.deduction_breakeven]
+    }
+  } catch (e) {
+    // Fail-safe: do not break page
+    console.error('Enrichment error:', e)
+  }
+}
+
+onMounted(async () => {
+  await nextTick()
+  // small delay to ensure doc rendered
+  setTimeout(() => { enrichOnceAfterLoad() }, 300)
+})
+
+watch(() => document.doc?.name, () => { didEnrichOnce = false; setTimeout(() => { enrichOnceAfterLoad() }, 300) })
+// === END ENRICHERS ===
+
+// === LIVE EDIT FETCH (SAFE, GUARDED) ===
+let pdProcessing = false
+watch(() => document.doc?.payment_detail, async (rows) => {
+  if (pdProcessing || !Array.isArray(rows)) return
+  pdProcessing = true
+  try {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      if (!row) continue
+      // random id
+      if (!row.random_id) row.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
+      // donor
+      if (row.donor_id && row.donor_id !== row._lastDonorId) {
+        row._lastDonorId = row.donor_id
+        const d = await safeFetchDonor(row.donor_id)
+        mapDonor(row, d)
+      }
+      // fund class
+      if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
+        row._lastFundClassId = row.fund_class_id
+        const fc = await safeFetchFundClass(row.fund_class_id)
+        mapFundClass(row, fc)
+      }
+      // mode of payment
+      if (row.mode_of_payment && row.mode_of_payment !== row._lastModeOfPayment) {
+        row._lastModeOfPayment = row.mode_of_payment
+        const mop = await safeFetchMOP(row.mode_of_payment)
+        if (mop?.accounts && document.doc?.company) {
+          const comp = mop.accounts.find(a => a.company === document.doc.company)
+          if (comp?.default_account) row.account_paid_to = comp.default_account
+        }
+      }
+    }
+    // do not forcefully replace array; Vue deep binding should update
+  } catch (e) {
+    console.error('Payment detail live fetch error:', e)
+  } finally {
+    pdProcessing = false
+  }
+}, { deep: true })
+
+let dbProcessing = false
+watch(() => document.doc?.deduction_breakeven, async (rows) => {
+  if (dbProcessing || !Array.isArray(rows)) return
+  dbProcessing = true
+  try {
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]
+      if (!r) continue
+      if (!r.random_id) r.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
+      const fcid = r.fund_class_id || r.fund_class
+      if (fcid && fcid !== r._lastFC) {
+        r._lastFC = fcid
+        const fc = await safeFetchFundClass(fcid)
+        if (fc) {
+          const pairs = [ ['service_area','service_area'], ['subservice_area','subservice_area'], ['product','product'], ['service_area','pay_service_area'], ['subservice_area','pay_subservice_area'], ['product','pay_product'], ['cost_center','cost_center'] ]
+          pairs.forEach(([src,tgt]) => { if (tgt in r && fc[src] !== undefined) r[tgt] = fc[src] || '' })
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Deduction breakeven live fetch error:', e)
+  } finally {
+    dbProcessing = false
+  }
+}, { deep: true })
+// === END LIVE EDIT FETCH ===
+
 // ADD: Helper function to determine if deduction breakeven should be populated
 function shouldPopulateDeductionBreakeven() {
   return (

@@ -265,7 +265,7 @@ const slotName = computed(() => {
   return 'default'
 })
 
-const restrictedFieldTypes = [
+const restrictedFieldTypesBase = [
   'Geolocation',
   'Attach',
   'Attach Image',
@@ -273,10 +273,21 @@ const restrictedFieldTypes = [
   'Signature',
 ]
 
+// For Payment Detail rows we need to allow attachment controls so the user can add
+// the 'transaction_attachment' field. Keep other doctypes unchanged.
+const restrictedFieldTypes = computed(() => {
+  if (props.doctype === 'Payment Detail') {
+    return restrictedFieldTypesBase.filter(
+      (t) => !['Attach', 'Attach Image'].includes(t),
+    )
+  }
+  return restrictedFieldTypesBase
+})
+
 const params = computed(() => {
   return {
     doctype: props.doctype,
-    restricted_fieldtypes: restrictedFieldTypes,
+    restricted_fieldtypes: restrictedFieldTypes.value,
     as_array: true,
     only_required: props.onlyRequired,
   }
@@ -613,6 +624,14 @@ watch(
     }
   },
   { immediate: true }
+)
+
+// Refetch when restriction list changes (e.g., doctype specific relax)
+watch(
+  () => params.value,
+  () => {
+    fields.fetch(params.value)
+  }
 )
 </script>
 

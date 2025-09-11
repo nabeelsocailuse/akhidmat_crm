@@ -65,11 +65,13 @@ import { useDonorFieldValidation } from '@/composables/useDonorFieldValidation'
 import { computed, onMounted, ref, nextTick, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 
-// Import identification field masking functions
 const {
   applyCnicMaskToInput,
   validateCnicFormat,
-  getMaskPattern
+  getMaskPattern,
+  applyPhoneMasksForCountry, 
+  validatePhoneNumber,
+  showPhoneValidationFeedback
 } = useDonorFieldValidation()
 
 const props = defineProps({
@@ -88,7 +90,6 @@ const isLeadCreating = ref(false)
 
 const { document: lead, triggerOnBeforeCreate } = useDocument('CRM Lead')
 
-// Helper function to set field value for masking
 const setFieldValue = (fieldName, value) => {
   if (lead.doc) {
     lead.doc[fieldName] = value
@@ -178,7 +179,6 @@ async function createNewLead() {
           return error.value
         }
         
-        // Validate identification fields
         if (lead.doc.custom_identification_type && lead.doc.custom_identification_type !== 'Others') {
           if (!lead.doc.custom_identification_value) {
             error.value = `${lead.doc.custom_identification_type} is required`
@@ -191,7 +191,6 @@ async function createNewLead() {
           }
         }
         
-        // Others field is mandatory when identification_type is "Others"
         if (lead.doc.custom_identification_type === 'Others') {
           if (!lead.doc.custom_others) {
             error.value = __('Others field is required when Identification Type is "Others"')
@@ -228,10 +227,8 @@ function openQuickEntryModal() {
   nextTick(() => (show.value = false))
 }
 
-// Watch for identification type changes to apply masking
 watch(() => lead.doc?.custom_identification_type, (newType, oldType) => {
   if (newType && newType !== oldType) {
-    // Clear the identification value field when type changes
     if (lead.doc) {
       lead.doc.custom_identification_value = ''
     }
@@ -242,17 +239,46 @@ watch(() => lead.doc?.custom_identification_type, (newType, oldType) => {
   }
 })
 
-// Watch for identification value changes to reapply masking
 watch(() => lead.doc?.custom_identification_value, (newValue, oldValue) => {
   if (newValue && newValue !== oldValue && lead.doc?.custom_identification_type) {
-    // Re-apply masking to ensure proper format
     nextTick(() => {
       applyCnicMaskToInput('custom_identification_value', lead.doc.custom_identification_type, setFieldValue)
     })
   }
 })
 
-// Apply initial masking when component mounts
+
+watch(() => lead.doc?.country, async (newCountry, oldCountry) => {
+  if (!newCountry) return;
+
+  if (oldCountry && oldCountry !== newCountry) {
+    lead.doc.mobile_no = '';
+  }
+
+  setTimeout(() => {
+    applyPhoneMasksForCountry(newCountry, setFieldValue, ['mobile_no']);
+  }, 300);
+});
+
+watch(() => lead.doc?.mobile_no, async (newValue) => {
+  if (newValue && lead.doc?.country) {
+    const validation = await validatePhoneNumber(newValue, lead.doc.country);
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('mobile_no', false, validation.message);
+    } else {
+      showPhoneValidationFeedback('mobile_no', true, '');
+    }
+  }
+});
+
+onMounted(() => {
+  if (lead.doc?.country) {
+    setTimeout(() => {
+      applyPhoneMasksForCountry(lead.doc.country, setFieldValue, ['mobile_no']);
+    }, 500);
+  }
+})
+
 onMounted(() => {
   lead.doc = { no_of_employees: '1-10' }
   Object.assign(lead.doc, props.defaults)
@@ -264,46 +290,36 @@ onMounted(() => {
     lead.doc.status = leadStatuses.value[0].value
   }
   
-  // Set default identification type if not provided
   if (!lead.doc?.custom_identification_type) {
     lead.doc.custom_identification_type = 'CNIC'
   }
   
-  // Apply initial masking for identification fields immediately
   if (lead.doc?.custom_identification_type) {
-    // Use a longer delay to ensure DOM is fully rendered
     setTimeout(() => {
       applyCnicMaskToInput('custom_identification_value', lead.doc.custom_identification_type, setFieldValue)
     }, 500)
   }
   
-  // Set up periodic mask check to ensure masking doesn't get lost
   const maskCheckInterval = setInterval(() => {
     if (lead.doc?.custom_identification_type && show.value) {
-      // Check if masking is already applied by looking for the input field
       const inputElement = document.querySelector('input[name="custom_identification_value"], [data-fieldname="custom_identification_value"] input')
       if (inputElement && !inputElement._maskHandler) {
-        // Reapply masking if it's missing
         applyCnicMaskToInput('custom_identification_value', lead.doc.custom_identification_type, setFieldValue)
       }
     }
-  }, 2000) // Check every 2 seconds
+  }, 2000) 
   
-  // Store interval for cleanup
   window.leadMaskCheckInterval = maskCheckInterval
 })
 
-// Watch for modal visibility to ensure masking is applied when modal becomes visible
 watch(() => show.value, (isVisible) => {
   if (isVisible && lead.doc?.custom_identification_type) {
-    // Apply masking when modal becomes visible
     setTimeout(() => {
       applyCnicMaskToInput('custom_identification_value', lead.doc.custom_identification_type, setFieldValue)
     }, 300)
   }
 })
 
-// Clean up interval when component is unmounted
 onUnmounted(() => {
   if (window.leadMaskCheckInterval) {
     clearInterval(window.leadMaskCheckInterval)

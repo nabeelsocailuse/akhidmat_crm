@@ -31,6 +31,7 @@
   "middle_name",
   "gender",
   "phone",
+  "country",
   "column_break_dbsv",
   "status",
   "no_of_employees",
@@ -325,13 +326,19 @@
    "label": "Net Total",
    "options": "currency",
    "read_only": 1
+  },
+  {
+   "fieldname": "country",
+   "fieldtype": "Link",
+   "label": "Country",
+   "options": "Country"
   }
  ],
  "grid_page_length": 50,
  "image_field": "image",
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-05-14 19:51:06.184569",
+ "modified": "2025-09-10 14:28:09.937484",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Lead",

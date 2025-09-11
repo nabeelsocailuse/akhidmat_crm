@@ -575,6 +575,33 @@ const sections = createResource({
   cache: ['sidePanelSections', 'Communication'],
   params: { doctype: 'Communication' },
   auto: true,
+  transform: (_sections) => {
+    if (!_sections || !Array.isArray(_sections)) return _sections
+    _sections.forEach((section) => {
+      section.columns?.forEach((column) => {
+        column.fields?.forEach((field) => {
+          // Limit reference_doctype like in modal
+          if (field.fieldtype === 'Link' && field.fieldname === 'reference_doctype') {
+            field.options = 'DocType'
+            const allowed = ['Donor', 'CRM Lead', 'Contact']
+            field.get_query = () => ({ doctype: 'DocType', filters: { name: ['in', allowed] } })
+            field.link_filters = JSON.stringify({ name: ['in', allowed] })
+          }
+          // Limit link_doctype inside child tables when rendered in side panel
+          if (field.fieldtype === 'Table' && field.fieldname && field.fields) {
+            field.fields.forEach((childField) => {
+              if (childField.fieldname === 'link_doctype' && childField.fieldtype === 'Link' && childField.options === 'DocType') {
+                const allowed = ['Donor', 'CRM Lead', 'Contact']
+                childField.get_query = () => ({ doctype: 'DocType', filters: { name: ['in', allowed] } })
+                childField.link_filters = JSON.stringify({ name: ['in', allowed] })
+              }
+            })
+          }
+        })
+      })
+    })
+    return _sections
+  },
   onSuccess: (data) => {
     // Sections loaded successfully
   },

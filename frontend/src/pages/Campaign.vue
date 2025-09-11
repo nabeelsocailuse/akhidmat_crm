@@ -424,7 +424,6 @@ const campaignSidebarSections = computed(() => [
             placeholder: __('Enter campaign name'),
             reqd: true,
             create: () => {
-              // Handle create new campaign name if needed
             }
           },
           {
@@ -433,15 +432,15 @@ const campaignSidebarSections = computed(() => [
             fieldtype: 'Text',
             value: campaign.data?.description || '',
             placeholder: __('Enter description')
-          },
-          {
-            fieldname: 'naming_series',
-            label: __('Naming Series'),
-            fieldtype: 'Select',
-            value: campaign.data?.naming_series || 'SAL-CAM-.YYYY.-',
-            options: ['SAL-CAM-.YYYY.-'],
-            read_only: true
           }
+          // {
+          //   fieldname: 'naming_series',
+          //   label: __('Naming Series'),
+          //   fieldtype: 'Select',
+          //   value: campaign.data?.naming_series || 'SAL-CAM-.YYYY.-',
+          //   options: ['SAL-CAM-.YYYY.-'],
+          //   read_only: true
+          // }
         ]
       }
     ]

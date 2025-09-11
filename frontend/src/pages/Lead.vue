@@ -29,7 +29,7 @@
           "
         >
           <template #default="{ open }">
-            <Button v-if="doc.status" :label="doc.status">
+            <Button v-if="doc.status" :label="doc.status">  
               <template #prefix>
                 <IndicatorIcon :class="getLeadStatus(doc.status).color" />
               </template>
@@ -45,7 +45,7 @@
         <Button
           :label="__('Convert to Donor')"
           variant="solid"
-          @click="showConvertToDealModal = true"
+          @click="convertLeadToDonor"
         />
       </template>
     </LayoutHeader>
@@ -223,11 +223,7 @@
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
-  <ConvertToDealModal
-    v-if="showConvertToDealModal"
-    v-model="showConvertToDealModal"
-    :lead="doc"
-  />
+  
   <FilesUploader
     v-model="showFilesUploader"
     doctype="CRM Lead"
@@ -272,7 +268,6 @@ import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
-import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue'
 import AppStyling from '@/components/AppStyling.vue'
 import {
   openWebsite,
@@ -287,6 +282,7 @@ import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
 import { whatsappEnabled, callEnabled } from '@/composables/settings'
+import { useDonorFieldValidation } from '@/composables/useDonorFieldValidation'
 import {
   createResource,
   FileUploader,
@@ -323,7 +319,6 @@ const activities = ref(null)
 const errorTitle = ref('')
 const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
-const showConvertToDealModal = ref(false)
 const showFilesUploader = ref(false)
 
 const { triggerOnChange, assignees, document, scripts, error } = useDocument(
@@ -515,4 +510,110 @@ function reloadAssignees(data) {
     assignees.reload()
   }
 }
+
+async function convertLeadToDonor() {
+  if (!doc.value?.name) return
+  try {
+    await call('crm.fcrm.doctype.crm_lead.crm_lead.convert_to_deal', {
+      lead: doc.value.name,
+    })
+    toast.success(__('Lead converted to donor'))
+    router.push({ name: 'Leads' })
+  } catch (e) {
+    toast.error(e?.messages?.[0] || __('Error converting lead'))
+  }
+}
+
+// Input masking and validation: CNIC and Phone on Lead detail (Data tab)
+const {
+  applyCnicMaskToInput,
+  validateCnicFormat,
+  applyPhoneMasksForCountry,
+  validatePhoneNumber,
+  showPhoneValidationFeedback,
+} = useDonorFieldValidation()
+
+function setFieldValue(fieldName, value) {
+  if (document.doc) {
+    document.doc[fieldName] = value
+  }
+}
+
+watch(
+  () => doc.value?.custom_identification_type,
+  (newType, oldType) => {
+    if (newType && newType !== oldType) {
+      if (document.doc) {
+        document.doc.custom_identification_value = ''
+      }
+      nextTick(() => {
+        applyCnicMaskToInput(
+          'custom_identification_value',
+          newType,
+          setFieldValue,
+        )
+      })
+    }
+  },
+)
+
+watch(
+  () => doc.value?.custom_identification_value,
+  (newValue, oldValue) => {
+    if (newValue && newValue !== oldValue && doc.value?.custom_identification_type) {
+      nextTick(() => {
+        applyCnicMaskToInput(
+          'custom_identification_value',
+          doc.value.custom_identification_type,
+          setFieldValue,
+        )
+      })
+    }
+  },
+)
+
+watch(
+  () => doc.value?.country,
+  (newCountry, oldCountry) => {
+    if (!newCountry) return
+    if (oldCountry && oldCountry !== newCountry && document.doc) {
+      document.doc.mobile_no = ''
+    }
+    setTimeout(() => {
+      applyPhoneMasksForCountry(newCountry, setFieldValue, ['mobile_no'])
+    }, 300)
+  },
+)
+
+watch(
+  () => doc.value?.mobile_no,
+  async (newValue) => {
+    if (newValue && doc.value?.country) {
+      const validation = await validatePhoneNumber(newValue, doc.value.country)
+      if (!validation.isValid) {
+        showPhoneValidationFeedback('mobile_no', false, validation.message)
+      } else {
+        showPhoneValidationFeedback('mobile_no', true, '')
+      }
+    }
+  },
+)
+
+// Initialize masks when page loads
+nextTick(() => {
+  if (doc.value?.custom_identification_type) {
+    setTimeout(() => {
+      applyCnicMaskToInput(
+        'custom_identification_value',
+        doc.value.custom_identification_type,
+        setFieldValue,
+      )
+    }, 500)
+  }
+  if (doc.value?.country) {
+    setTimeout(() => {
+      applyPhoneMasksForCountry(doc.value.country, setFieldValue, ['mobile_no'])
+    }, 500)
+  }
+})
 </script>

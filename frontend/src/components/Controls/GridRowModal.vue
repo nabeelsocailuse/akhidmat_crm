@@ -116,6 +116,28 @@ const filteredTabs = computed(() => {
           return enhancedField
         })
         
+        // ADD: Force include donor_id field if it's missing
+        const hasDonorId = filteredColumn.fields.some(field => field.fieldname === 'donor_id')
+        if (!hasDonorId && (props.doctype === 'Payment Detail' || props.doctype === 'Deduction Breakeven')) {
+          console.log('GridRowModal: Adding missing donor_id field to', props.doctype)
+          
+          // Create donor_id field from meta
+          const donorIdField = {
+            fieldname: 'donor_id',
+            fieldtype: 'Link',
+            label: 'Donor',
+            options: 'Donor',
+            reqd: 0,
+            hidden: 0,
+            read_only: 0,
+            __islocal: 1
+          }
+          
+          // Configure the field with donor filtering
+          const configuredField = configureDonorField(donorIdField)
+          filteredColumn.fields.unshift(configuredField) // Add at the beginning
+        }
+        
         return filteredColumn
       })
       
@@ -150,12 +172,16 @@ function configureDonorField(field) {
   // Inject link_filters as fallback
   enhancedField.link_filters = JSON.stringify(getDonorFilters())
   
-  // Set depends_on
-  enhancedField.depends_on = 'donor_identity'
+  // FIX: Don't set depends_on for GridRowModal context to ensure field is always visible
+  // enhancedField.depends_on = 'donor_identity'
   
   // Set options and fieldtype
   enhancedField.options = 'Donor'
   enhancedField.fieldtype = 'Link'
+  
+  // ADD: Force the field to be visible
+  enhancedField.hidden = false
+  enhancedField.read_only = false
   
   // ADD: Force the field to have the correct structure
   enhancedField._forceDonorFiltering = true
@@ -170,6 +196,8 @@ function configureDonorField(field) {
     depends_on: enhancedField.depends_on,
     options: enhancedField.options,
     fieldtype: enhancedField.fieldtype,
+    hidden: enhancedField.hidden,
+    read_only: enhancedField.read_only,
     _forceDonorFiltering: enhancedField._forceDonorFiltering,
     _donorIdentity: enhancedField._donorIdentity,
     _donorCurrency: enhancedField._donorCurrency

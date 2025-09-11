@@ -168,8 +168,6 @@ const tabs = createResource({
     if (!_tabs || !Array.isArray(_tabs)) {
       return _tabs
     }
-    // Allowed doctypes for reference/link fields
-    const allowedDoctypes = ['Donor', 'CRM Lead', 'Contact']
     
     // Process the tabs and return the transformed data
     _tabs.forEach((tab) => {
@@ -180,12 +178,13 @@ const tabs = createResource({
               if (column.fields && Array.isArray(column.fields)) {
                 column.fields.forEach((field) => {
                   // Ensure proper field configuration based on core Communication doctype
-          if (field.fieldtype === 'Link') {
+                  if (field.fieldtype === 'Link') {
                     if (field.fieldname === 'reference_doctype') {
                       field.options = 'DocType'
                       // Limit available doctypes to the three allowed ones
-            field.get_query = () => ({ doctype: 'DocType', filters: { name: ['in', allowedDoctypes] } })
-            field.link_filters = JSON.stringify({ name: ['in', allowedDoctypes] })
+                      const _allowed = ['Donor', 'CRM Lead', 'Contact']
+                      field.get_query = () => ({ doctype: 'DocType', filters: { name: ['in', _allowed] } })
+                      field.link_filters = JSON.stringify({ name: ['in', _allowed] })
                       field.placeholder = field.placeholder || 'Select Reference DocType'
                     } else if (field.fieldname === 'email_account') {
                       field.options = 'Email Account'
@@ -196,19 +195,6 @@ const tabs = createResource({
                     }
                   }
                   
-                  // If this is a Table field, ensure child fields like `link_doctype` are constrained
-                  if (field.fieldtype === 'Table' && Array.isArray(field.fields)) {
-                    field.fields.forEach((childField) => {
-                      if (!childField || typeof childField !== 'object') return
-                      if (childField.fieldname === 'link_doctype') {
-                        childField.options = 'DocType'
-                        childField.get_query = () => ({ doctype: 'DocType', filters: { name: ['in', allowedDoctypes] } })
-                        childField.link_filters = JSON.stringify({ name: ['in', allowedDoctypes] })
-                        childField.placeholder = childField.placeholder || 'Select Link DocType'
-                      }
-                    })
-                  }
-
                   // Ensure Data fields have proper placeholders
                   if (field.fieldtype === 'Data') {
                     if (field.fieldname === 'subject' && !field.placeholder) {

@@ -116,6 +116,8 @@
                         'Currency',
                         'Percent',
                         'Check',
+                        'Attach',
+                        'Attach Image',
                       ].includes(field.fieldtype)
                     "
                     type="text"
@@ -168,6 +170,21 @@
                       </Tooltip>
                     </template>
                   </Link>
+                  <div v-else-if="field.fieldtype === 'Attach' || field.fieldtype === 'Attach Image' || (field.fieldtype === 'Data' && field.options === 'Attach')" class="flex h-full bg-surface-white items-center px-2">
+                    <div v-if="row[field.fieldname]" class="flex items-center gap-2 w-full">
+                      <a :href="row[field.fieldname]" target="_blank" rel="noopener" class="truncate text-ink-blue-6 underline">
+                        {{ row[field.fieldname] }}
+                      </a>
+                      <Button size="sm" variant="subtle" @click.stop="() => { row[field.fieldname] = ''; forceReactiveUpdate(); triggerOnChange(field.fieldname, '', row) }">{{ __('Clear') }}</Button>
+                    </div>
+                    <div v-else class="w-full">
+                      <FileUploader @success="(file) => onAttachSuccess(file, field, row)">
+                        <template #default>
+                          <Button variant="outline" class="w-full justify-center">{{ __('Attach') }}</Button>
+                        </template>
+                      </FileUploader>
+                    </div>
+                  </div>
                   <div
                     v-else-if="field.fieldtype === 'Check'"
                     class="flex h-full bg-surface-white justify-center items-center"
@@ -361,6 +378,7 @@ import {
   dayjs,
   call,
   toast,
+  FileUploader,
 } from 'frappe-ui'
 import Draggable from 'vuedraggable'
 import { ref, reactive, computed, inject, provide, watch, nextTick, onMounted, getCurrentInstance } from 'vue'
@@ -450,7 +468,21 @@ if (props.parentFieldname === 'deduction_breakeven') {
 }
 
 const allFields = computed(() => {
-  return getFields()?.map((f) => getFieldObj(f)) || []
+  const base = getFields()?.map((f) => getFieldObj(f)) || []
+  // Guarantee Transaction Attachment appears in the editor even if hidden/filtered in meta
+  const hasTxnAttach = base.some((f) => f.fieldname === 'transaction_attachment')
+  if (!hasTxnAttach) {
+    base.push(
+      getFieldObj({
+        fieldname: 'transaction_attachment',
+        label: 'Transaction Attachment',
+        fieldtype: 'Attach Image',
+        options: 'Attach',
+        in_list_view: false,
+      })
+    )
+  }
+  return base
 })
 
 // ADD: Force refresh of Link components when filters change
@@ -663,9 +695,19 @@ function getFieldObj(field) {
 
   setQueryForField(field, parentDoc.value)
 
-  // Apply filter to link_doctype field in the links child table
-  if (props.parentFieldname === 'links' && field.fieldname === 'link_doctype' && field.fieldtype === 'Link' && field.options === 'DocType') {
-    field.filters = { name: 'Donor' }
+  // Force correct control for Transaction Attachment
+  if (field.fieldname === 'transaction_attachment') {
+    // Ensure it's treated as an attach control in the grid
+    field.fieldtype = field.fieldtype === 'Attach' || field.fieldtype === 'Attach Image' ? field.fieldtype : 'Attach Image'
+    field.options = field.options || 'Attach'
+  }
+
+  // Apply filter to link_doctype field in links/timeline_links child tables
+  if ((props.parentFieldname === 'links' || props.parentFieldname === 'timeline_links')
+    && field.fieldname === 'link_doctype'
+    && field.fieldtype === 'Link'
+    && field.options === 'DocType') {
+    field.filters = { name: ['in', ['Donor', 'CRM Lead', 'Contact']] }
   }
 
   const fieldObj = {
@@ -728,6 +770,17 @@ const toggleSelectRow = (row) => {
 }
 
 const addRow = () => {
+  // Check if this is deduction_breakeven and contribution_type is Pledge
+  if (props.parentFieldname === 'deduction_breakeven') {
+    // Get the parent document to check contribution_type
+    const parentDoc = props.parentDoc || window.parentDocument
+    if (parentDoc && parentDoc.contribution_type === 'Pledge') {
+      console.log('Skipped adding deduction_breakeven row - contribution_type is Pledge')
+      toast.warning('Deduction Breakeven rows cannot be added when Contribution Type is Pledge')
+      return
+    }
+  }
+  
   if (!rows.value) {
     rows.value = []
   }
@@ -744,8 +797,9 @@ const addRow = () => {
       newRow[field.fieldname] = getDefaultValue(field.default, field.fieldtype)
     }
     
-    // Set default value for link_doctype field in links child table
-    if (props.parentFieldname === 'links' && field.fieldname === 'link_doctype' && field.fieldtype === 'Link' && field.options === 'DocType') {
+    // Set default value for link_doctype field in links/timeline_links child table
+    if ((props.parentFieldname === 'links' || props.parentFieldname === 'timeline_links')
+      && field.fieldname === 'link_doctype' && field.fieldtype === 'Link' && field.options === 'DocType') {
       newRow[field.fieldname] = 'Donor'
     }
   })
@@ -835,6 +889,13 @@ async function addDeductionBreakevenRow(deductionDetails, fundClassId) {
   console.log('Deduction details:', deductionDetails)
   console.log('Fund class ID:', fundClassId)
   
+  // Check contribution_type before proceeding
+  if (parentDoc.value && parentDoc.value.contribution_type === 'Pledge') {
+    console.log('Skipped adding deduction_breakeven row - contribution_type is Pledge')
+    toast.warning('Deduction Breakeven rows cannot be added when Contribution Type is Pledge')
+    return null
+  }
+  
   // Create the row data structure
   const newDeductionRow = {
     random_id: Math.floor((1000 + Math.random() * 9000)),
@@ -844,8 +905,9 @@ async function addDeductionBreakevenRow(deductionDetails, fundClassId) {
     max_percent: deductionDetails.max_percent || 0,
     amount: 0, // Will be calculated based on percentage and donation amount
     company: deductionDetails.company || '',
-    income_type: deductionDetails.income_type || ''
-    // Note: project and account are intentionally not populated as requested
+    income_type: deductionDetails.income_type || '',
+    account: deductionDetails.account || '',
+    project: deductionDetails.project || '',
   }
   
   console.log('New deduction row data created:', newDeductionRow)
@@ -876,6 +938,13 @@ async function addDeductionRowToParent(deductionDetails, fundClassId, paymentRow
       return false
     }
     
+    // Check contribution_type before adding deduction row
+    if (parentDoc.value.contribution_type === 'Pledge') {
+      console.log('Skipped adding deduction_breakeven row - contribution_type is Pledge')
+      toast.warning('Deduction Breakeven rows cannot be added when Contribution Type is Pledge')
+      return false
+    }
+    
     // Check if deduction_breakeven table exists in parent document
     if (!parentDoc.value.deduction_breakeven) {
       console.log('Creating deduction_breakeven array in parent document')
@@ -894,6 +963,8 @@ async function addDeductionRowToParent(deductionDetails, fundClassId, paymentRow
       amount: 0, // Will be calculated based on percentage and donation amount
       company: deductionDetails.company || '',
       income_type: deductionDetails.income_type || '',
+      account: deductionDetails.account || '',
+      project: deductionDetails.project || '',
       // Note: project and account are intentionally not populated as requested
       __islocal: true,
       doctype: 'Deduction Breakeven',
@@ -989,16 +1060,15 @@ function updateDeductionFields(row, deductionDetails) {
     row.max_percent = deductionDetails.max_percent
   }
   
-  // // Update other related fields if available
-  // if (deductionDetails.account) {
-  //   row.account = deductionDetails.account
-  // }
   if (deductionDetails.income_type) {
     row.income_type = deductionDetails.income_type
   }
-  // if (deductionDetails.project) {
-  //   row.project = deductionDetails.project
-  // }
+  if (deductionDetails.account) {
+    row.account = deductionDetails.account
+  }
+  if (deductionDetails.project) {
+    row.project = deductionDetails.project
+  }
   
   console.log('Deduction fields updated successfully')
   
@@ -1854,6 +1924,13 @@ if (props.parentFieldname === 'deduction_breakeven') {
   
   // Regular field change handling
   triggerOnChange(field.fieldname, value, row)
+}
+
+function onAttachSuccess(file, field, row) {
+  const fileUrl = file?.file_url || file?.name || ''
+  row[field.fieldname] = fileUrl
+  forceReactiveUpdate()
+  triggerOnChange(field.fieldname, fileUrl, row)
 }
 
 // Force reactive update by creating new array reference

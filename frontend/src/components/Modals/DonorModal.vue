@@ -120,7 +120,7 @@ import { isMobileView } from '@/composables/settings'
 import { useDocument } from '@/data/document'
 import { useRouter } from 'vue-router'
 
-const props = defineProps({
+const props = defineProps({ 
   defaults: Object,
   options: { type: Object, default: () => ({}) }
 })

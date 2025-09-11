@@ -36,6 +36,7 @@
               @tab-change="handleTabChange"
               @donor-selected="handleDonorSelected"
               @fund-class-selected="handleFundClassSelected"
+              @add-deduction-row="handleAddDeductionRow"
             />
           </div>
           
@@ -307,6 +308,27 @@ function getCostCenterFilters() {
   return filters
 }
 
+// ADD: Function to get contribution type options based on donor identity
+function getContributionTypeOptions() {
+  const options = ['Donation']
+  if (donation.doc.donor_identity === 'Known') {
+    options.push('Pledge')
+  }
+  return options
+}
+
+// ADD: Function to create a dynamic contribution type query function
+function createContributionTypeQueryFunction() {
+  return function() {
+    return {
+      doctype: 'Contribution Type',
+      filters: {
+        name: ['in', getContributionTypeOptions()]
+      }
+    }
+  }
+}
+
 // UPDATE: Enhanced field filtering to properly configure donor fields
 const filteredTabs = computed(() => {
   if (!tabs.data || !Array.isArray(tabs.data)) return []
@@ -388,6 +410,14 @@ const filteredTabs = computed(() => {
             enhancedField.depends_on = "eval: doc.donation_type==\"Cash\";"
             enhancedField.filters = getCostCenterFilters()
             console.log('Configured donation_cost_center field with donation type dependency')
+          }
+          
+          // Configure contribution_type field with donor identity filtering
+          if (field.fieldname === 'contribution_type') {
+            enhancedField.get_query = createContributionTypeQueryFunction()
+            enhancedField.depends_on = 'donor_identity'
+            enhancedField.options = getContributionTypeOptions()
+            console.log('Configured contribution_type field with donor identity dependency')
           }
           
           return enhancedField
@@ -742,6 +772,12 @@ function updateDonorFilteringInModals() {
 // ADD: Watcher to update donor filtering in modals when donor identity changes
 watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) => {
   console.log('Donor Identity changed from', oldDonorIdentity, 'to:', newDonorIdentity)
+  
+  // Clear contribution_type when donor identity changes to force re-evaluation
+  if (donation.doc.contribution_type) {
+    donation.doc.contribution_type = ''
+    console.log('Cleared contribution_type due to donor identity change')
+  }
   
   // Update donor filtering in existing modals
   updateDonorFilteringInModals()
@@ -1313,8 +1349,14 @@ watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
         console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
         row._lastFundClassId = row.fund_class_id
         
-        // Enqueue current fund class for the next deduction row
-        pendingDeductionFundClassQueue.value.push(row.fund_class_id)
+        // Only enqueue fund class for deduction_breakeven if contribution_type is not "Pledge"
+        if (donation.doc.contribution_type !== 'Pledge') {
+          // Enqueue current fund class for the next deduction row
+          pendingDeductionFundClassQueue.value.push(row.fund_class_id)
+          console.log('Enqueued fund class for deduction_breakeven (not Pledge)')
+        } else {
+          console.log('Skipped enqueueing fund class for deduction_breakeven (contribution_type is Pledge)')
+        }
         
         // Handle the Fund Class selection
         handleFundClassSelectionDirect(row.fund_class_id, row)
@@ -1332,21 +1374,6 @@ watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
   }
 }, { deep: true })
 
-// REMOVE the duplicate watcher that was causing issues:
-// Remove this duplicate watcher:
-// watch(() => donation.doc.payment_detail, (newPaymentDetail) => {
-//   if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
-//     newPaymentDetail.forEach((row, index) => {
-//       if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
-//         console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
-//         row._lastFundClassId = row.fund_class_id
-//         
-//         // Handle the Fund Class selection
-//         handleFundClassSelectionDirect(row.fund_class_id, row)
-//       }
-//     })
-//   }
-// }, { deep: true })
 
 // NEW: Add Fund Class selection handler
 function handleFundClassSelected(event) {
@@ -1365,81 +1392,27 @@ function handleFundClassSelected(event) {
   }
 }
 
-// RESTORE the original simple createNewDonation function:
-// FIX the createNewDonation function to ensure doctype is set:
-// FIX: Update the createNewDonation function to handle async preparation
-// async function createNewDonation() {
-//   console.log('Creating new donation...')
+// ADD: Event handler for add-deduction-row event from Grid component
+function handleAddDeductionRow(event) {
+  console.log('Received add-deduction-row event:', event)
   
-//   try {
-//     // First validate the form
-//     const validationErrors = validateDonationForm()
-//     if (validationErrors.length > 0) {
-//       const errorMessage = validationErrors.join('\n')
-//       toast.error(`Please fix the following errors:\n${errorMessage}`)
-//       return
-//     }
-    
-//     // Prepare the donation document (now async)
-//     const preparedDoc = await prepareDonationForSubmission()
-    
-//     // CRITICAL: Final validation of account fields before submission
-//     let hasMissingAccounts = false
-//     preparedDoc.payment_detail.forEach((row, index) => {
-//       if (!row.equity_account || !row.receivable_account) {
-//         console.error(`Row ${index + 1} still has missing accounts:`, {
-//           equity_account: row.equity_account,
-//           receivable_account: row.receivable_account
-//         })
-//         hasMissingAccounts = true
-//       }
-//     })
-    
-//     if (hasMissingAccounts) {
-//       toast.error('Some payment detail rows are missing required account fields. Please ensure fund classes are selected.')
-//       return
-//     }
-    
-//     // CRITICAL: Ensure the account fields are properly included in the document
-//     preparedDoc.payment_detail.forEach((row, index) => {
-//       console.log(`Row ${index + 1} final check:`, {
-//         equity_account: row.equity_account,
-//         receivable_account: row.receivable_account,
-//         fund_class_id: row.fund_class_id
-//       })
-      
-//       // Force the fields to be included
-//       if (row.equity_account) {
-//         row.equity_account = row.equity_account.toString()
-//       }
-//       if (row.receivable_account) {
-//         row.receivable_account = row.receivable_account.toString()
-//       }
-//     })
-    
-//     // Log the document being submitted
-//     console.log('Submitting prepared donation document:', preparedDoc)
-    
-//     // Create the donation
-//     call('frappe.client.insert', {
-//       doc: preparedDoc
-//     }).then(result => {
-//       console.log('Donation created successfully:', result)
-//       toast.success('Donation created successfully!')
-      
-//       // Close modal and refresh
-//       show.value = false
-//       emit('donation-created', result)
-//     }).catch(error => {
-//       console.error('Error creating donation:', error)
-//       handleDonationError(error)
-//     })
-    
-//   } catch (error) {
-//     console.error('Error preparing donation:', error)
-//     toast.error(`Error preparing donation document: ${error.message}`)
-//   }
-// }
+  const { fundClassId, deductionDetails, newRowData, sourceTable } = event
+  
+  // Check contribution_type before adding row
+  if (donation.doc.contribution_type === 'Pledge') {
+    console.log('Skipped adding deduction_breakeven row - contribution_type is Pledge')
+    toast.warning('Deduction Breakeven rows cannot be added when Contribution Type is Pledge')
+    return
+  }
+  
+  // Proceed with normal row addition logic
+  if (!donation.doc.deduction_breakeven) {
+    donation.doc.deduction_breakeven = []
+  }
+  
+  donation.doc.deduction_breakeven.push(newRowData)
+  console.log('Deduction breakeven row added via event handler')
+}
 
 // ADD a function to ensure all required fields are set before submission:
 // FIX: Update the prepareDonationForSubmission function to actively ensure account fields are set
@@ -1929,33 +1902,38 @@ watch(() => donation.doc.deduction_breakeven?.length, (newLen, oldLen) => {
     const newIndex = newLen - 1
     const newRow = donation.doc.deduction_breakeven[newIndex]
     if (newRow) {
-      // Consume from queue to match this creation with the latest selection
-      const fcToApply = pendingDeductionFundClassQueue.value.length > 0
-        ? pendingDeductionFundClassQueue.value.shift()
-        : lastSelectedFundClassId.value
-      if (!newRow.fund_class_id && fcToApply) {
-        newRow.fund_class_id = fcToApply
-        newRow._fcAssigned = true
-        console.log('Auto-filled fund_class_id on new deduction_breakeven row (queue):', { index: newIndex, fundClassId: fcToApply })
-        donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven]
-      }
-      
-      // Defer as a fallback to catch race conditions (still uses queue head if any)
-      nextTick(() => {
-        setTimeout(() => {
-          if (!newRow.fund_class_id && !newRow._fcAssigned) {
-            const fcFallback = pendingDeductionFundClassQueue.value.length > 0
-              ? pendingDeductionFundClassQueue.value.shift()
-              : lastSelectedFundClassId.value
-            if (fcFallback) {
-              newRow.fund_class_id = fcFallback
-              newRow._fcAssigned = true
-              console.log('Deferred auto-fill fund_class_id on new deduction_breakeven row (queue fallback):', { index: newIndex, fundClassId: fcFallback })
-              donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven]
+      // Only auto-fill fund_class_id if contribution_type is not "Pledge"
+      if (donation.doc.contribution_type !== 'Pledge') {
+        // Consume from queue to match this creation with the latest selection
+        const fcToApply = pendingDeductionFundClassQueue.value.length > 0
+          ? pendingDeductionFundClassQueue.value.shift()
+          : lastSelectedFundClassId.value
+        if (!newRow.fund_class_id && fcToApply) {
+          newRow.fund_class_id = fcToApply
+          newRow._fcAssigned = true
+          console.log('Auto-filled fund_class_id on new deduction_breakeven row (queue):', { index: newIndex, fundClassId: fcToApply })
+          donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven]
+        }
+        
+        // Defer as a fallback to catch race conditions (still uses queue head if any)
+        nextTick(() => {
+          setTimeout(() => {
+            if (!newRow.fund_class_id && !newRow._fcAssigned) {
+              const fcFallback = pendingDeductionFundClassQueue.value.length > 0
+                ? pendingDeductionFundClassQueue.value.shift()
+                : lastSelectedFundClassId.value
+              if (fcFallback) {
+                newRow.fund_class_id = fcFallback
+                newRow._fcAssigned = true
+                console.log('Deferred auto-fill fund_class_id on new deduction_breakeven row (queue fallback):', { index: newIndex, fundClassId: fcFallback })
+                donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven]
+              }
             }
-          }
-        }, 0)
-      })
+          }, 0)
+        })
+      } else {
+        console.log('Skipped auto-filling fund_class_id for deduction_breakeven (contribution_type is Pledge)')
+      }
     }
   }
 })
@@ -1965,7 +1943,8 @@ watch(() => donation.doc.deduction_breakeven, (rows) => {
   if (rows && Array.isArray(rows)) {
     let changed = false
     rows.forEach((row, idx) => {
-      if (!row._fcAssigned && !row.fund_class_id) {
+      // Only auto-fill fund_class_id if contribution_type is not "Pledge"
+      if (donation.doc.contribution_type !== 'Pledge' && !row._fcAssigned && !row.fund_class_id) {
         const fcToApply = pendingDeductionFundClassQueue.value.length > 0
           ? pendingDeductionFundClassQueue.value.shift()
           : lastSelectedFundClassId.value
@@ -2421,6 +2400,7 @@ async function handleDeductionFundClassSelection(fundClassId, row) {
   }
 }
 
+
 // Watcher for deduction_breakeven child table (mirror items watcher)
 watch(() => donation.doc.deduction_breakeven, (newRows) => {
   if (newRows && Array.isArray(newRows)) {
@@ -2450,6 +2430,23 @@ watch(() => donation.doc.deduction_breakeven, (newRows) => {
     })
   }
 }, { deep: true })
+
+// ADD: Watcher to clear deduction_breakeven when contribution_type changes to "Pledge"
+watch(() => donation.doc.contribution_type, (newContributionType, oldContributionType) => {
+  console.log('Contribution type changed from', oldContributionType, 'to:', newContributionType)
+  
+  if (newContributionType === 'Pledge') {
+    // Clear deduction_breakeven table when contribution type is Pledge
+    if (donation.doc.deduction_breakeven && donation.doc.deduction_breakeven.length > 0) {
+      donation.doc.deduction_breakeven = []
+      console.log('Cleared deduction_breakeven table due to contribution_type being Pledge')
+    }
+    
+    // Clear the pending queue
+    pendingDeductionFundClassQueue.value = []
+    console.log('Cleared pending deduction fund class queue due to Pledge contribution type')
+  }
+})
 
 </script>
 

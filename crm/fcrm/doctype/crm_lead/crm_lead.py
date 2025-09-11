@@ -516,7 +516,9 @@ def convert_to_deal(lead, doc=None, donor=None, existing_contact=None, existing_
 	if lead.sla and frappe.db.exists("CRM Communication Status", "Replied"):
 		lead.db_set("communication_status", "Replied")
 	contact = lead.create_contact(existing_contact, False)
-	organization = lead.create_organization(existing_organization)
+	# Skip creating organization during conversion to donor to avoid
+	# validations/exchange-rate dependencies on CRM Organization
+	organization = None
 	_donor = lead.create_donor(contact, organization, donor)
 
 
