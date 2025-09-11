@@ -383,8 +383,14 @@ async function createEmailTemplateFn() {
     isCreating.value = false
     return
   }
-  if (!emailTemplate.value.response) {
+  // Require the correct field based on Use HTML
+  if (!emailTemplate.value.use_html && !emailTemplate.value.response) {
     errorMessage.value = __('Response is required')
+    isCreating.value = false
+    return
+  }
+  if (emailTemplate.value.use_html && !emailTemplate.value.response_html) {
+    errorMessage.value = __('Response (HTML) is required')
     isCreating.value = false
     return
   }

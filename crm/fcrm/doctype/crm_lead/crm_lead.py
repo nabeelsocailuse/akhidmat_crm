@@ -352,7 +352,7 @@ class CRMLead(Document):
 				if fieldname == "organization":
 					new_donor.update({fieldname: organization})
 				else:
-					new_donor.update({fieldname: self.get(field.fieldname)})
+					new_donor.update({fieldname: self.get(field.fieldname)})	
 
 		donor_name = f"{self.first_name or ''} {self.last_name or ''}".strip() or "Unknown"
 		

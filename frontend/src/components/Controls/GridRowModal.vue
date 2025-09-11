@@ -98,12 +98,22 @@ const filteredTabs = computed(() => {
     filteredTab.sections = tab.sections.map(section => {
       const filteredSection = { ...section }
       
+      // Track if donor_id has been added to this section
+      let donorIdAddedToSection = false
+      
       // Filter columns within sections
-      filteredSection.columns = section.columns.map(column => {
+      filteredSection.columns = section.columns.map((column, columnIndex) => {
         const filteredColumn = { ...column }
         
         // Filter fields within columns
-        filteredColumn.fields = column.fields.map(field => {
+        filteredColumn.fields = column.fields.filter(field => {
+          // FIX: Remove 'donor' field (not 'donor_id') from all columns to prevent duplication
+          if (field.fieldname === 'donor' && field.fieldname !== 'donor_id') {
+            console.log('GridRowModal: Filtering out duplicate donor field from column', columnIndex)
+            return false
+          }
+          return true
+        }).map(field => {
           // Create a new field object to avoid mutating the original
           let enhancedField = { ...field }
           
@@ -116,27 +126,33 @@ const filteredTabs = computed(() => {
           return enhancedField
         })
         
-        // ADD: Force include donor_id field if it's missing
-        const hasDonorId = filteredColumn.fields.some(field => field.fieldname === 'donor_id')
-        if (!hasDonorId && (props.doctype === 'Payment Detail' || props.doctype === 'Deduction Breakeven')) {
-          console.log('GridRowModal: Adding missing donor_id field to', props.doctype)
+        // // ADD: Force include donor_id field if it's missing (only once per section)
+        // const hasDonorId = filteredColumn.fields.some(field => field.fieldname === 'donor_id')
+        // if (!hasDonorId && 
+        //     !donorIdAddedToSection && 
+        //     (props.doctype === 'Payment Detail' || props.doctype === 'Deduction Breakeven')) {
           
-          // Create donor_id field from meta
-          const donorIdField = {
-            fieldname: 'donor_id',
-            fieldtype: 'Link',
-            label: 'Donor',
-            options: 'Donor',
-            reqd: 0,
-            hidden: 0,
-            read_only: 0,
-            __islocal: 1
-          }
+        //   console.log('GridRowModal: Adding missing donor_id field to first column of section')
           
-          // Configure the field with donor filtering
-          const configuredField = configureDonorField(donorIdField)
-          filteredColumn.fields.unshift(configuredField) // Add at the beginning
-        }
+        //   // Create donor_id field from meta
+        //   const donorIdField = {
+        //     fieldname: 'donor_id',
+        //     fieldtype: 'Link',
+        //     label: 'Donor ID',
+        //     options: 'Donor',
+        //     reqd: 0,
+        //     hidden: 0,
+        //     read_only: 0,
+        //     __islocal: 1
+        //   }
+          
+        //   // Configure the field with donor filtering
+        //   const configuredField = configureDonorField(donorIdField)
+        //   filteredColumn.fields.unshift(configuredField) // Add at the beginning
+          
+        //   // Mark that donor_id has been added to this section
+        //   donorIdAddedToSection = true
+        // }
         
         return filteredColumn
       })

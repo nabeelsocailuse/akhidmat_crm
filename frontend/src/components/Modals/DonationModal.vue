@@ -85,7 +85,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed, readonly } from 'vue'
 import { useRouter } from 'vue-router'
 import { createResource, call, Dialog, Button, ErrorMessage, toast } from 'frappe-ui'
 import FeatherIcon from '@/components/Icons/FeatherIcon.vue'
@@ -310,11 +310,17 @@ function getCostCenterFilters() {
 
 // ADD: Function to get contribution type options based on donor identity
 function getContributionTypeOptions() {
-  const options = ['Donation']
-  if (donation.doc.donor_identity === 'Known') {
-    options.push('Pledge')
+  // If donor_identity is not 'Known', force contribution_type to 'Donation' and make it read-only elsewhere
+  if (donation.doc.donor_identity !== 'Known') {
+    // Auto-select "Donation" if not already set
+    if (donation.doc.contribution_type !== 'Donation') {
+      donation.doc.contribution_type = 'Donation'
+      donation.doc.contribution_type.readonly = 1
+    }
+    return ['Donation']
   }
-  return options
+  // If donor_identity is 'Known', allow both options
+  return ['Donation', 'Pledge']
 }
 
 // ADD: Function to create a dynamic contribution type query function

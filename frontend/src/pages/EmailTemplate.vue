@@ -28,18 +28,54 @@
     <div v-if="emailTemplate?.data" class="flex h-full overflow-hidden">
       <div class="flex-1 flex flex-col min-w-0">
         <Tabs as="div" v-model="tabIndex" :tabs="tabs">
-          <template #tab-panel>
-            <Activities
-              ref="activities"
-              doctype="Email Template"
-              :tabs="tabs"
-              v-model:reload="reload"
-              v-model:tabIndex="tabIndex"
-              v-model="emailTemplate"
-              :docname="props.emailTemplateId"
-              @beforeSave="saveChanges"
-              @afterSave="reloadAssignees"
-            />
+          <template #tab-panel="{ tab }">
+            <template v-if="tab.name === 'Data'">
+              <div class="p-4 flex flex-col gap-4">
+                <FieldLayout
+                  v-if="detailTabs.data && detailTabs.data.length"
+                  :tabs="detailTabs.data"
+                  :data="emailTemplate.data"
+                  :doctype="'Email Template'"
+                  @field-change="handleFieldChange"
+                />
+                <div>
+                  <div class="mb-2 text-base text-ink-gray-7">{{ __('Response') }}</div>
+                  <div class="p-2">
+                    <TextEditor
+                      v-if="emailTemplate.data?.use_html"
+                      editor-class="prose-sm min-h-[16rem] border rounded-b-lg border-t-0 p-2"
+                      :content="emailTemplate.data?.response_html || ''"
+                      placeholder="Type something..."
+                      @change="(val) => updateField('response_html', val)"
+                      :bubbleMenu="true"
+                      :fixed-menu="true"
+                    />
+                    <TextEditor
+                      v-else
+                      editor-class="prose-sm min-h-[16rem] border rounded-b-lg border-t-0 p-2"
+                      :content="emailTemplate.data?.response || ''"
+                      placeholder="Type something..."
+                      @change="(val) => updateField('response', val)"
+                      :bubbleMenu="true"
+                      :fixed-menu="true"
+                    />
+                  </div>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <Activities
+                ref="activities"
+                doctype="Email Template"
+                :tabs="tabs"
+                v-model:reload="reload"
+                v-model:tabIndex="tabIndex"
+                v-model="emailTemplate"
+                :docname="props.emailTemplateId"
+                @beforeSave="saveChanges"
+                @afterSave="reloadAssignees"
+              />
+            </template>
           </template>
         </Tabs>
       </div>
@@ -156,6 +192,7 @@ import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 // import FeatherIcon from '@/components/Icons/FeatherIcon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
+import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
@@ -188,6 +225,8 @@ import {
   usePageMeta,
   toast,
   Button,
+  TextEditor,
+  FormControl,
 } from 'frappe-ui'
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { computed as vueComputed } from 'vue'
@@ -399,6 +438,33 @@ const tabs = computed(() => {
 
 const { tabIndex, changeTabTo } = useActiveTabManager(tabs, 'lastEmailTemplateTab')
 
+// Load FieldLayout tabs for detail view and hide response fields (we handle them below)
+const detailTabs = createResource({
+  url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
+  cache: ['Detail', 'Email Template'],
+  params: { doctype: 'Email Template', type: 'Detail' },
+  auto: true,
+  transform: (_tabs) => {
+    if (!_tabs || !Array.isArray(_tabs)) return []
+    _tabs.forEach((tab) => {
+      tab.sections?.forEach((section) => {
+        section.columns?.forEach((column) => {
+          if (Array.isArray(column.fields)) {
+            column.fields = column.fields.filter(
+              (f) => !['response', 'response_html'].includes(f.fieldname),
+            )
+          }
+        })
+      })
+    })
+    return _tabs
+  },
+})
+
+function handleFieldChange(fieldname, value) {
+  updateField(fieldname, value)
+}
+
 // Email Template sidebar sections for when CRM Fields Layout is not available
 const emailTemplateSidebarSections = computed(() => [
   {
@@ -444,22 +510,22 @@ const emailTemplateSidebarSections = computed(() => [
       {
         name: 'column_content',
         fields: [
-          {
-            fieldname: 'response',
-            label: __('Response (Text)'),
-            fieldtype: 'Text',
-            value: emailTemplate.data?.response || '',
-            placeholder: __('Enter text response'),
-            condition: () => !emailTemplate.data?.use_html
-          },
-          {
-            fieldname: 'response_html',
-            label: __('Response (HTML)'),
-            fieldtype: 'Code',
-            value: emailTemplate.data?.response_html || '',
-            placeholder: __('Enter HTML response'),
-            condition: () => emailTemplate.data?.use_html
-          }
+          // {
+          //   fieldname: 'response',
+          //   label: __('Response (Text)'),
+          //   fieldtype: 'Text',
+          //   value: emailTemplate.data?.response || '',
+          //   placeholder: __('Enter text response'),
+          //   condition: () => !emailTemplate.data?.use_html
+          // },
+          // {
+          //   fieldname: 'response_html',
+          //   label: __('Response (HTML)'),
+          //   fieldtype: 'Code',
+          //   value: emailTemplate.data?.response_html || '',
+          //   placeholder: __('Enter HTML response'),
+          //   condition: () => emailTemplate.data?.use_html
+          // }
         ]
       }
     ]
