@@ -194,30 +194,40 @@ const cancel = () => {
 }
 
 const formatErrorMessage = (err) => {
+  // Prefer messages array provided by frappe-ui
   let raw =
-    err.messages?.join('\n') ||
-    err.exception ||
-    err.message ||
+    err?.messages?.join('\n') ||
+    err?.exception ||
+    err?.message ||
     __('An unexpected error occurred')
 
-  let cleaned = raw.replace(/<\/?[^>]+(>|$)/g, '') // strip HTML
-  cleaned = cleaned.replace(/Row\s*#\d+:/gi, '') // remove Row #X
-  cleaned = cleaned.replace(/Value missing for:\s*/gi, '') // simplify
+  // Strip HTML but keep inner text (so links like <a>NAME</a> become NAME)
+  let cleaned = raw.replace(/<\/?[^>]+(>|$)/g, '')
+  cleaned = cleaned.replace(/Row\s*#\d+:/gi, '')
   cleaned = cleaned.replace(/\s+/g, ' ').trim()
 
-  let parts = cleaned
+  // Special handling for link errors from Frappe
+  if (/LinkExistsError/i.test(raw) || /Cannot delete or cancel because/i.test(cleaned) || /is linked with/i.test(cleaned)) {
+    return `• ${cleaned}`
+  }
+
+  // Convert "Value missing for: Field" to a friendly "Field is required"
+  const missingMatch = cleaned.match(/Value missing for:?\s*([^.,\n]+)/i)
+  if (missingMatch && missingMatch[1]) {
+    return `• ${missingMatch[1].trim()} is required`
+  }
+
+  // Fallback: split by "Error:" boundaries and list them
+  const parts = cleaned
     .split(/Error:/i)
     .map((p) => p.trim())
     .filter((p) => p)
 
-  parts = parts.map((p) => {
-    if (p.includes('Cost Center')) return 'Cost Center is required'
-    if (p.includes('Donor')) return 'Donor is required'
-    if (p.includes('Transaction Type')) return 'Transaction Type is required'
-    return p
-  })
+  if (parts.length) {
+    return parts.map((p) => `• ${p}`).join('\n')
+  }
 
-  return parts.map((p) => `• ${p}`).join('\n')
+  return `• ${cleaned}`
 }
 
 const unlinkLinkedDoc = async (doc) => {

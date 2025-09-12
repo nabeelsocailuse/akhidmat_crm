@@ -2078,3 +2078,178 @@ function getDonorFilteringFromParent() {
   border: 1px solid var(--outline-gray-2);
 }
 </style>
+// NEW: Enhanced deduction breakeven functionality using API
+async function addDeductionBreakevenRowFromAPI(paymentRow, fundClassId) {
+  console.log("Adding deduction breakeven row using API for payment row:", paymentRow, "fund class:", fundClassId)
+  
+  if (!paymentRow || !fundClassId) {
+    console.log("Missing required parameters for deduction breakeven row")
+    return false
+  }
+  
+  try {
+    // Get deduction details from API
+    const deductionDetails = await call("crm.fcrm.doctype.donation.api.get_deduction_details_comprehensive", {
+      fund_class_id: fundClassId,
+      company: parentDoc.value.company || "Alkhidmat Foundation"
+    })
+    
+    if (!deductionDetails.success || !deductionDetails.data || deductionDetails.data.length === 0) {
+      console.log("No deduction details found for fund class:", fundClassId)
+      return false
+    }
+    
+    // Create deduction breakeven rows for each deduction detail
+    const newDeductionRows = []
+    
+    for (const deductionDetail of deductionDetails.data) {
+      const percentageAmount = paymentRow.donation_amount * (deductionDetail.percentage / 100)
+      
+      const newDeductionRow = {
+        random_id: paymentRow.random_id || Math.floor((1000 + parentDoc.value.deduction_breakeven.length + 1) + (Math.random() * 9000)),
+        company: parentDoc.value.company || "Alkhidmat Foundation",
+        income_type: deductionDetail.income_type,
+        project: deductionDetail.project,
+        account: deductionDetail.account,
+        percentage: deductionDetail.percentage || 0,
+        min_percent: deductionDetail.min_percent || 0,
+        max_percent: deductionDetail.max_percent || 0,
+        donation_amount: paymentRow.donation_amount,
+        amount: percentageAmount,
+        base_amount: percentageAmount,
+        project_id: deductionDetail.project,
+        cost_center_id: parentDoc.value.donation_cost_center,
+        fund_class_id: fundClassId,
+        service_area_id: paymentRow.pay_service_area,
+        subservice_area_id: paymentRow.pay_subservice_area,
+        product_id: paymentRow.pay_product,
+        donor_id: paymentRow.donor_id,
+        donor_type_id: paymentRow.donor_type,
+        donor_desk_id: paymentRow.donor_desk_id,
+        intention_id: paymentRow.intention_id,
+        transaction_type_id: paymentRow.transaction_type_id,
+        __islocal: true,
+        doctype: "Deduction Breakeven",
+        parentfield: "deduction_breakeven",
+        parenttype: props.parentDoctype || "Donation",
+        idx: (parentDoc.value.deduction_breakeven.length + newDeductionRows.length + 1)
+      }
+      
+      newDeductionRows.push(newDeductionRow)
+    }
+    
+    // Add all new rows to the deduction breakeven table
+    parentDoc.value.deduction_breakeven.push(...newDeductionRows)
+    
+    // Force reactive update by creating new array reference
+    parentDoc.value.deduction_breakeven = [...parentDoc.value.deduction_breakeven]
+    
+    console.log("Deduction breakeven rows added successfully via API:", newDeductionRows.length)
+    console.log("Total deduction rows in parent:", parentDoc.value.deduction_breakeven.length)
+    
+    // Emit event to notify parent component about the change
+    emit("deduction-row-added", {
+      rows: newDeductionRows,
+      fundClassId: fundClassId,
+      deductionDetails: deductionDetails.data
+    })
+    
+    return true
+    
+  } catch (error) {
+    console.error("Error adding deduction breakeven row via API:", error)
+    return false
+  }
+}
+
+// NEW: Update deduction amounts using API
+async function updateDeductionAmountsFromAPI() {
+  console.log('Updating deduction amounts using API...')
+  
+  if (!parentDoc.value.payment_detail || !parentDoc.value.deduction_breakeven) {
+    console.log('Missing payment detail or deduction breakeven data')
+    return
+  }
+  
+  try {
+    const result = await call('crm.fcrm.doctype.donation.api.calculate_deduction_amounts', {
+      payment_details: parentDoc.value.payment_detail,
+      deduction_breakeven: parentDoc.value.deduction_breakeven
+    })
+    
+    if (result.success) {
+      console.log('Updated deduction amounts via API:', result.data)
+      
+      // Update the deduction breakeven rows with calculated amounts
+      result.data.forEach(calculation => {
+        const matchingDeductions = parentDoc.value.deduction_breakeven.filter(
+          d => d.random_id === calculation.random_id
+        )
+        
+        matchingDeductions.forEach((deduction, index) => {
+          if (calculation.deduction_details[index]) {
+            deduction.amount = calculation.deduction_details[index].amount
+            deduction.base_amount = calculation.deduction_details[index].amount
+          }
+        })
+      })
+      
+      // Force reactive update
+      parentDoc.value.deduction_breakeven = [...parentDoc.value.deduction_breakeven]
+      
+      console.log('Deduction amounts updated successfully')
+    } else {
+      console.error('Failed to update deduction amounts:', result.message)
+    }
+  } catch (error) {
+    console.error('Error updating deduction amounts via API:', error)
+  }
+}
+
+// NEW: Validate deduction percentages using API
+async function validateDeductionPercentagesFromAPI() {
+  console.log('Validating deduction percentages using API...')
+  
+  if (!parentDoc.value.deduction_breakeven || parentDoc.value.deduction_breakeven.length === 0) {
+    return { success: true, message: 'No deduction breakeven to validate' }
+  }
+  
+  try {
+    const result = await call('crm.fcrm.doctype.donation.api.validate_deduction_percentages', {
+      deduction_breakeven: parentDoc.value.deduction_breakeven
+    })
+    
+    if (!result.success && result.errors) {
+      console.error('Deduction percentage validation failed:', result.errors)
+      return { success: false, errors: result.errors }
+    }
+    
+    return result
+  } catch (error) {
+    console.error('Error validating deduction percentages:', error)
+    return { success: false, message: 'Error validating deduction percentages' }
+  }
+}
+
+
+
+
+
+
+
+
+
+// NEW: Debounce mechanism for API calls
+let updateDeductionTimeout = null
+
+// NEW: Debounced update function
+function debouncedUpdateDeductionAmounts() {
+  if (updateDeductionTimeout) {
+    clearTimeout(updateDeductionTimeout)
+  }
+  
+  updateDeductionTimeout = setTimeout(async () => {
+    debouncedUpdateDeductionAmounts()
+  }, 300) // 300ms debounce
+}
+

@@ -1709,13 +1709,13 @@ function validateDonationForm() {
 
 // UPDATE: Enhanced createNewDonation function to match DonorModal's error handling
 async function createNewDonation() {
-  console.log('Creating new donation...')
+  console.log("Creating new donation...")
   
   try {
     // First validate the form
     const validationErrors = validateDonationForm()
     if (validationErrors.length > 0) {
-      const errorMessage = `Please fill in the following required fields:\n\n${validationErrors.map(error => `• ${error}`).join('\n')}`
+      const errorMessage = `Please fill in the following required fields:\n\n${validationErrors.map(error => `• ${error}`).join("\n")}`
       error.value = errorMessage
       
       // Show error toast
@@ -1723,13 +1723,23 @@ async function createNewDonation() {
       
       // Scroll to top to show errors
       nextTick(() => {
-        const modalBody = document.querySelector('[data-modal="parent"] .modal-body')
+        const modalBody = document.querySelector("[data-modal=\"parent\"] .modal-body")
         if (modalBody) {
           modalBody.scrollTop = 0
         }
       })
       
       return
+    }
+    
+    // NEW: Validate deduction percentages using API
+    if (donation.doc.deduction_breakeven && donation.doc.deduction_breakeven.length > 0) {
+      const percentageValidation = await validateDeductionPercentagesFromAPI()
+      if (!percentageValidation.success) {
+        error.value = percentageValidation.errors ? percentageValidation.errors.join("\n") : percentageValidation.message
+        toast.error("Deduction percentage validation failed")
+        return
+      }
     }
     
     // Prepare the donation document (now async)
@@ -1750,8 +1760,8 @@ async function createNewDonation() {
     }
     
     if (hasMissingAccounts) {
-      error.value = 'Some payment detail rows are missing required account fields. Please ensure fund classes are selected.'
-      toast.error('Some payment detail rows are missing required account fields. Please ensure fund classes are selected.')
+      error.value = "Some payment detail rows are missing required account fields. Please ensure fund classes are selected."
+      toast.error("Some payment detail rows are missing required account fields. Please ensure fund classes are selected.")
       return
     }
     
@@ -1775,28 +1785,28 @@ async function createNewDonation() {
     }
     
     // Log the document being submitted
-    console.log('Submitting prepared donation document:', preparedDoc)
+    console.log("Submitting prepared donation document:", preparedDoc)
   
     // Create the donation
-    call('frappe.client.insert', {
+    call("frappe.client.insert", {
       doc: preparedDoc
     }).then(result => {
-      console.log('Donation created successfully:', result)
-      toast.success('Donation created successfully!')
+      console.log("Donation created successfully:", result)
+      toast.success("Donation created successfully!")
       
       // Clear errors on success
       error.value = null
       
       // Close modal and refresh
       show.value = false
-      emit('donation-created', result)
+      emit("donation-created", result)
     }).catch(error => {
-      console.error('Error creating donation:', error)
+      console.error("Error creating donation:", error)
       handleDonationError(error)
     })
     
   } catch (error) {
-    console.error('Error preparing donation:', error)
+    console.error("Error preparing donation:", error)
     const errorMessage = `Error preparing donation document: ${error.message}`
     error.value = errorMessage
     toast.error(errorMessage)
@@ -2461,3 +2471,321 @@ watch(() => donation.doc.contribution_type, (newContributionType, oldContributio
   padding-left: 2rem;
 }
 </style>
+
+// NEW: Enhanced deduction breakeven functionality using API
+async function populateDeductionBreakevenFromAPI() {
+  console.log("Populating deduction breakeven using API...")
+  
+  if (!donation.doc.payment_detail || donation.doc.payment_detail.length === 0) {
+    console.log("No payment details to process")
+    return
+  }
+  
+  if (donation.doc.contribution_type === "Pledge") {
+    console.log("Skipping deduction breakeven for Pledge contribution type")
+    return
+  }
+  
+  try {
+    const result = await call("crm.fcrm.doctype.donation.api.populate_deduction_breakeven", {
+      payment_details: donation.doc.payment_detail,
+      company: donation.doc.company || "Alkhidmat Foundation",
+      contribution_type: donation.doc.contribution_type || "Donation",
+      donation_cost_center: donation.doc.donation_cost_center,
+      currency: donation.doc.currency,
+      to_currency: donation.doc.to_currency || donation.doc.currency,
+      posting_date: donation.doc.posting_date,
+      is_return: donation.doc.is_return || false,
+      existing_deduction_breakeven: donation.doc.deduction_breakeven || []
+    })
+    
+    if (result.success) {
+      console.log("API populated deduction breakeven successfully:", result)
+      
+      // Update the document with the results
+      donation.doc.deduction_breakeven = result.deduction_breakeven
+      donation.doc.payment_detail = result.updated_payment_details
+      
+      // Force reactive update
+      donation.doc = { ...donation.doc }
+      
+      toast.success(`Successfully populated ${result.deduction_breakeven.length} deduction breakeven rows`)
+    } else {
+      console.error("API failed to populate deduction breakeven:", result.message)
+      toast.error(result.message || "Failed to populate deduction breakeven")
+    }
+  } catch (error) {
+    console.error("Error calling deduction breakeven API:", error)
+    toast.error("Error populating deduction breakeven")
+  }
+}
+
+// NEW: Update deduction breakeven when payment details change
+async function updateDeductionBreakevenFromAPI() {
+  console.log('Updating deduction breakeven using API...')
+  
+  if (!donation.doc.payment_detail || donation.doc.payment_detail.length === 0) {
+    console.log('No payment details to update')
+    return
+  }
+  
+  if (!donation.doc.deduction_breakeven || donation.doc.deduction_breakeven.length === 0) {
+    console.log('No existing deduction breakeven to update')
+    return
+  }
+  
+  try {
+    const result = await call('crm.fcrm.doctype.donation.api.update_deduction_breakeven', {
+      payment_details: donation.doc.payment_detail,
+      deduction_breakeven: donation.doc.deduction_breakeven,
+      company: donation.doc.company || 'Alkhidmat Foundation',
+      contribution_type: donation.doc.contribution_type || 'Donation',
+      donation_cost_center: donation.doc.donation_cost_center,
+      currency: donation.doc.currency,
+      to_currency: donation.doc.to_currency || donation.doc.currency,
+      posting_date: donation.doc.posting_date,
+      is_return: donation.doc.is_return || false
+    })
+    
+    if (result.success) {
+      console.log('API updated deduction breakeven successfully:', result)
+      
+      // Update the document with the results
+      donation.doc.deduction_breakeven = result.deduction_breakeven
+      donation.doc.payment_detail = result.updated_payment_details
+      
+      // Force reactive update
+      donation.doc = { ...donation.doc }
+    } else {
+      console.error('API failed to update deduction breakeven:', result.message)
+      toast.error(result.message || 'Failed to update deduction breakeven')
+    }
+  } catch (error) {
+    console.error('Error calling update deduction breakeven API:', error)
+    toast.error('Error updating deduction breakeven')
+  }
+}
+
+// NEW: Validate deduction percentages using API
+async function validateDeductionPercentagesFromAPI() {
+  console.log('Validating deduction percentages using API...')
+  
+  if (!donation.doc.deduction_breakeven || donation.doc.deduction_breakeven.length === 0) {
+    return { success: true, message: 'No deduction breakeven to validate' }
+  }
+  
+  try {
+    const result = await call('crm.fcrm.doctype.donation.api.validate_deduction_percentages', {
+      deduction_breakeven: donation.doc.deduction_breakeven
+    })
+    
+    if (!result.success && result.errors) {
+      console.error('Deduction percentage validation failed:', result.errors)
+      const errorMessage = result.errors.join('\n')
+      toast.error(`Deduction percentage validation failed:\n${errorMessage}`)
+      return { success: false, errors: result.errors }
+    }
+    
+    return result
+  } catch (error) {
+    console.error('Error validating deduction percentages:', error)
+    toast.error('Error validating deduction percentages')
+    return { success: false, message: 'Error validating deduction percentages' }
+  }
+}
+
+// NEW: Get comprehensive deduction details using API
+async function getDeductionDetailsFromAPI(fundClassId) {
+  console.log('Getting deduction details from API for fund class:', fundClassId)
+  
+  if (!fundClassId) {
+    return []
+  }
+  
+  try {
+    const result = await call('crm.fcrm.doctype.donation.api.get_deduction_details_comprehensive', {
+      fund_class_id: fundClassId,
+      company: donation.doc.company || 'Alkhidmat Foundation'
+    })
+    
+    if (result.success) {
+      console.log('Got deduction details from API:', result.data)
+      return result.data
+    } else {
+      console.log('No deduction details found for fund class:', fundClassId)
+      return []
+    }
+  } catch (error) {
+    console.error('Error getting deduction details from API:', error)
+    return []
+  }
+}
+
+// NEW: Calculate deduction amounts using API
+async function calculateDeductionAmountsFromAPI() {
+  console.log('Calculating deduction amounts using API...')
+  
+  if (!donation.doc.payment_detail || !donation.doc.deduction_breakeven) {
+    return []
+  }
+  
+  try {
+    const result = await call('crm.fcrm.doctype.donation.api.calculate_deduction_amounts', {
+      payment_details: donation.doc.payment_detail,
+      deduction_breakeven: donation.doc.deduction_breakeven
+    })
+    
+    if (result.success) {
+      console.log('Calculated deduction amounts:', result.data)
+      return result.data
+    } else {
+      console.error('Failed to calculate deduction amounts:', result.message)
+      return []
+    }
+  } catch (error) {
+    console.error('Error calculating deduction amounts:', error)
+    return []
+  }
+}
+
+
+
+
+
+
+
+// UPDATE: Enhanced existing payment_detail watcher to use API
+watch(() => donation.doc.payment_detail, async (newPaymentDetail) => {
+  if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
+    newPaymentDetail.forEach((row, index) => {
+      if (row.donor_id && row.donor_id !== row._lastDonorId) {
+        console.log(`Donor ID changed in row ${index}:`, row.donor_id)
+        row._lastDonorId = row.donor_id
+        
+        // Handle the donor selection
+        handleDonorSelectionDirect(row.donor_id, row)
+      }
+      
+      // Watch for fund_class_id changes
+      if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
+        console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
+        row._lastFundClassId = row.fund_class_id
+        
+        // Only enqueue fund class for deduction_breakeven if contribution_type is not "Pledge"
+        if (donation.doc.contribution_type !== 'Pledge') {
+          // Enqueue current fund class for the next deduction row
+          pendingDeductionFundClassQueue.value.push(row.fund_class_id)
+          console.log('Enqueued fund class for deduction_breakeven (not Pledge)')
+        } else {
+          console.log('Skipped enqueueing fund class for deduction_breakeven (contribution_type is Pledge)')
+        }
+        
+        // Handle the Fund Class selection
+        handleFundClassSelectionDirect(row.fund_class_id, row)
+      }
+      
+      // Watch for mode_of_payment changes
+      if (row.mode_of_payment && row.mode_of_payment !== row._lastModeOfPayment) {
+        console.log(`Mode of Payment changed in row ${index}:`, row.mode_of_payment)
+        row._lastModeOfPayment = row.mode_of_payment
+        
+        // Handle the Mode of Payment selection
+        handleModeOfPaymentChange(row.mode_of_payment, row)
+      }
+    })
+    
+    // NEW: Auto-populate deduction breakeven when payment details are complete
+    if (donation.doc.contribution_type !== 'Pledge' && 
+        newPaymentDetail.length > 0 && 
+        newPaymentDetail.every(row => row.donor_id && row.fund_class_id && row.donation_amount > 0)) {
+      
+      console.log('Payment details complete, auto-populating deduction breakeven...')
+      debouncedPopulateDeductionBreakeven()
+    }
+  }
+}, { deep: true })
+
+// UPDATE: Enhanced existing deduction_breakeven watcher to use API
+watch(() => donation.doc.deduction_breakeven, async (newRows) => {
+  if (newRows && Array.isArray(newRows)) {
+    newRows.forEach((row, index) => {
+      // Support either 'donor' or 'donor_id' depending on schema
+      const donorValue = row.donor !== undefined ? row.donor : row.donor_id
+      if (donorValue && donorValue !== row._lastDeductionDonorId) {
+        console.log(`Donor changed in deduction row ${index}:`, donorValue)
+        row._lastDeductionDonorId = donorValue
+        handleDeductionDonorSelection(donorValue, row)
+      }
+
+      // Support either 'fund_class' or 'fund_class_id'
+      const fundClassValue = row.fund_class !== undefined ? row.fund_class : row.fund_class_id
+      if (fundClassValue && fundClassValue !== row._lastDeductionFundClass) {
+        console.log(`Fund Class changed in deduction row ${index}:`, fundClassValue)
+        row._lastDeductionFundClass = fundClassValue
+        handleDeductionFundClassSelection(fundClassValue, row)
+      }
+
+      // Clear when fund class cleared
+      if (!row.fund_class && !row.fund_class_id && row._lastDeductionFundClass) {
+        console.log(`Fund Class cleared in deduction row ${index}`)
+        row._lastDeductionFundClass = null
+        clearDeductionFundClassFields(row)
+      }
+    })
+    
+    // NEW: Auto-update deduction amounts when deduction breakeven changes
+    if (newRows.length > 0) {
+      console.log('Deduction breakeven changed, updating amounts...')
+      debouncedUpdateDeductionBreakeven()
+    }
+  }
+}, { deep: true })
+
+// UPDATE: Enhanced existing contribution_type watcher to use API
+watch(() => donation.doc.contribution_type, async (newContributionType, oldContributionType) => {
+  console.log('Contribution type changed from', oldContributionType, 'to:', newContributionType)
+  
+  if (newContributionType === 'Pledge') {
+    // Clear deduction_breakeven table when contribution type is Pledge
+    if (donation.doc.deduction_breakeven && donation.doc.deduction_breakeven.length > 0) {
+      donation.doc.deduction_breakeven = []
+      console.log('Cleared deduction_breakeven table due to contribution_type being Pledge')
+    }
+    
+    // Clear the pending queue
+    pendingDeductionFundClassQueue.value = []
+    console.log('Cleared pending deduction fund class queue due to Pledge contribution type')
+  } else if (newContributionType === 'Donation' && oldContributionType === 'Pledge') {
+    // Auto-populate deduction breakeven when switching from Pledge to Donation
+    console.log('Switched from Pledge to Donation, auto-populating deduction breakeven...')
+    debouncedPopulateDeductionBreakeven()
+  }
+})
+
+
+// NEW: Debounce mechanism for API calls
+let populateDeductionTimeout = null
+let updateDeductionTimeout = null
+
+// NEW: Debounced populate function
+function debouncedPopulateDeductionBreakeven() {
+  if (populateDeductionTimeout) {
+    clearTimeout(populateDeductionTimeout)
+  }
+  
+  populateDeductionTimeout = setTimeout(async () => {
+    debouncedPopulateDeductionBreakeven()
+  }, 500) // 500ms debounce
+}
+
+// NEW: Debounced update function
+function debouncedUpdateDeductionBreakeven() {
+  if (updateDeductionTimeout) {
+    clearTimeout(updateDeductionTimeout)
+  }
+  
+  updateDeductionTimeout = setTimeout(async () => {
+    debouncedUpdateDeductionBreakeven()
+  }, 300) // 300ms debounce
+}
+

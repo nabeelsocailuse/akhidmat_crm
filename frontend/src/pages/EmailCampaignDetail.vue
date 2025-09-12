@@ -430,27 +430,7 @@ const sections = createResource({
   }
 })
 
-// Ensure end_date displays in DD-MM-YYYY to match start_date display
-function formatDateToDDMMYYYY(value) {
-  if (!value || typeof value !== 'string') return value
-  if (/^\d{2}-\d{2}-\d{4}$/.test(value)) return value
-  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`
-  return value
-}
-
-watch(() => document.doc, (d) => {
-  if (d && typeof d.end_date === 'string') {
-    const f = formatDateToDDMMYYYY(d.end_date)
-    if (f !== d.end_date) d.end_date = f
-  }
-}, { immediate: true })
-
-watch(() => document.doc?.end_date, (val) => {
-  if (!val) return
-  const f = formatDateToDDMMYYYY(val)
-  if (f !== val && document.doc) document.doc.end_date = f
-})
+// Remove client-side mutation of end_date to avoid perpetual dirty state
 
 async function triggerStatusChange(value) {
   await triggerOnChange('status', value)

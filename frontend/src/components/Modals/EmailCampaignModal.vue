@@ -359,20 +359,16 @@ async function createNewEmailCampaign() {
         console.log('Email Campaign created successfully:', data)
         isEmailCampaignCreating.value = false
         
-        // Close the modal first
         controlledShow.value = false
         
-        // Emit the created event
         emit('email-campaign-created', data)
         
-        // Redirect to the detail page after successful creation with a small delay
         if (data && data.name) {
           setTimeout(() => {
             try {
               router.push({ name: 'EmailCampaignDetail', params: { emailCampaignId: data.name } })
             } catch (error) {
               console.error('Error redirecting to detail page:', error)
-              // Fallback: try to navigate manually
               window.location.href = `/crm/email-campaign/${data.name}`
             }
           }, 100)
@@ -401,10 +397,8 @@ async function createNewEmailCampaign() {
   )
 }
 
-// Initialize document.doc when modal opens
 watch(controlledShow, (show) => {
   if (show) {
-    // Reset form when modal opens
     document.doc = { 
       ...props.defaults,
       status: 'Scheduled',
@@ -414,7 +408,6 @@ watch(controlledShow, (show) => {
   }
 })
 
-// Ensure document.doc is properly initialized
 onMounted(() => {
   if (!document.doc) {
     document.doc = { 
@@ -425,11 +418,9 @@ onMounted(() => {
   }
 })
 
-// Debug tabs data
 watch(() => tabs.data, (newTabs) => {
 }, { deep: true })
 
-// Debug document changes
 watch(() => document.doc, (newDoc) => {
 }, { deep: true })
 </script> 

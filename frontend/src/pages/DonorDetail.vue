@@ -607,14 +607,18 @@ async function validateRequired(fieldname, value) {
   
   // FOA field validation - check if FOA is enabled and validate required fields
   if (donor.data?.foa === 1 || donor.data?.foa === true || donor.data?.foa == 1 || !!donor.data?.foa) {
-    const foaRequiredFields = ['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor']
+    const foaRequiredFields = ['co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor', 'area', 'co_city', 'co_country']
     if (foaRequiredFields.includes(fieldname) && (!value || value.toString().trim() === '')) {
       const fieldLabels = {
         'co_name': 'C/O Name',
         'co_contact_no': 'C/O Contact No',
         'co_email': 'C/O Email',
         'co_address': 'C/O Address',
-        'relationship_with_donor': 'Relationship With Donor'
+        'relationship_with_donor': 'Relationship With Donor',
+        'area':  'C/O Area',
+        'co_city': 'C/O City',
+        'co_country': 'C/O Country'
+
       }
       toast.error(__('{0} is required when FOA is enabled', [fieldLabels[fieldname] || fieldname]))
       return true
@@ -868,6 +872,15 @@ async function validateBeforeSave() {
     }
     if (!donorDocument.doc?.relationship_with_donor || donorDocument.doc.relationship_with_donor.toString().trim() === '') {
       errors.push('Relationship With Donor is required when FOA is enabled')
+    }
+    if (!donorDocument.doc?.area || donorDocument.doc.area.toString().trim() === '') {
+      errors.push(' C/O Area is requied when the FOA is enabled')
+    }
+    if (!donorDocument.doc?.area || donorDocument.doc.co_city.toString().trim() === '') {
+      errors.push(' C/O City is required when the FOA is enabled')
+    }
+    if (!donorDocument.doc?.co_country || donorDocument.doc.co_country.toString().trim() === '') {
+      errors.push(' C/O Country is required when the FOA is enabled')
     }
   }
   
@@ -1320,21 +1333,43 @@ async function deleteDonor(name) {
     router.push({ name: 'Donor' })
   } catch (error) {
     console.error('Error deleting donor:', error)
-    
-    // Show error message
-    toast.error(__('Failed to delete donor. Please try again.'))
-    
-    // Extract error message if available
-    let errorMessage = __('Failed to delete donor')
-    if (error?.exc) {
-      errorMessage = error.exc
-    } else if (error?.message) {
-      errorMessage = error.message
-    } else if (typeof error === 'string') {
-      errorMessage = error
-    }
-    
-    toast.error(errorMessage)
+
+    // Build a user-friendly error
+    const friendlyError = (() => {
+      // Prefer messages array provided by frappe-ui
+      let raw = ''
+      if (Array.isArray(error?.messages) && error.messages.length) {
+        raw = error.messages.join('\n')
+      } else if (typeof error?.exc === 'string') {
+        raw = error.exc
+      } else if (typeof error?.message === 'string') {
+        raw = error.message
+      } else if (typeof error === 'string') {
+        raw = error
+      }
+
+      if (!raw) return __('Failed to delete donor. Please try again.')
+
+      // Strip HTML tags and compress whitespace
+      let cleaned = raw.replace(/<\/?[^>]+(>|$)/g, '')
+      cleaned = cleaned.replace(/\s+/g, ' ').trim()
+
+      // Handle link errors like: "Cannot delete or cancel because Donor X is linked with Address Y at Row: 1"
+      if (/Cannot delete or cancel because/i.test(cleaned) || /LinkExistsError/i.test(cleaned) || /is linked with/i.test(cleaned)) {
+        // Try to extract the linked target after "linked with"
+        const match = cleaned.match(/linked with\s+(.+?)(?:\s+at\s+Row.*)?$/i)
+        const linkedTarget = match && match[1] ? match[1].trim() : ''
+        if (linkedTarget) {
+          return __('This donor is linked to {0} and cannot be deleted.', [linkedTarget])
+        }
+        return __('This donor is linked to other records and cannot be deleted.')
+      }
+
+      // Generic fallback
+      return cleaned || __('Failed to delete donor. Please try again.')
+    })()
+
+    toast.error(friendlyError)
   }
 }
 
@@ -2028,7 +2063,7 @@ onMounted(() => {
       
       if (cnicInput && donorDocument.doc?.identification_type) {
         console.log('Reapplying CNIC mask...')
-        applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)
+        applyCnicMaskToInput('cnic', donorDocument.doc.identification_type, setFieldValue)  
       }
       
       if (contactInput && donorDocument.doc?.country) {

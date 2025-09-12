@@ -31,10 +31,20 @@
           <template #tab-panel="{ tab }">
             <template v-if="tab.name === 'Data'">
               <div class="p-4 flex flex-col gap-4">
+                <div class="flex items-center justify-end gap-2">
+                  <AppStyling
+                    type="button"
+                    buttonType="create"
+                    buttonLabel="Save"
+                    :disabled="!document?.isDirty"
+                    :loading="document?.save?.loading"
+                    @click="saveNow"
+                  />
+                </div>
                 <FieldLayout
                   v-if="detailTabs.data && detailTabs.data.length"
                   :tabs="detailTabs.data"
-                  :data="emailTemplate.data"
+                  :data="doc"
                   :doctype="'Email Template'"
                   @field-change="handleFieldChange"
                 />
@@ -42,9 +52,9 @@
                   <div class="mb-2 text-base text-ink-gray-7">{{ __('Response') }}</div>
                   <div class="p-2">
                     <TextEditor
-                      v-if="emailTemplate.data?.use_html"
+                      v-if="useHtml"
                       editor-class="prose-sm min-h-[16rem] border rounded-b-lg border-t-0 p-2"
-                      :content="emailTemplate.data?.response_html || ''"
+                      :content="doc?.response_html || ''"
                       placeholder="Type something..."
                       @change="(val) => updateField('response_html', val)"
                       :bubbleMenu="true"
@@ -53,7 +63,7 @@
                     <TextEditor
                       v-else
                       editor-class="prose-sm min-h-[16rem] border rounded-b-lg border-t-0 p-2"
-                      :content="emailTemplate.data?.response || ''"
+                      :content="doc?.response || ''"
                       placeholder="Type something..."
                       @change="(val) => updateField('response', val)"
                       :bubbleMenu="true"
@@ -188,6 +198,7 @@ import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 // import CameraIcon from '@/components/Icons/CameraIcon.vue'
 import LinkIcon from '@/components/Icons/LinkIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
+import FeatherIcon from '@/components/Icons/FeatherIcon.vue'
 // import WebsiteIcon from '@/components/Icons/WebsiteIcon.vue'
 // import FeatherIcon from '@/components/Icons/FeatherIcon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
@@ -311,40 +322,13 @@ onMounted(() => {
 const reload = ref(false)
 const showFilesUploader = ref(false)
 
-function updateEmailTemplate(fieldname, value, callback) {
-  value = Array.isArray(fieldname) ? '' : value
+const doc = computed(() => document.doc || {})
 
-  if (!Array.isArray(fieldname) && validateRequired(fieldname, value)) return
-
-  createResource({
-    url: 'frappe.client.set_value',
-    params: {
-      doctype: 'Email Template',
-      name: props.emailTemplateId,
-      fieldname,
-      value,
-    },
-    auto: true,
-    onSuccess: () => {
-      emailTemplate.reload()
-      reload.value = true
-      toast.success(__('Email Template updated successfully'))
-      callback?.()
-    },
-    onError: (err) => {
-      toast.error(err.messages?.[0] || __('Error updating email template'))
-    },
-  })
-}
-
-function validateRequired(fieldname, value) {
-  let meta = emailTemplate.data.fields_meta || {}
-  if (meta[fieldname]?.reqd && !value) {
-    toast.error(__('{0} is a required field', [meta[fieldname].label]))
-    return true
-  }
-  return false
-}
+// Normalize Use HTML to strict boolean like the modal does
+const useHtml = computed(() => {
+  const v = doc.value?.use_html
+  return v === 1 || v === true || v === '1'
+})
 
 const breadcrumbs = computed(() => {
   let items = [{ label: __('Email Templates'), route: { name: 'EmailTemplates' } }]
@@ -453,6 +437,14 @@ const detailTabs = createResource({
             column.fields = column.fields.filter(
               (f) => !['response', 'response_html'].includes(f.fieldname),
             )
+            column.fields.forEach((f) => {
+              if (f.fieldname === 'reference_doctype') {
+                f.fieldtype = 'Link'
+                f.options = 'DocType'
+                f.get_query = () => ({ doctype: 'DocType', filters: { name: ['in', ['CRM Lead', 'Donor', 'Contact']] } })
+                f.link_filters = JSON.stringify({ name: ['in', ['CRM Lead', 'Donor', 'Contact']] })
+              }
+            })
           }
         })
       })
@@ -462,7 +454,17 @@ const detailTabs = createResource({
 })
 
 function handleFieldChange(fieldname, value) {
-  updateField(fieldname, value)
+  // Keep use_html in sync and switch editor immediately
+  if (fieldname === 'use_html') {
+    const normalized = value === 1 || value === true || value === '1'
+    updateField('use_html', normalized ? 1 : 0)
+    // If switching to HTML and text exists but html empty, initialize html with text
+    if (normalized && !doc.value.response_html && doc.value.response) {
+      updateField('response_html', doc.value.response)
+    }
+  } else {
+    updateField(fieldname, value)
+  }
 }
 
 // Email Template sidebar sections for when CRM Fields Layout is not available
@@ -638,7 +640,6 @@ const sections = createResource({
         section.columns.forEach((column) => {
           if (column.fields && Array.isArray(column.fields)) {
             column.fields.forEach((field) => {
-              // Ensure name field is visible and editable on detail sidepanel
               if (field.fieldname === 'name') {
                 field.read_only = false
                 field.hidden = false
@@ -687,11 +688,13 @@ const sections = createResource({
   },
 })
 
-function updateField(name, value, callback) {
-  updateEmailTemplate(name, value, () => {
-    emailTemplate.data[name] = value
-    callback?.()
-  })
+function updateField(name, value) {
+  value = Array.isArray(name) ? '' : value
+  if (Array.isArray(name)) {
+    name.forEach((field) => (doc.value[field] = value))
+  } else {
+    doc.value[name] = value
+  }
 }
 
 async function deleteEmailTemplate(name) {
@@ -725,6 +728,21 @@ function saveChanges(data) {
 function reloadAssignees(data) {
   if (data?.hasOwnProperty('lead_owner')) {
     assignees.reload()
+  }
+}
+
+function saveNow() {
+  try {
+    document.save.submit(null, {
+      onSuccess: () => {
+        toast.success(__('Saved'))
+      },
+      onError: (err) => {
+        toast.error(err?.messages?.[0] || __('Failed to save'))
+      },
+    })
+  } catch (e) {
+    toast.error(__('Failed to save'))
   }
 }
 </script>

@@ -766,6 +766,9 @@ async function createNewDonor() {
     else { const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; if (!emailRegex.test(donor.doc.co_email.trim())) validationErrors.push('Invalid C/O Email format. Please enter a valid email address.') }
     if (!donor.doc.co_address || donor.doc.co_address.trim() === '') validationErrors.push('C/O Address is required when FOA is enabled')
     if (!donor.doc.relationship_with_donor || donor.doc.relationship_with_donor.trim() === '') validationErrors.push('Relationship With Donor is required when FOA is enabled')
+    if (!donor.doc.area || donor.doc.area.trim() === '') validationErrors.push('Area is required when FOA is enabled')
+    if (!donor.doc.co_city || donor.doc.co_city.trim() === '') validationErrors.push('C/O City is required when FOA is enabled')
+    if (!donor.doc.co_country || donor.doc.co_country.trim() === '') validationErrors.push(' C/O Country is required when FOA is enabled')
   }
 
   await validatePhoneField('company_contact_number', 'Company Contact Number')

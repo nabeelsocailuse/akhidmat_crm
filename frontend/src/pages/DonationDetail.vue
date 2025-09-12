@@ -52,185 +52,100 @@
         </template>
       </Tabs>
     
-    <Resizer class="flex flex-col justify-between border-l" side="right">
-      <div
-        class="flex h-10.5 cursor-copy items-center border-b px-5 py-2.5 text-lg font-medium text-ink-gray-9"
-        @click="handleCopyToClipboard(document.doc.name)"
-      >
-        {{ __(document.doc.name) }}
-      </div>
-      
-      <FileUploader
-        @success="(file) => updateField('image', file.file_url)"
-        :validateFile="validateIsImageFile"
-      >
-        <template #default="{ openFileSelector, error }">
-          <div class="flex items-center justify-start gap-5 border-b p-5">
-            <div class="group relative size-12">
-              <Avatar
-                size="3xl"
-                class="size-12"
-                :label="title"
-                :image="document.doc.image"
-              />
-              <component
-                :is="document.doc.image ? Dropdown : 'div'"
-                v-bind="
-                  document.doc.image
-                    ? {
-                        options: [
-                          {
-                            icon: 'upload',
-                            label: document.doc.image
-                              ? __('Change image')
-                              : __('Upload image'),
-                            onClick: openFileSelector,
-                          },
-                          {
-                            icon: 'trash-2',
-                            label: __('Remove image'),
-                            onClick: () => updateField('image', ''),
-                          },
-                        ],
-                      }
-                    : { onClick: openFileSelector }
-                "
-                class="!absolute bottom-0 left-0 right-0"
-              >
-                <div
-                  class="z-1 absolute bottom-0.5 left-0 right-0.5 flex h-9 cursor-pointer items-center justify-center rounded-b-full bg-black bg-opacity-40 pt-3 opacity-0 duration-300 ease-in-out group-hover:opacity-100"
-                  style="
-                    -webkit-clip-path: inset(12px 0 0 0);
-                    clip-path: inset(12px 0 0 0);
+      <Resizer class="flex flex-col justify-between border-l" side="right">
+        <div
+          class="flex h-10.5 cursor-copy items-center border-b px-5 py-2.5 text-lg font-medium text-ink-gray-9"
+          @click="handleCopyToClipboard(document.doc.name)"
+        >
+          {{ __(document.doc.name) }}
+        </div>
+        
+        <FileUploader
+          @success="(file) => updateField('image', file.file_url)"
+          :validateFile="validateIsImageFile"
+        >
+          <template #default="{ openFileSelector, error }">
+            <div class="flex items-center justify-start gap-5 border-b p-5">
+              <div class="group relative size-12">
+                <Avatar
+                  size="3xl"
+                  class="size-12"
+                  :label="title"
+                  :image="document.doc.image"
+                />
+                <component
+                  :is="document.doc.image ? Dropdown : 'div'"
+                  v-bind="
+                    document.doc.image
+                      ? {
+                          options: [
+                            {
+                              icon: 'upload',
+                              label: document.doc.image
+                                ? __('Change image')
+                                : __('Upload image'),
+                              onClick: openFileSelector,
+                            },
+                            {
+                              icon: 'trash-2',
+                              label: __('Remove image'),
+                              onClick: () => updateField('image', ''),
+                            },
+                          ],
+                        }
+                      : { onClick: openFileSelector }
                   "
+                  class="!absolute bottom-0 left-0 right-0"
                 >
-                  <CameraIcon class="size-4 cursor-pointer text-white" />
-                </div>
-              </component>
-            </div>
-            
-            <div class="flex flex-col gap-2.5 truncate">
-              <Tooltip :text="document.doc.donor_name || __('Set donor name')">
-                <div class="truncate text-2xl font-medium text-ink-gray-9">
+                  <div
+                    class="flex h-3 w-3 cursor-pointer items-center justify-center rounded-full bg-white shadow-sm"
+                  >
+                    <CameraIcon class="h-2 w-2 text-gray-600" />
+                  </div>
+                </component>
+              </div>
+              <div class="flex flex-col">
+                <div class="text-base font-medium text-gray-900">
                   {{ title }}
                 </div>
-              </Tooltip>
-              
-              <div class="flex gap-1.5">
-                <Tooltip v-if="callEnabled" :text="__('Make a call')">
-                  <div>
-                    <Button
-                      class="h-7 w-7"
-                      @click="
-                        () =>
-                          document.doc.contact_no
-                            ? makeCall(document.doc.contact_no)
-                            : toast.error(__('No phone number set'))
-                      " 
-                    >
-                      <template #icon>
-                        <PhoneIcon />
-                      </template>
-                    </Button>
-                  </div>
-                </Tooltip>
-                
-                <Tooltip :text="__('Send an email')">
-                  <div>
-                    <Button
-                      class="h-7 w-7"
-                      @click="
-                        document.doc.email
-                          ? openEmailBox()
-                          : toast.error(__('No email set'))
-                      "
-                    >
-                      <template #icon>
-                        <Email2Icon />
-                      </template>
-                    </Button>
-                  </div>
-                </Tooltip>
-                
-                <Tooltip :text="__('Go to website')">
-                  <div>
-                    <Button
-                      class="h-7 w-7"
-                      @click="
-                        document.doc.website
-                          ? openWebsite(document.doc.website)
-                          : toast.error(__('No website set'))
-                      "
-                    >
-                      <template #icon>
-                        <LinkIcon />
-                      </template>
-                    </Button>
-                  </div>
-                </Tooltip>
-                
-                <Tooltip :text="__('Attach a file')">
-                  <div>
-                    <Button class="h-7 w-7" @click="showFilesUploader = true">
-                      <template #icon>
-                        <AttachmentIcon />
-                      </template>
-                    </Button>
-                  </div>
-                </Tooltip>
-                
-                <Tooltip :text="__('Delete')">
-                  <div>
-                    <Button
-                      class="h-7 w-7"
-                      @click="deleteDonationWithModal(document.doc.name)"
-                      variant="subtle"
-                      theme="red"
-                    >
-                      <template #icon>
-                        <FeatherIcon name="trash-2" class="h-4 w-4" />
-                      </template>
-                    </Button>
-                  </div>
-                </Tooltip>
+                <div class="text-sm text-gray-500">
+                  {{ document.doc.donor_name || __('No donor name') }}
+                </div>
               </div>
-              
-              <ErrorMessage :message="__(error)" />
             </div>
-          </div>
-        </template>
-      </FileUploader>
-      
-      <SLASection
-        v-if="document.doc.sla_status"
-        v-model="document.doc"
-        @updateField="updateField"
-      />
-      
-      <div
-        v-if="sections.data"
-        class="flex flex-1 flex-col justify-between overflow-hidden"
-      >
-        <SidePanelLayout
-          :sections="sections.data"
-          doctype="Donation"
-          :docname="document.doc.name"
-          @reload="sections.reload"
-          @afterFieldChange="reloadAssignees"
-          @open-create-modal="openCreateModal"
+          </template>
+        </FileUploader>
+        
+        <SLASection
+          v-if="document.doc.sla_status"
+          v-model="document.doc"
+          @updateField="updateField"
         />
-        <template v-for="(modal, idx) in modalStack" :key="idx">
-          <CreateDocumentModal
-            v-model="modal.visible"
-            :doctype="modal.doctype"
-            :data="{ name: modal.initialValue }"
-            @callback="(doc) => handleModalSuccess(idx, doc)"
-            @close="() => handleModalClose(idx)"
+        
+        <div
+          v-if="sections.data"
+          class="flex flex-1 flex-col justify-between overflow-hidden"
+        >
+          <SidePanelLayout
+            :sections="sections.data"
+            doctype="Donation"
+            :docname="document.doc.name"
+            @reload="sections.reload"
+            @afterFieldChange="reloadAssignees"
             @open-create-modal="openCreateModal"
           />
-        </template>
-      </div>
-    </Resizer>
+          <template v-for="(modal, idx) in modalStack" :key="idx">
+            <CreateDocumentModal
+              v-model="modal.visible"
+              :doctype="modal.doctype"
+              :data="{ name: modal.initialValue }"
+              @callback="(doc) => handleModalSuccess(idx, doc)"
+              @close="() => handleModalClose(idx)"
+              @open-create-modal="openCreateModal"
+            />
+          </template>
+        </div>
+      </Resizer>
     </div>
   </AppStyling>
   
@@ -855,7 +770,7 @@ async function handleManualRefresh() {
   await refreshDeductionBreakeven()
 }
 
-// ADD: Frontend-only solution to populate deduction breakeven
+// ADD: Frontend-only solution to populate deduction breakeven (FIXED VERSION)
 async function populateDeductionBreakevenFrontend() {
   if (!document.doc || document.doc.donation_type !== 'Cash' || !document.doc.payment_detail) {
     return
@@ -904,7 +819,8 @@ async function populateDeductionBreakevenFrontend() {
               income_type: deductionDetail.income_type || '',
               project: deductionDetail.project || '',
               account: deductionDetail.account || '',
-              donor: paymentRow.donor_id,
+              donor_id: paymentRow.donor_id,  // FIXED: Changed from 'donor' to 'donor_id'
+              intention_id: paymentRow.intention_id,  // FIXED: Added missing intention_id
               service_area: paymentRow.pay_service_area || '',
               subservice_area: paymentRow.pay_subservice_area || '',
               product: paymentRow.pay_product || '',
@@ -912,6 +828,8 @@ async function populateDeductionBreakevenFrontend() {
               base_amount: percentageAmount,
               cost_center: document.doc.donation_cost_center || '',
               donor_desk_id: paymentRow.donor_desk_id || '',
+              donor_type_id: paymentRow.donor_type || '',  // FIXED: Added missing donor_type_id
+              transaction_type_id: paymentRow.transaction_type_id || '',  // FIXED: Added missing transaction_type_id
               donation_type_id: paymentRow.donation_type || document.doc.donation_type,
               __islocal: true,
               doctype: 'Deduction Breakeven',
@@ -947,13 +865,13 @@ async function populateDeductionBreakevenFrontend() {
   }
 }
 
-// ADD: Use frontend-only solution
+// ADD: Use API-based solution instead of frontend-only solution
 onMounted(async () => {
   await nextTick()
   
   if (shouldPopulateDeductionBreakeven()) {
     setTimeout(() => {
-      populateDeductionBreakevenFrontend()
+      populateDeductionBreakevenFromAPI()  // Changed from populateDeductionBreakevenFrontend()
     }, 2000)
   }
 })
@@ -961,12 +879,333 @@ onMounted(async () => {
 watch(() => document.doc, (newDoc) => {
   if (shouldPopulateDeductionBreakeven()) {
     setTimeout(() => {
-      populateDeductionBreakevenFrontend()
+      populateDeductionBreakevenFromAPI()  // Changed from populateDeductionBreakevenFrontend()
     }, 1000)
   }
 }, { immediate: false, deep: true })
+
+// NEW: Enhanced deduction breakeven functionality using API
+async function populateDeductionBreakevenFromAPI() {
+  console.log("Populating deduction breakeven using API on DonationDetail page...")
+  
+  if (!document.doc.payment_detail || document.doc.payment_detail.length === 0) {
+    console.log("No payment details to process")
+    return
+  }
+  
+  if (document.doc.contribution_type === "Pledge") {
+    console.log("Skipping deduction breakeven for Pledge contribution type")
+    return
+  }
+  
+  try {
+    const result = await call("crm.fcrm.doctype.donation.api.populate_deduction_breakeven", {
+      payment_details: document.doc.payment_detail,
+      company: document.doc.company || "Alkhidmat Foundation",
+      contribution_type: document.doc.contribution_type || "Donation",
+      donation_cost_center: document.doc.donation_cost_center,
+      currency: document.doc.currency,
+      to_currency: document.doc.to_currency || document.doc.currency,
+      posting_date: document.doc.posting_date,
+      is_return: document.doc.is_return || false,
+      existing_deduction_breakeven: document.doc.deduction_breakeven || []
+    })
+    
+    if (result.success) {
+      console.log("API populated deduction breakeven successfully:", result)
+      
+      // Update the document with the results
+      document.doc.deduction_breakeven = result.deduction_breakeven
+      document.doc.payment_detail = result.updated_payment_details
+      
+      // Force reactive update
+      document.doc = { ...document.doc }
+      
+      toast.success(`Successfully populated ${result.deduction_breakeven.length} deduction breakeven rows`)
+    } else {
+      console.error("API failed to populate deduction breakeven:", result.message)
+      toast.error(result.message || "Failed to populate deduction breakeven")
+    }
+  } catch (error) {
+    console.error("Error calling deduction breakeven API:", error)
+    toast.error("Error populating deduction breakeven")
+  }
+}
+
+// NEW: Update deduction breakeven when payment details change
+async function updateDeductionBreakevenFromAPI() {
+  console.log('Updating deduction breakeven using API on DonationDetail page...')
+  
+  if (!document.doc.payment_detail || document.doc.payment_detail.length === 0) {
+    console.log('No payment details to update')
+    return
+  }
+  
+  if (!document.doc.deduction_breakeven || document.doc.deduction_breakeven.length === 0) {
+    console.log('No existing deduction breakeven to update')
+    return
+  }
+  
+  try {
+    const result = await call('crm.fcrm.doctype.donation.api.update_deduction_breakeven', {
+      payment_details: document.doc.payment_detail,
+      deduction_breakeven: document.doc.deduction_breakeven,
+      company: document.doc.company || 'Alkhidmat Foundation',
+      contribution_type: document.doc.contribution_type || 'Donation',
+      donation_cost_center: document.doc.donation_cost_center,
+      currency: document.doc.currency,
+      to_currency: document.doc.to_currency || document.doc.currency,
+      posting_date: document.doc.posting_date,
+      is_return: document.doc.is_return || false
+    })
+    
+    if (result.success) {
+      console.log('API updated deduction breakeven successfully:', result)
+      
+      // Update the document with the results
+      document.doc.deduction_breakeven = result.deduction_breakeven
+      document.doc.payment_detail = result.updated_payment_details
+      
+      // Force reactive update
+      document.doc = { ...document.doc }
+    } else {
+      console.error('API failed to update deduction breakeven:', result.message)
+      toast.error(result.message || 'Failed to update deduction breakeven')
+    }
+  } catch (error) {
+    console.error('Error calling update deduction breakeven API:', error)
+    toast.error('Error updating deduction breakeven')
+  }
+}
+
+async function enrichOnceAfterLoad() {
+  if (didEnrichOnce.value || !document.doc?.name) return
+  didEnrichOnce.value = true
+  
+  console.log("Enriching donation data using API...")
+  
+  try {
+    // Enrich payment_detail rows
+    if (document.doc.payment_detail && Array.isArray(document.doc.payment_detail)) {
+      for (let i = 0; i < document.doc.payment_detail.length; i++) {
+        const row = document.doc.payment_detail[i]
+        
+        // Generate random_id if missing
+        if (!row.random_id) {
+          row.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
+        }
+        
+        // Fetch donor details
+        if (row.donor_id) {
+          const donor = await safeFetchDonor(row.donor_id)
+          if (donor) {
+            mapDonor(row, donor)
+          }
+        }
+        
+        // Fetch fund class details
+        if (row.fund_class_id) {
+          const fundClass = await safeFetchFundClass(row.fund_class_id)
+          if (fundClass) {
+            mapFundClass(row, fundClass)
+          }
+        }
+        
+        // Fetch MOP details
+        if (row.mode_of_payment) {
+          const mop = await safeFetchMOP(row.mode_of_payment)
+          if (mop) {
+            // Update MOP-related fields
+            row.account_paid_to = mop.default_account || ""
+          }
+        }
+      }
+    }
+    
+    // Auto-populate deduction breakeven using API
+    if (document.doc.contribution_type !== "Pledge" && 
+        document.doc.payment_detail && 
+        document.doc.payment_detail.length > 0 &&
+        (!document.doc.deduction_breakeven || document.doc.deduction_breakeven.length === 0)) {
+      
+      console.log("Auto-populating deduction breakeven using API...")
+      debouncedPopulateDeductionBreakeven()
+    }
+    
+    // Force reactive update
+    document.doc = { ...document.doc }
+    
+    console.log("Donation data enrichment completed successfully")
+  } catch (error) {
+    console.error("Error enriching donation data:", error)
+  }
+}
+
+
+let dbProcessing = false
+watch(() => document.doc?.deduction_breakeven, async (rows) => {
+  if (dbProcessing || !Array.isArray(rows)) return
+  dbProcessing = true
+  try {
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]
+      if (!r) continue
+      if (!r.random_id) r.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
+      
+      // Fetch fund class details
+      const fcid = r.fund_class_id || r.fund_class
+      if (fcid && fcid !== r._lastFC) {
+        r._lastFC = fcid
+        const fc = await safeFetchFundClass(fcid)
+        if (fc) {
+          const pairs = [
+            ['service_area', 'service_area'], 
+            ['subservice_area', 'subservice_area'], 
+            ['product', 'product'], 
+            ['service_area', 'pay_service_area'], 
+            ['subservice_area', 'pay_subservice_area'], 
+            ['product', 'pay_product'], 
+            ['cost_center', 'cost_center']
+          ]
+          pairs.forEach(([src, tgt]) => { 
+            if (tgt in r && fc[src] !== undefined) r[tgt] = fc[src] || '' 
+          })
+        }
+      }
+    }
+    
+    // Update deduction amounts when deduction breakeven changes
+    if (rows.length > 0) {
+      debouncedUpdateDeductionBreakeven()
+    }
+  } catch (e) {
+    console.error('Deduction breakeven live fetch error:', e)
+  } finally {
+    dbProcessing = false
+  }
+}, { deep: true })
+
+
+// UPDATE: Enhanced existing watchers to use API
+let pdProcessing = false
+watch(() => document.doc?.payment_detail, async (rows) => {
+  if (pdProcessing || !Array.isArray(rows)) return
+  pdProcessing = true
+  try {
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]
+      if (!r) continue
+      if (!r.random_id) r.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
+      
+      // Fetch donor details
+      if (r.donor_id && r.donor_id !== r._lastDonorId) {
+        r._lastDonorId = r.donor_id
+        const donor = await safeFetchDonor(r.donor_id)
+        if (donor) mapDonor(r, donor)
+      }
+      
+      // Fetch fund class details
+      if (r.fund_class_id && r.fund_class_id !== r._lastFundClassId) {
+        r._lastFundClassId = r.fund_class_id
+        const fundClass = await safeFetchFundClass(r.fund_class_id)
+        if (fundClass) mapFundClass(r, fundClass)
+      }
+      
+      // Fetch MOP details
+      if (r.mode_of_payment && r.mode_of_payment !== r._lastMOPId) {
+        r._lastMOPId = r.mode_of_payment
+        const mop = await safeFetchMOP(r.mode_of_payment)
+        if (mop) {
+          r.account_paid_to = mop.default_account || ''
+        }
+      }
+    }
+    
+    // Update deduction breakeven when payment details change
+    if (document.doc.contribution_type !== 'Pledge' && 
+        document.doc.deduction_breakeven && 
+        document.doc.deduction_breakeven.length > 0) {
+      debouncedUpdateDeductionBreakeven()
+    }
+  } catch (e) {
+    console.error('Payment detail live fetch error:', e)
+  } finally {
+    pdProcessing = false
+  }
+}, { deep: true })
+
+let dbProcessing = false
+watch(() => document.doc?.deduction_breakeven, async (rows) => {
+  if (dbProcessing || !Array.isArray(rows)) return
+  dbProcessing = true
+  try {
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]
+      if (!r) continue
+      if (!r.random_id) r.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
+      
+      // Fetch fund class details
+      const fcid = r.fund_class_id || r.fund_class
+      if (fcid && fcid !== r._lastFC) {
+        r._lastFC = fcid
+        const fc = await safeFetchFundClass(fcid)
+        if (fc) {
+          const pairs = [
+            ['service_area', 'service_area'], 
+            ['subservice_area', 'subservice_area'], 
+            ['product', 'product'], 
+            ['service_area', 'pay_service_area'], 
+            ['subservice_area', 'pay_subservice_area'], 
+            ['product', 'pay_product'], 
+            ['cost_center', 'cost_center']
+          ]
+          pairs.forEach(([src, tgt]) => { 
+            if (tgt in r && fc[src] !== undefined) r[tgt] = fc[src] || '' 
+          })
+        }
+      }
+    }
+    
+    // Update deduction amounts when deduction breakeven changes
+    if (rows.length > 0) {
+      debouncedUpdateDeductionBreakeven()
+    }
+  } catch (e) {
+    console.error('Deduction breakeven live fetch error:', e)
+  } finally {
+    dbProcessing = false
+  }
+}, { deep: true })
+
+
+// NEW: Debounce mechanism for API calls
+let populateDeductionTimeout = null
+let updateDeductionTimeout = null
+
+// NEW: Debounced populate function
+function debouncedPopulateDeductionBreakeven() {
+  if (populateDeductionTimeout) {
+    clearTimeout(populateDeductionTimeout)
+  }
+  
+  populateDeductionTimeout = setTimeout(async () => {
+    debouncedPopulateDeductionBreakeven()
+  }, 500) // 500ms debounce
+}
+
+// NEW: Debounced update function
+function debouncedUpdateDeductionBreakeven() {
+  if (updateDeductionTimeout) {
+    clearTimeout(updateDeductionTimeout)
+  }
+  
+  updateDeductionTimeout = setTimeout(async () => {
+    debouncedUpdateDeductionBreakeven()
+  }, 300) // 300ms debounce
+}
 </script>
 
 <style scoped>
 /* Add any custom styles here */
 </style>
+
