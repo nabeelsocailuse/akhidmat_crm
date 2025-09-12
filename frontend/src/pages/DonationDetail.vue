@@ -688,7 +688,7 @@ watch(() => document.doc?.name, () => { didEnrichOnce = false; setTimeout(() => 
 // === END ENRICHERS ===
 
 // === LIVE EDIT FETCH (SAFE, GUARDED) ===
-let pdProcessing = false
+// let Processing = false // commented: duplicate declaration (already declared above)
 watch(() => document.doc?.payment_detail, async (rows) => {
   if (pdProcessing || !Array.isArray(rows)) return
   pdProcessing = true
@@ -728,7 +728,7 @@ watch(() => document.doc?.payment_detail, async (rows) => {
   }
 }, { deep: true })
 
-let dbProcessing = false
+let Processing = false
 watch(() => document.doc?.deduction_breakeven, async (rows) => {
   if (dbProcessing || !Array.isArray(rows)) return
   dbProcessing = true
@@ -960,7 +960,7 @@ async function updateDeductionBreakevenFromAPI() {
     })
     
     if (result.success) {
-      console.log('API updated deduction breakeven successfully:', result)
+      console.log('API updated deduction breakeven successfully:', result)  
       
       // Update the document with the results
       document.doc.deduction_breakeven = result.deduction_breakeven
@@ -978,115 +978,17 @@ async function updateDeductionBreakevenFromAPI() {
   }
 }
 
-async function enrichOnceAfterLoad() {
-  if (didEnrichOnce.value || !document.doc?.name) return
-  didEnrichOnce.value = true
-  
-  console.log("Enriching donation data using API...")
-  
-  try {
-    // Enrich payment_detail rows
-    if (document.doc.payment_detail && Array.isArray(document.doc.payment_detail)) {
-      for (let i = 0; i < document.doc.payment_detail.length; i++) {
-        const row = document.doc.payment_detail[i]
-        
-        // Generate random_id if missing
-        if (!row.random_id) {
-          row.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
-        }
-        
-        // Fetch donor details
-        if (row.donor_id) {
-          const donor = await safeFetchDonor(row.donor_id)
-          if (donor) {
-            mapDonor(row, donor)
-          }
-        }
-        
-        // Fetch fund class details
-        if (row.fund_class_id) {
-          const fundClass = await safeFetchFundClass(row.fund_class_id)
-          if (fundClass) {
-            mapFundClass(row, fundClass)
-          }
-        }
-        
-        // Fetch MOP details
-        if (row.mode_of_payment) {
-          const mop = await safeFetchMOP(row.mode_of_payment)
-          if (mop) {
-            // Update MOP-related fields
-            row.account_paid_to = mop.default_account || ""
-          }
-        }
-      }
-    }
-    
-    // Auto-populate deduction breakeven using API
-    if (document.doc.contribution_type !== "Pledge" && 
-        document.doc.payment_detail && 
-        document.doc.payment_detail.length > 0 &&
-        (!document.doc.deduction_breakeven || document.doc.deduction_breakeven.length === 0)) {
-      
-      console.log("Auto-populating deduction breakeven using API...")
-      debouncedPopulateDeductionBreakeven()
-    }
-    
-    // Force reactive update
-    document.doc = { ...document.doc }
-    
-    console.log("Donation data enrichment completed successfully")
-  } catch (error) {
-    console.error("Error enriching donation data:", error)
-  }
-}
+// async function enrichOnceAfterLoad() {
+// }
+
+// let dbProcessing = false
+// watch(() => document.doc?.deduction_breakeven, async (rows) => {
+//   // commented: duplicate watcher and variable declaration. The earlier watcher
+//   // above handles deduction_breakeven updates.
+// }, { deep: true })
 
 
-let dbProcessing = false
-watch(() => document.doc?.deduction_breakeven, async (rows) => {
-  if (dbProcessing || !Array.isArray(rows)) return
-  dbProcessing = true
-  try {
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i]
-      if (!r) continue
-      if (!r.random_id) r.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
-      
-      // Fetch fund class details
-      const fcid = r.fund_class_id || r.fund_class
-      if (fcid && fcid !== r._lastFC) {
-        r._lastFC = fcid
-        const fc = await safeFetchFundClass(fcid)
-        if (fc) {
-          const pairs = [
-            ['service_area', 'service_area'], 
-            ['subservice_area', 'subservice_area'], 
-            ['product', 'product'], 
-            ['service_area', 'pay_service_area'], 
-            ['subservice_area', 'pay_subservice_area'], 
-            ['product', 'pay_product'], 
-            ['cost_center', 'cost_center']
-          ]
-          pairs.forEach(([src, tgt]) => { 
-            if (tgt in r && fc[src] !== undefined) r[tgt] = fc[src] || '' 
-          })
-        }
-      }
-    }
-    
-    // Update deduction amounts when deduction breakeven changes
-    if (rows.length > 0) {
-      debouncedUpdateDeductionBreakeven()
-    }
-  } catch (e) {
-    console.error('Deduction breakeven live fetch error:', e)
-  } finally {
-    dbProcessing = false
-  }
-}, { deep: true })
 
-
-// UPDATE: Enhanced existing watchers to use API
 let pdProcessing = false
 watch(() => document.doc?.payment_detail, async (rows) => {
   if (pdProcessing || !Array.isArray(rows)) return
@@ -1097,21 +999,21 @@ watch(() => document.doc?.payment_detail, async (rows) => {
       if (!r) continue
       if (!r.random_id) r.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
       
-      // Fetch donor details
+      
       if (r.donor_id && r.donor_id !== r._lastDonorId) {
         r._lastDonorId = r.donor_id
         const donor = await safeFetchDonor(r.donor_id)
         if (donor) mapDonor(r, donor)
       }
       
-      // Fetch fund class details
+      
       if (r.fund_class_id && r.fund_class_id !== r._lastFundClassId) {
         r._lastFundClassId = r.fund_class_id
         const fundClass = await safeFetchFundClass(r.fund_class_id)
         if (fundClass) mapFundClass(r, fundClass)
       }
       
-      // Fetch MOP details
+      
       if (r.mode_of_payment && r.mode_of_payment !== r._lastMOPId) {
         r._lastMOPId = r.mode_of_payment
         const mop = await safeFetchMOP(r.mode_of_payment)
@@ -1121,7 +1023,7 @@ watch(() => document.doc?.payment_detail, async (rows) => {
       }
     }
     
-    // Update deduction breakeven when payment details change
+    
     if (document.doc.contribution_type !== 'Pledge' && 
         document.doc.deduction_breakeven && 
         document.doc.deduction_breakeven.length > 0) {
@@ -1144,7 +1046,6 @@ watch(() => document.doc?.deduction_breakeven, async (rows) => {
       if (!r) continue
       if (!r.random_id) r.random_id = Math.floor((1000 + i + 1) + (Math.random() * 9000))
       
-      // Fetch fund class details
       const fcid = r.fund_class_id || r.fund_class
       if (fcid && fcid !== r._lastFC) {
         r._lastFC = fcid
@@ -1166,7 +1067,7 @@ watch(() => document.doc?.deduction_breakeven, async (rows) => {
       }
     }
     
-    // Update deduction amounts when deduction breakeven changes
+    
     if (rows.length > 0) {
       debouncedUpdateDeductionBreakeven()
     }
@@ -1178,11 +1079,11 @@ watch(() => document.doc?.deduction_breakeven, async (rows) => {
 }, { deep: true })
 
 
-// NEW: Debounce mechanism for API calls
+
 let populateDeductionTimeout = null
 let updateDeductionTimeout = null
 
-// NEW: Debounced populate function
+
 function debouncedPopulateDeductionBreakeven() {
   if (populateDeductionTimeout) {
     clearTimeout(populateDeductionTimeout)
@@ -1190,10 +1091,9 @@ function debouncedPopulateDeductionBreakeven() {
   
   populateDeductionTimeout = setTimeout(async () => {
     debouncedPopulateDeductionBreakeven()
-  }, 500) // 500ms debounce
+  }, 500) 
 }
 
-// NEW: Debounced update function
 function debouncedUpdateDeductionBreakeven() {
   if (updateDeductionTimeout) {
     clearTimeout(updateDeductionTimeout)
@@ -1201,11 +1101,10 @@ function debouncedUpdateDeductionBreakeven() {
   
   updateDeductionTimeout = setTimeout(async () => {
     debouncedUpdateDeductionBreakeven()
-  }, 300) // 300ms debounce
+  }, 300) 
 }
 </script>
 
 <style scoped>
-/* Add any custom styles here */
 </style>
 
