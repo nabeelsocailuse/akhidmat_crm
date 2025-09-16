@@ -162,6 +162,10 @@ doc_events = {
 		"before_validate": ["crm.api.demo.validate_user"],
 		"validate_reset_password": ["crm.api.demo.validate_reset_password"],
 	},
+    	"Email Group Member": {
+		"on_update": "crm.api.extended_email_campaign.update_email_group_total_on_member_update",
+		"on_trash": "crm.api.extended_email_campaign.update_email_group_total_on_member_update",
+	},
 }
 
 # Scheduled Tasks
