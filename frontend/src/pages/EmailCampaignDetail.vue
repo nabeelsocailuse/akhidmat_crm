@@ -476,7 +476,7 @@ function reloadAssignees(data) {
 
 function sendNow() {
   isSendingEmail.value = true
-  call('erpnext.crm.doctype.email_campaign.extended_email_campaign.send_email_to_leads_or_contacts_extended', {
+  call('crm.api.extended_email_campaign.send_email_to_leads_or_contacts_extended', {  
     force: 1,
     email_campaign_id: props.emailCampaignId,
   })
@@ -492,6 +492,7 @@ function sendNow() {
       isSendingEmail.value = false
     })
 }
+
 </script> 
 <style scoped>
 .loader {
