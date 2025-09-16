@@ -96,6 +96,8 @@ import { createResource, Dialog, Button, ErrorMessage, call } from 'frappe-ui'
 import { useDocument } from '@/data/document'
 import { getMeta } from '@/stores/meta'
 import { globalStore } from '@/stores/global'
+import { usersStore } from '@/stores/users'
+import { sessionStore } from '@/stores/session'
 import { quickEntryProps } from '@/composables/modals'
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import QuickEntryModal from '@/components/Modals/QuickEntryModal.vue'
@@ -125,6 +127,8 @@ const route = useRoute()
 const router = useRouter()
 const { $dialog, $socket } = globalStore()
 const { width } = useWindowSize()
+const { getUser, isManager } = usersStore()
+const { user } = sessionStore()
 
 const controlledShow = computed({
   get: () => props.modelValue,
@@ -140,6 +144,16 @@ const modalStack = ref([])
 const hasActiveSubModals = computed(() => modalStack.value.some(modal => modal.visible))
 
 const { doctypeMeta } = getMeta('Email Campaign')
+
+async function getCurrentUserId() {
+  if (user.value?.name) return user.value.name
+  if (typeof frappe !== 'undefined' && frappe.session && frappe.session.user) return frappe.session.user
+  try {
+    const response = await call('frappe.auth.get_logged_user')
+    if (response) return response
+  } catch {}
+  return ''
+}
 
 const emailCampaign = useDocument('Email Campaign', '', {
   defaults: props.defaults,
@@ -181,13 +195,6 @@ const tabs = createResource({
                   if (field.fieldname === 'sender' && field.fieldtype === 'Link') {
                     field.options = 'User'
                     field.read_only = true
-                    // ensure value is current user if not set
-                    if (!document.doc.sender) {
-                      try {
-                        const u = (window.frappe && window.frappe.session && window.frappe.session.user) ? window.frappe.session.user : null
-                        if (u) document.doc.sender = u
-                      } catch {}
-                    }
                   }
                   // Ensure Dynamic Link fields have proper options
                   if (field.fieldname === 'recipient' && field.fieldtype === 'Dynamic Link') {
@@ -226,10 +233,6 @@ const tabs = createResource({
   }
 })
 
-function isManager() {
-  // Check if user is manager - implement based on your permission system
-  return true
-}
 
 function handleCloseButton() {
   controlledShow.value = false
@@ -397,24 +400,49 @@ async function createNewEmailCampaign() {
   )
 }
 
-watch(controlledShow, (show) => {
+watch(controlledShow, async (show) => {
   if (show) {
-    document.doc = { 
+    const currentUserId = user.value?.name || (frappe?.session?.user ?? '__user');
+    
+    // Ensure document.doc exists first
+    if (!document.doc) {
+      document.doc = {}
+    }
+    
+    document.doc = {
       ...props.defaults,
       status: 'Scheduled',
-      sender: (window.frappe && window.frappe.session && window.frappe.session.user) ? window.frappe.session.user : '__user'
+      sender: currentUserId, // <-- assign logged-in user
     }
+
     error.value = ''
   }
 })
 
-onMounted(() => {
-  if (!document.doc) {
-    document.doc = { 
+
+
+watch(controlledShow, async (show) => {
+  if (show) {
+    const currentUserId = await getCurrentUserId()
+    Object.assign(document.doc, {
       ...props.defaults,
       status: 'Scheduled',
-      sender: (window.frappe && window.frappe.session && window.frappe.session.user) ? window.frappe.session.user : '__user'
-    }
+      sender: currentUserId
+    })
+    error.value = ''
+  }
+})
+
+
+watch(() => user.value, async () => { 
+  if (controlledShow.value && document.doc) {
+    document.doc.sender = await getCurrentUserId()
+  }
+})
+
+watch(() => user.value?.name, (n) => { 
+  if (n && controlledShow.value && document.doc) {
+    document.doc.sender = n
   }
 })
 

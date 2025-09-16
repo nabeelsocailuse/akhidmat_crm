@@ -1,5 +1,11 @@
 <template>
   <AppStyling type="detail-background" class="min-h-screen" style="background: linear-gradient(to bottom right, #fef7ff, #f8faff); min-height: 100vh;">
+  <div
+    v-if="isSendingEmail"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
+  >
+    <span class="loader"></span>
+  </div>
     <LayoutHeader>
       <template #left-header>
         <Breadcrumbs :items="breadcrumbs">
@@ -17,31 +23,9 @@
           v-if="document.actions?.length"
           :actions="document.actions"
         />
+        <Button @click="sendNow" label="Send Email now" />
         <AssignTo v-model="assignees.data" doctype="Email Campaign" :docname="emailCampaignId" />	
-        <Dropdown
-          v-if="doc"
-          :options="
-            statusOptions(
-              'email_campaign',
-              document.statuses?.length ? document.statuses : document._statuses,
-              triggerStatusChange,
-            )
-          "
-        >
-          <template #default="{ open }">
-            <Button v-if="doc.status" :label="doc.status">
-              <template #prefix>
-                <IndicatorIcon :class="getEmailCampaignStatus(doc.status).color" />
-              </template>
-              <template #suffix>
-                <FeatherIcon
-                  :name="open ? 'chevron-up' : 'chevron-down'"
-                  class="h-4"
-                />  
-              </template>
-            </Button>
-          </template>
-        </Dropdown>
+        <!-- Status Dropdown removed as per instructions -->
       </template>
     </LayoutHeader>
     
@@ -213,13 +197,10 @@ import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import Email2Icon from '@/components/Icons/Email2Icon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
-import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
+// import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
-import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
-import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import CameraIcon from '@/components/Icons/CameraIcon.vue'
-import LinkIcon from '@/components/Icons/LinkIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
@@ -230,7 +211,6 @@ import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import AppStyling from '@/components/AppStyling.vue'
 import {
-  openWebsite,
   setupCustomizations,
   copyToClipboard,
   validateIsImageFile,
@@ -241,7 +221,6 @@ import { globalStore } from '@/stores/global'
 import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
-import { whatsappEnabled, callEnabled } from '@/composables/settings'
 import {
   createResource,
   FileUploader,
@@ -279,6 +258,7 @@ const errorTitle = ref('')
 const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
 const showFilesUploader = ref(false)
+const isSendingEmail = ref(false)
 
 const { triggerOnChange, assignees, document, scripts, error } = useDocument(
   'Email Campaign',
@@ -493,4 +473,57 @@ function reloadAssignees(data) {
     assignees.reload()
   }
 }
+
+function sendNow() {
+  isSendingEmail.value = true
+  call('erpnext.crm.doctype.email_campaign.extended_email_campaign.send_email_to_leads_or_contacts_extended', {
+    force: 1,
+    email_campaign_id: props.emailCampaignId,
+  })
+    .then((res) => {
+      console.debug('Send now response:', res)
+      toast.success(res?.message || __('Emails sent successfully'))
+    })
+    .catch((err) => {
+      console.error('Send now failed:', err)
+      toast.error(err?.messages?.[0] || __('Failed to send emails'))
+    })
+    .finally(() => {
+      isSendingEmail.value = false
+    })
+}
 </script> 
+<style scoped>
+.loader {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+  border-top: 4px solid #fff;
+  border-right: 4px solid transparent;
+  box-sizing: border-box;
+  animation: rotation 1s linear infinite;
+}
+.loader::after {
+  content: '';  
+  box-sizing: border-box;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border-left: 4px solid #FF3D00;
+  border-bottom: 4px solid transparent;
+  animation: rotation 0.5s linear infinite reverse;
+}
+@keyframes rotation {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+</style>

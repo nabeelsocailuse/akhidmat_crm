@@ -785,25 +785,27 @@ def get_linked_docs_of_document(doctype, docname):
 
 
 def remove_doc_link(doctype, docname):
-	linked_doc_data = frappe.get_doc(doctype, docname)
-	linked_doc_data.update(
-		{
-			"reference_doctype": None,
-			"reference_docname": None,
-		}
-	)
-	linked_doc_data.save(ignore_permissions=True)
+	# Avoid triggering document validate/save hooks when unlinking
+	# Clear link fields directly in DB if they exist
+	if frappe.db.has_column(doctype, "reference_doctype") and frappe.db.has_column(doctype, "reference_docname"):
+		frappe.db.set_value(doctype, docname, {"reference_doctype": None, "reference_docname": None})
+	else:
+		# Fallback to no-op when expected link fields are absent
+		return
 
 
 def remove_contact_link(doctype, docname):
-	linked_doc_data = frappe.get_doc(doctype, docname)
-	linked_doc_data.update(
-		{
-			"contact": None,
-			"contacts": [],
-		}
-	)
-	linked_doc_data.save(ignore_permissions=True)
+	# Avoid triggering document validate/save hooks when unlinking
+	if frappe.db.has_column(doctype, "contact"):
+		frappe.db.set_value(doctype, docname, {"contact": None})
+	# If a child table named "contacts" exists as a table field, clear its rows via DB
+	try:
+		meta = frappe.get_meta(doctype)
+		childfield = next((f for f in meta.fields if f.fieldname == "contacts" and f.fieldtype == "Table"), None)
+		if childfield:
+			frappe.db.delete(childfield.options, {"parenttype": doctype, "parent": docname})
+	except Exception:
+		pass
 
 
 @frappe.whitelist()
@@ -812,13 +814,14 @@ def remove_linked_doc_reference(items, remove_contact=None, delete=False):
 		items = frappe.parse_json(items)
 
 	for item in items:
-		if remove_contact:
-			remove_contact_link(item["doctype"], item["docname"])
-		else:
-			remove_doc_link(item["doctype"], item["docname"])
-
+		# If delete=True, directly delete the doc to avoid intermediate saves/validations
 		if delete:
 			frappe.delete_doc(item["doctype"], item["docname"])
+		else:
+			if remove_contact:
+				remove_contact_link(item["doctype"], item["docname"])
+			else:
+				remove_doc_link(item["doctype"], item["docname"])
 
 	return "success"
 

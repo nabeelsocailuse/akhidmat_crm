@@ -16,10 +16,13 @@ def get_donation(name):
         frappe.throw(f"Error fetching donation: {str(e)}")
 
 @frappe.whitelist()
-def get_deduction_details(fund_class, company=None):
+def get_deduction_details(fund_class=None, fund_class_id=None, company=None):
     """Get deduction details for a fund class"""
     try:
-        if not fund_class:
+        # Handle both parameter names for backward compatibility
+        fund_class_value = fund_class or fund_class_id
+        
+        if not fund_class_value:
             return {}
         
         # Get ALL deduction details for this fund class (not just the first one)
@@ -33,7 +36,7 @@ def get_deduction_details(fund_class, company=None):
                 parent = %(fund_class)s
             ORDER BY idx
         """, {
-            'fund_class': fund_class
+            'fund_class': fund_class_value
         }, as_dict=True)
         
         # Return all results if available
@@ -666,7 +669,7 @@ def get_deduction_details_for_row(row, company, contribution_type):
         return []
 
 def create_deduction_breakeven_row(payment_row, deduction_detail, percentage_amount, base_amount, company, donation_cost_center):
-    """Create a deduction breakeven row with CORRECT field mapping for frontend"""
+    """Create a deduction breakeven row with EXACT backend field mapping"""
     return {
         "random_id": payment_row.get('random_id'),
         "company": company,
@@ -679,24 +682,18 @@ def create_deduction_breakeven_row(payment_row, deduction_detail, percentage_amo
         "donation_amount": payment_row.get('donation_amount', 0),
         "amount": percentage_amount,
         "base_amount": base_amount,
+        # EXACT backend field mapping
         "project_id": deduction_detail.get('project'),
         "cost_center_id": donation_cost_center,
         "fund_class_id": payment_row.get('fund_class_id'),
         "service_area_id": payment_row.get('pay_service_area'),
         "subservice_area_id": payment_row.get('pay_subservice_area'),
         "product_id": payment_row.get('pay_product'),
-        "donor_id": payment_row.get('donor_id'),  # CORRECT field name
+        "donor_id": payment_row.get('donor_id'),
         "donor_type_id": payment_row.get('donor_type'),
         "donor_desk_id": payment_row.get('donor_desk_id'),
-        "intention_id": payment_row.get('intention_id'),  # CORRECT field name
+        "intention_id": payment_row.get('intention_id'),
         "transaction_type_id": payment_row.get('transaction_type_id'),
-        # Additional fields that might be needed by frontend
-        "fund_class": payment_row.get('fund_class_id'),
-        "service_area": payment_row.get('pay_service_area'),
-        "subservice_area": payment_row.get('pay_subservice_area'),
-        "product": payment_row.get('pay_product'),
-        "donor": payment_row.get('donor_id'),  # This is what the frontend expects
-        "cost_center": donation_cost_center,
         "__islocal": True,
         "doctype": "Deduction Breakeven",
         "parentfield": "deduction_breakeven",
@@ -1161,3 +1158,39 @@ def get_donation_validation_summary(payment_details, company, contribution_type,
     except Exception as e:
         frappe.log_error(f"Error in get_donation_validation_summary: {str(e)}", "Donation Validation Summary Error")
         return {"success": False, "message": f"Error in validation summary: {str(e)}"}
+
+@frappe.whitelist()
+def get_payment_mode_account(mode_of_payment, company):
+    """
+    Get the default account for a mode of payment.
+    This replicates the erpnext.accounts.pos.get_payment_mode_account functionality.
+    """
+    try:
+        if not mode_of_payment:
+            return {"success": False, "message": "Mode of payment is required"}
+        
+        if not company:
+            return {"success": False, "message": "Company is required"}
+        
+        # Get the default account for the mode of payment
+        account = frappe.db.get_value('Mode of Payment Account', {
+            'parent': mode_of_payment,
+            'company': company
+        }, 'default_account')
+        
+        if account:
+            return {"success": True, "account": account}
+        else:
+            # If no company-specific account found, try to get any default account
+            account = frappe.db.get_value('Mode of Payment Account', {
+                'parent': mode_of_payment
+            }, 'default_account')
+            
+            if account:
+                return {"success": True, "account": account}
+            else:
+                return {"success": False, "message": f"No default account found for mode of payment: {mode_of_payment}"}
+                
+    except Exception as e:
+        frappe.log_error(f"Error in get_payment_mode_account: {str(e)}", "Payment Mode Account Error")
+        return {"success": False, "message": f"Error getting payment mode account: {str(e)}"}

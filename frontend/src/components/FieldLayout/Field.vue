@@ -261,6 +261,7 @@
       :disabled="Boolean(field.read_only)"
       :description="getDescription(field)"
       @change="fieldChange($event.target.value, field)"
+      :class="getFieldClasses(field)"
     />
   </div>
 </template>
@@ -281,6 +282,7 @@ import { usersStore } from '@/stores/users'
 import { useDocument } from '@/data/document'
 import { Tooltip, DatePicker, DateTimePicker, FileUploader, Button } from 'frappe-ui'
 import { computed, provide, inject, watch, onMounted, nextTick } from 'vue'
+import { useDonorFieldValidation } from '@/composables/useDonorFieldValidation'
 
 const props = defineProps({
   field: Object,
@@ -296,6 +298,15 @@ const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
   getMeta(doctype)
 
 const { users, getUser } = usersStore()
+
+// Initialize masking utilities
+const {
+  applyCnicMaskToInput,
+  validateCnicFormat,
+  applyPhoneMasksForCountry,
+  validatePhoneNumber,
+  showPhoneValidationFeedback,
+} = useDonorFieldValidation()
 
 let triggerOnChange
 let parentDoc
@@ -626,6 +637,259 @@ function onAttachSuccess(file, df) {
   const fileUrl = file?.file_url || file?.name || ''
   fieldChange(fileUrl, df)
 }
+
+// Helper function to set field value for masking
+function setFieldValue(fieldName, value) {
+  if (data.value) {
+    data.value[fieldName] = value
+  }
+}
+
+// Get field classes for validation feedback
+function getFieldClasses(field) {
+  const classes = []
+  
+  // Add validation classes for specific fields (Lead and Donor)
+  if (field.fieldname === 'custom_identification_value' || field.fieldname === 'cnic' ||
+      field.fieldname === 'mobile_no' || field.fieldname === 'contact_no' ||
+      field.fieldname === 'co_contact_no' || field.fieldname === 'company_contact_number' ||
+      field.fieldname === 'organization_contact_person' || field.fieldname === 'representative_mobile' ||
+      field.fieldname === 'phone_no' || field.fieldname === 'company_ownerceo_conatct' ||
+      field.fieldname === 'org_representative_contact_number' || field.fieldname === 'org_contact') {
+    // These will be set by the validation feedback functions
+    classes.push('validation-field')
+  }
+  
+  return classes.join(' ')
+}
+
+// Watch for identification type changes to apply CNIC masking (Lead and Donor)
+watch(() => data.value?.custom_identification_type, (newType, oldType) => {
+  if (newType && newType !== oldType && field.value?.fieldname === 'custom_identification_value') {
+    if (data.value) {
+      data.value.custom_identification_value = ''
+    }
+    nextTick(() => {
+      applyCnicMaskToInput('custom_identification_value', newType, setFieldValue)
+    })
+  }
+})
+
+// Watch for identification type changes to apply CNIC masking (Donor)
+watch(() => data.value?.identification_type, (newType, oldType) => {
+  if (newType && newType !== oldType && field.value?.fieldname === 'cnic') {
+    if (data.value) {
+      data.value.cnic = ''
+    }
+    nextTick(() => {
+      applyCnicMaskToInput('cnic', newType, setFieldValue)
+    })
+  }
+})
+
+// Watch for identification value changes to reapply masking (Lead)
+watch(() => data.value?.custom_identification_value, (newValue, oldValue) => {
+  if (newValue && newValue !== oldValue && 
+      field.value?.fieldname === 'custom_identification_value' && 
+      data.value?.custom_identification_type) {
+    nextTick(() => {
+      applyCnicMaskToInput('custom_identification_value', data.value.custom_identification_type, setFieldValue)
+    })
+  }
+})
+
+// Watch for CNIC value changes to reapply masking (Donor)
+watch(() => data.value?.cnic, (newValue, oldValue) => {
+  if (newValue && newValue !== oldValue && 
+      field.value?.fieldname === 'cnic' && 
+      data.value?.identification_type) {
+    nextTick(() => {
+      applyCnicMaskToInput('cnic', data.value.identification_type, setFieldValue)
+    })
+  }
+})
+
+// Watch for country changes to apply phone masking (Lead and Donor)
+watch(() => data.value?.country, (newCountry, oldCountry) => {
+  if (newCountry && newCountry !== oldCountry && 
+      (field.value?.fieldname === 'mobile_no' || field.value?.fieldname === 'contact_no' ||
+       field.value?.fieldname === 'co_contact_no' || field.value?.fieldname === 'company_contact_number' ||
+       field.value?.fieldname === 'organization_contact_person' || field.value?.fieldname === 'representative_mobile' ||
+       field.value?.fieldname === 'phone_no' || field.value?.fieldname === 'company_ownerceo_conatct')) {
+    if (data.value) {
+      data.value[field.value.fieldname] = ''
+    }
+    setTimeout(() => {
+      applyPhoneMasksForCountry(newCountry, setFieldValue, [field.value.fieldname])
+    }, 300)
+  }
+})
+
+// Watch for orgs_country changes to apply phone masking (Donor organization fields)
+watch(() => data.value?.orgs_country, (newCountry, oldCountry) => {
+  if (newCountry && newCountry !== oldCountry && 
+      (field.value?.fieldname === 'org_representative_contact_number' || field.value?.fieldname === 'org_contact')) {
+    if (data.value) {
+      data.value[field.value.fieldname] = ''
+    }
+    setTimeout(() => {
+      applyPhoneMasksForCountry(newCountry, setFieldValue, [field.value.fieldname])
+    }, 300)
+  }
+})
+
+// Watch for phone number changes to validate (Lead and Donor)
+watch(() => data.value?.mobile_no, async (newValue) => {
+  if (newValue && data.value?.country && field.value?.fieldname === 'mobile_no') {
+    const validation = await validatePhoneNumber(newValue, data.value.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('mobile_no', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('mobile_no', true, '')
+    }
+  }
+})
+
+watch(() => data.value?.contact_no, async (newValue) => {
+  if (newValue && data.value?.country && field.value?.fieldname === 'contact_no') {
+    const validation = await validatePhoneNumber(newValue, data.value.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('contact_no', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('contact_no', true, '')
+    }
+  }
+})
+
+// Watch for donor phone fields validation
+watch(() => data.value?.co_contact_no, async (newValue) => {
+  if (newValue && data.value?.country && field.value?.fieldname === 'co_contact_no') {
+    const validation = await validatePhoneNumber(newValue, data.value.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('co_contact_no', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('co_contact_no', true, '')
+    }
+  }
+})
+
+watch(() => data.value?.company_contact_number, async (newValue) => {
+  if (newValue && data.value?.country && field.value?.fieldname === 'company_contact_number') {
+    const validation = await validatePhoneNumber(newValue, data.value.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('company_contact_number', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('company_contact_number', true, '')
+    }
+  }
+})
+
+watch(() => data.value?.organization_contact_person, async (newValue) => {
+  if (newValue && data.value?.country && field.value?.fieldname === 'organization_contact_person') {
+    const validation = await validatePhoneNumber(newValue, data.value.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('organization_contact_person', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('organization_contact_person', true, '')
+    }
+  }
+})
+
+watch(() => data.value?.representative_mobile, async (newValue) => {
+  if (newValue && data.value?.country && field.value?.fieldname === 'representative_mobile') {
+    const validation = await validatePhoneNumber(newValue, data.value.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('representative_mobile', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('representative_mobile', true, '')
+    }
+  }
+})
+
+watch(() => data.value?.phone_no, async (newValue) => {
+  if (newValue && data.value?.country && field.value?.fieldname === 'phone_no') {
+    const validation = await validatePhoneNumber(newValue, data.value.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('phone_no', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('phone_no', true, '')
+    }
+  }
+})
+
+watch(() => data.value?.company_ownerceo_conatct, async (newValue) => {
+  if (newValue && data.value?.country && field.value?.fieldname === 'company_ownerceo_conatct') {
+    const validation = await validatePhoneNumber(newValue, data.value.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('company_ownerceo_conatct', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('company_ownerceo_conatct', true, '')
+    }
+  }
+})
+
+// Watch for organization phone fields validation
+watch(() => data.value?.org_representative_contact_number, async (newValue) => {
+  if (newValue && data.value?.orgs_country && field.value?.fieldname === 'org_representative_contact_number') {
+    const validation = await validatePhoneNumber(newValue, data.value.orgs_country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('org_representative_contact_number', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('org_representative_contact_number', true, '')
+    }
+  }
+})
+
+watch(() => data.value?.org_contact, async (newValue) => {
+  if (newValue && data.value?.orgs_country && field.value?.fieldname === 'org_contact') {
+    const validation = await validatePhoneNumber(newValue, data.value.orgs_country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('org_contact', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('org_contact', true, '')
+    }
+  }
+})
+
+// Initialize masks when component mounts
+onMounted(() => {
+  nextTick(() => {
+    // Apply CNIC mask for Lead fields
+    if (field.value?.fieldname === 'custom_identification_value' && 
+        data.value?.custom_identification_type) {
+      setTimeout(() => {
+        applyCnicMaskToInput('custom_identification_value', data.value.custom_identification_type, setFieldValue)
+      }, 500)
+    }
+    
+    // Apply CNIC mask for Donor fields
+    if (field.value?.fieldname === 'cnic' && 
+        data.value?.identification_type) {
+      setTimeout(() => {
+        applyCnicMaskToInput('cnic', data.value.identification_type, setFieldValue)
+      }, 500)
+    }
+    
+    // Apply phone mask for Lead and Donor fields
+    if ((field.value?.fieldname === 'mobile_no' || field.value?.fieldname === 'contact_no' ||
+         field.value?.fieldname === 'co_contact_no' || field.value?.fieldname === 'company_contact_number' ||
+         field.value?.fieldname === 'organization_contact_person' || field.value?.fieldname === 'representative_mobile' ||
+         field.value?.fieldname === 'phone_no' || field.value?.fieldname === 'company_ownerceo_conatct') && 
+        data.value?.country) {
+      setTimeout(() => {
+        applyPhoneMasksForCountry(data.value.country, setFieldValue, [field.value.fieldname])
+      }, 500)
+    }
+    
+    // Apply phone mask for Donor organization fields
+    if ((field.value?.fieldname === 'org_representative_contact_number' || field.value?.fieldname === 'org_contact') && 
+        data.value?.orgs_country) {
+      setTimeout(() => {
+        applyPhoneMasksForCountry(data.value.orgs_country, setFieldValue, [field.value.fieldname])
+      }, 500)
+    }
+  })
+})
 
 </script>
 <style scoped>

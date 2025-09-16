@@ -19,7 +19,7 @@
         />
         <AssignTo v-model="assignees.data" doctype="CRM Lead" :docname="leadId" />
         <Dropdown
-          v-if="doc"
+          v-if="doc"  
           :options="
             statusOptions(
               'lead',
@@ -242,7 +242,14 @@
     :docname="leadId"
     name="Leads"
   />
+  <div
+    v-if="isConverting"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
+  >
+    <span class="loader"></span>
+  </div>
 </template>
+
 <script setup>
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
 import ErrorPage from '@/components/ErrorPage.vue'
@@ -320,6 +327,7 @@ const errorTitle = ref('')
 const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
 const showFilesUploader = ref(false)
+const isConverting = ref(false)
 
 const { triggerOnChange, assignees, document, scripts, error } = useDocument(
   'CRM Lead',
@@ -513,6 +521,7 @@ function reloadAssignees(data) {
 
 async function convertLeadToDonor() {
   if (!doc.value?.name) return
+  isConverting.value = true
   try {
     await call('crm.fcrm.doctype.crm_lead.crm_lead.convert_to_deal', {
       lead: doc.value.name,
@@ -521,6 +530,8 @@ async function convertLeadToDonor() {
     router.push({ name: 'Leads' })
   } catch (e) {
     toast.error(e?.messages?.[0] || __('Error converting lead'))
+  } finally {
+    isConverting.value = false
   }
 }
 
@@ -617,3 +628,51 @@ nextTick(() => {
   }
 })
 </script>
+
+<style>
+.spinner-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.loader {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+  border-top: 4px solid #fff;
+  border-right: 4px solid transparent;
+  box-sizing: border-box;
+  animation: rotation 1s linear infinite;
+}
+.loader::after {
+  content: '';
+  box-sizing: border-box;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border-left: 4px solid #FF3D00;
+  border-bottom: 4px solid transparent;
+  animation: rotation 0.5s linear infinite reverse;
+}
+@keyframes rotation {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+</style>
