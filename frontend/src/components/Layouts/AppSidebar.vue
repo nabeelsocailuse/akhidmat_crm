@@ -269,6 +269,11 @@ const allViews = computed(() => {
     icon: DonationIcon,
     to: 'Donations',
     },
+    {
+      label: 'Tax Exemption Certificates',
+      icon: NoteIcon,
+      to: 'TaxExemptionCertificates'
+    }
   ]
 
   let _views = [
@@ -376,6 +381,8 @@ function getIcon(routeName, icon) {
       return LeadsIcon
     case 'Donation':
       return DonationIcon
+    case 'TaxExemptionCertificate':
+      return NoteIcon
     case 'Email Template':
       return EmailIcon
     case 'Email Campaign':

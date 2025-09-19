@@ -1,11 +1,11 @@
 <template>
   <AppStyling type="detail-background" class="min-h-screen" style="background: linear-gradient(to bottom right, #fef7ff, #f8faff); min-height: 100vh;">
-  <div
+  <!-- <div
     v-if="isSendingEmail"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
   >
     <span class="loader"></span>
-  </div>
+  </div> -->
     <LayoutHeader>
       <template #left-header>
         <Breadcrumbs :items="breadcrumbs">
@@ -233,7 +233,7 @@ import {
   usePageMeta,
   toast,
 } from 'frappe-ui'
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
 
@@ -258,7 +258,7 @@ const errorTitle = ref('')
 const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
 const showFilesUploader = ref(false)
-const isSendingEmail = ref(false)
+// const isSendingEmail = ref(false)
 
 const { triggerOnChange, assignees, document, scripts, error } = useDocument(
   'Email Campaign',
@@ -474,24 +474,58 @@ function reloadAssignees(data) {
   }
 }
 
+
+function reloadPage() {
+  router.replace({ path: '/reload-temp' }).then(() => {
+    router.replace(route.fullPath);
+  });
+}
+
+const isSendingEmail = ref(false)
+
 function sendNow() {
-  isSendingEmail.value = true
-  call('crm.api.extended_email_campaign.send_email_to_leads_or_contacts_extended', {  
+  isSendingEmail.value = true 
+  toast.info(__('Sending emails...'))
+
+  call('crm.api.extended_email_campaign.send_email_to_leads_or_contacts_extended', {
     force: 1,
     email_campaign_id: props.emailCampaignId,
   })
-    .then((res) => {
-      console.debug('Send now response:', res)
-      toast.success(res?.message || __('Emails sent successfully'))
+    .then((r) => {
+      // Job queued successfully, realtime event will handle completion
+      console.log('Email sending job queued:', r.job_id)
     })
     .catch((err) => {
-      console.error('Send now failed:', err)
-      toast.error(err?.messages?.[0] || __('Failed to send emails'))
-    })
-    .finally(() => {
+      console.error(err)
+      toast.error(__('Failed to enqueue email sending job'))
       isSendingEmail.value = false
     })
 }
+
+// Listen for realtime job completion
+onMounted(() => {
+  if ($socket) {
+    $socket.on('email_campaign_progress', (data) => {
+      console.log('Realtime event received:', data)
+      if (data.status === 'Completed') {
+        isSendingEmail.value = false
+        toast.success(data.message || __('Emails sent successfully'))
+        document.reload()
+      } else if (data.status === 'Failed') {
+        isSendingEmail.value = false
+        toast.error(data.message || __('Email sending failed'))
+      }
+    })
+  }
+})
+
+onUnmounted(() => {
+  if ($socket) {
+    $socket.off('email_campaign_progress')
+  }
+})
+
+
 
 </script> 
 <style scoped>

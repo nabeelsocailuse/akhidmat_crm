@@ -1,52 +1,117 @@
 import frappe
 from frappe import _
 from frappe.utils import add_days, getdate, today, cint
+from frappe.utils.background_jobs import enqueue
 from erpnext.crm.doctype.email_campaign.email_campaign import send_mail
 
 
 @frappe.whitelist()
 def send_email_to_leads_or_contacts_extended(force: bool = False, email_campaign_id: str | None = None):
+    """Public method called from Vue. Enqueue a background job and return job_id."""
+    job = enqueue(
+        method=_process_email_campaigns,
+        queue="default",
+        timeout=600,  # 10 min
+        job_name=f"Send Email Campaign {email_campaign_id or 'bulk'}",
+        force=force,
+        email_campaign_id=email_campaign_id,
+        user=frappe.session.user, 
+    )
+    return {
+        "status": "Queued",
+        # "message": _("Emails are being sent in the background..."),
+        "job_id": job.id,
+    }
 
-    force_flag = bool(cint(force))
-    total_recipients = 0
 
-    if email_campaign_id:
-        filters = {"name": email_campaign_id, "status": ("!=", "Unsubscribed")}
-    else:
-        filters = {"status": ("not in", ["Unsubscribed", "Completed", "Scheduled"])}
+def _process_email_campaigns(force: bool = False, email_campaign_id: str | None = None, user: str | None = None):
+    """Actual heavy job that runs in background."""
+    try:
+        force_flag = bool(cint(force))
+        total_recipients = 0
+        updated_campaigns = []
 
-    email_campaigns = frappe.get_all("Email Campaign", filters=filters)
-    for camp in email_campaigns:
-        email_campaign = frappe.get_doc("Email Campaign", camp.name)
-        campaign = frappe.get_cached_doc("Campaign", email_campaign.campaign_name)
-
-        campaign_recipient_count = 0
-        if email_campaign.email_campaign_for == "Email Group":
-            campaign_recipient_count = cint(
-                frappe.db.get_value("Email Group", email_campaign.get("recipient"), "total_subscribers") or 0
-            )
+        # Build filters
+        if email_campaign_id:
+            filters = {"name": email_campaign_id, "status": ("!=", "Unsubscribed")}
         else:
-            email_addr = frappe.db.get_value(
-                email_campaign.email_campaign_for, email_campaign.get("recipient"), "email_id"
-            )
-            campaign_recipient_count = 1 if email_addr else 0
+            filters = {"status": ("not in", ["Unsubscribed", "Completed", "Scheduled"])}
 
-        sent_any_for_campaign = False
-        for entry in campaign.get("campaign_schedules"):
-            scheduled_date = add_days(email_campaign.get("start_date"), entry.get("send_after_days"))
-            if force_flag or scheduled_date == getdate(today()):
-                send_mail(entry, email_campaign)  
-                sent_any_for_campaign = True
+        # Get matching campaigns
+        email_campaigns = frappe.get_all("Email Campaign", filters=filters)
+        for camp in email_campaigns:
+            email_campaign = frappe.get_doc("Email Campaign", camp.name)
+            campaign = frappe.get_cached_doc("Campaign", email_campaign.campaign_name)
 
-        if sent_any_for_campaign:
-            total_recipients += campaign_recipient_count
+            # Determine total recipients
+            campaign_recipient_count = 0
+            if email_campaign.email_campaign_for == "Email Group":
+                # Only include active members
+                active_members = frappe.get_all(
+                    "Email Group Member",
+                    filters={
+                        "email_group": email_campaign.get("recipient"),
+                        "unsubscribed": 0
+                    },
+                    fields=["email"]
+                )
+                campaign_recipient_count = len(active_members)
+                if campaign_recipient_count == 0:
+                    continue  # skip if no active members
+            else:
+                email_addr = frappe.db.get_value(
+                    email_campaign.email_campaign_for, email_campaign.get("recipient"), "email_id"
+                )
+                if email_addr:
+                    campaign_recipient_count = 1
+                else:
+                    continue  # skip if no email
 
-    return {"status": "success", "message": _(f"Emails sent successfully ({total_recipients})")}
+            sent_any_for_campaign = False
+            for entry in campaign.get("campaign_schedules"):
+                scheduled_date = add_days(email_campaign.get("start_date"), entry.get("send_after_days"))
+                if force_flag or scheduled_date == getdate(today()):
+                    # send_mail handles recipients internally
+                    send_mail(entry, email_campaign)
+                    sent_any_for_campaign = True
+
+            if sent_any_for_campaign:
+                total_recipients += campaign_recipient_count
+                email_campaign.db_set("status", "Completed", update_modified=True)
+                updated_campaigns.append(email_campaign.name)
+
+        frappe.db.commit()
+
+        frappe.publish_realtime(
+            "email_campaign_progress",
+            {
+                "status": "Completed",
+                "updated_campaigns": updated_campaigns,
+                "total_recipients": total_recipients,
+                "message": _("Emails sent successfully ({0})").format(total_recipients),
+            },
+            user=user or frappe.session.user,
+            after_commit=True,
+        )
+
+    except Exception as e:
+        frappe.db.rollback()
+        # Notify frontend of failure
+        frappe.publish_realtime(
+            "email_campaign_progress",
+            {
+                "status": "Failed",
+                "message": _("Email sending failed: {0}").format(str(e)),
+            },
+            user=user or frappe.session.user,
+            after_commit=True,
+        )
+        frappe.log_error(title="Email Campaign Sending Failed", message=frappe.get_traceback())
+        raise
 
 
 
 def update_email_group_total_on_member_update(doc, method=None):
-    """Update totals when an Email Group Member changes its `email_group`."""
     if not doc.email_group:
         return
 

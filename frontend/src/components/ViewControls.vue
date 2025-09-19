@@ -192,6 +192,18 @@
           :doctype="doctype"
           @update="(isDefault) => updateColumns(isDefault)"
         />
+        <Button
+          v-if="doctype === 'Donation'"
+          class="whitespace-nowrap"
+          :label="__('Download multiple PDFs')"
+          @click="downloadMultiplePDFs"
+        />
+        <Button
+          v-if="doctype === 'Tax Exemption Certificate'"
+          class="whitespace-nowrap"
+          :label="__('Download multiple PDFs')"
+          @click="downloadTaxPDFs"
+        />
         <Dropdown
           v-if="route.params.viewType !== 'kanban' || isManager()"
           :options="[
@@ -283,6 +295,31 @@
           v-model="export_all"
         />
       </div>
+    </template>
+  </Dialog>
+  <Dialog
+    v-model="showMultiPDFDialog"
+    :options="{
+      title: __('Download Multiple PDFs'),
+      actions: [
+        {
+          label: __('Download'),
+          variant: 'solid',
+          onClick: () => confirmDownloadMultiPDFs(),
+          disabled: !selectedMultiPDFFormat,
+        },
+      ],
+    }"
+  >
+    <template #body-content>
+      <FormControl
+        variant="outline"
+        :label="__('Print Format')"
+        type="select"
+        :options="multiPDFFormats.map(f => ({ label: f.name, value: f.name }))"
+        v-model="selectedMultiPDFFormat"
+        :placeholder="loadingMultiPDFFormats ? __('Loading...') : __('Select a format')"
+      />
     </template>
   </Dialog>
 </template>
@@ -1396,6 +1433,158 @@ defineExpose({
   updateSelections,
   reload,
 })
+
+function downloadMultiplePDFs() {
+  if (props.doctype !== 'Donation') return
+  if (!selectedRows.value || selectedRows.value.length === 0) {
+    toast.error(__('Please select at least one record.'))
+    return
+  }
+  openMultiPDFDialog()
+}
+
+function downloadTaxPDFs() {
+  if (props.doctype !== 'Tax Exemption Certificate') return;
+  if (!selectedRows.value || selectedRows.value.length === 0) {
+    toast.error(__('Please select at least one record.'));
+    return;
+  }
+  openTaxMultiPDFDialog();
+}
+
+async function openTaxMultiPDFDialog() {
+  showMultiPDFDialog.value = true;
+  selectedMultiPDFFormat.value = '';
+  await fetchTaxPrintFormats();
+}
+
+async function fetchTaxPrintFormats() {
+  loadingMultiPDFFormats.value = true;
+  try {
+    const formats = await call('frappe.client.get_list', {
+      doctype: 'Print Format',
+      fields: ['name'],
+      filters: { doc_type: props.doctype || 'Tax Exemption Certificate', disabled: 0 },
+      order_by: 'name asc',
+      limit_page_length: 1000,
+    });
+    multiPDFFormats.value = Array.isArray(formats) ? formats : [];
+    if (multiPDFFormats.value.length === 1) {
+      selectedMultiPDFFormat.value = multiPDFFormats.value[0].name;
+    }
+  } catch (e) {
+    console.error('Error loading print formats:', e);
+    toast.error(__('Failed to load print formats'));
+  } finally {
+    loadingMultiPDFFormats.value = false;
+  }
+}
+
+async function confirmDownloadTaxPDFs() {
+  if (!selectedMultiPDFFormat.value) {
+    toast.error(__('Please select a print format'));
+    return;
+  }
+  try {
+    const selectedNames = (selectedRows.value || [])
+      .map((r) => (typeof r === 'string' ? r : r?.name))
+      .filter(Boolean);
+    if (!selectedNames.length) {
+      toast.error(__('Please select at least one record.'));
+      return;
+    }
+    const resp = await call('akf_education.akf_education.api.multiple_pdfs.download_multiple_pdfs', {
+      doctype: props.doctype || 'Tax Exemption Certificate',
+      docnames: JSON.stringify(selectedNames),
+      print_format: selectedMultiPDFFormat.value,
+    });
+    if (resp?.file_url) {
+      const fileUrl = resp.file_url.startsWith('http')
+        ? resp.file_url
+        : `${window.location.origin}${resp.file_url}`;
+      window.open(fileUrl, '_blank');
+    } else {
+      toast.error(__('Failed to generate PDFs'));
+    }
+  } catch (e) {
+    console.error('Download multi PDFs error:', e);
+    toast.error(__('Failed to generate ZIP'));
+  } finally {
+    showMultiPDFDialog.value = false;
+  }
+}
+
+// Multiple PDFs (Donation) dialog state
+const showMultiPDFDialog = ref(false)
+const multiPDFFormats = ref([])
+const selectedMultiPDFFormat = ref('')
+const loadingMultiPDFFormats = ref(false)
+
+async function openMultiPDFDialog() {
+  showMultiPDFDialog.value = true
+  selectedMultiPDFFormat.value = ''
+  await fetchDonationPrintFormats()
+}
+
+async function fetchDonationPrintFormats() {
+  loadingMultiPDFFormats.value = true
+  try {
+    const formats = await call('frappe.client.get_list', {
+      doctype: 'Print Format',
+      fields: ['name'],
+      filters: { doc_type: props.doctype || 'Donation', disabled: 0 },
+      order_by: 'name asc',
+      limit_page_length: 1000,
+    })
+    multiPDFFormats.value = Array.isArray(formats) ? formats : []
+    if (multiPDFFormats.value.length === 1) {
+      selectedMultiPDFFormat.value = multiPDFFormats.value[0].name
+    }
+  } catch (e) {
+    console.error('Error loading print formats:', e)
+    toast.error(__('Failed to load print formats'))
+  } finally {
+    loadingMultiPDFFormats.value = false
+  }
+}
+
+async function confirmDownloadMultiPDFs() {
+  if (!selectedMultiPDFFormat.value) {
+    toast.error(__('Please select a print format'))
+    return
+  }
+  try {
+    const selectedNames = (selectedRows.value || [])
+      .map((r) => (typeof r === 'string' ? r : r?.name))
+      .filter(Boolean)
+    if (!selectedNames.length) {
+      frappe?.msgprint
+        ? frappe.msgprint(__('Please select at least one record.'))
+        : toast.error(__('Please select at least one record.'))
+      return
+    }
+    const resp = await call('akf_education.akf_education.api.multiple_pdfs.download_multiple_pdfs', {
+      doctype: props.doctype || 'Donation',
+      docnames: JSON.stringify(selectedNames),
+      print_format: selectedMultiPDFFormat.value,
+    })
+    // console.log('API Response:', resp)
+    if (resp?.file_url) {
+      const fileUrl = resp.file_url.startsWith('http')
+        ? resp.file_url
+        : `${window.location.origin}${resp.file_url}`
+      window.open(fileUrl, '_blank')
+    } else {
+      console.error('No file_url in response:', resp)
+      toast.error(__('Failed to generate PDFs'))
+    }
+  } catch (e) {
+    console.error('Download multi PDFs error:', e)
+    toast.error(__('Failed to generate ZIP'))
+  } finally {
+    showMultiPDFDialog.value = false
+  }
+}
 
 // Watchers
 watch(

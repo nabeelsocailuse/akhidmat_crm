@@ -13,6 +13,7 @@
         class="grid-header flex items-center rounded-t-[7px] bg-surface-gray-2 text-ink-gray-5 truncate"
       >
         <div
+          v-if="gridSettings.editable_grid"
           class="inline-flex items-center justify-center border-r border-outline-gray-2 h-8 p-2 w-12"
         >
           <Checkbox
@@ -55,6 +56,7 @@
           <Button
             class="flex w-full items-center justify-center rounded !bg-surface-gray-2 border-0"
             variant="outline"
+            :disabled="!gridSettings.editable_grid"
             @click="showGridFieldsEditorModal = true"
           >
             <template #icon>
@@ -74,16 +76,10 @@
         >
           <template #item="{ element: row, index }">
             <div
-              class="grid-row flex cursor-pointer items-center border-b border-outline-gray-modals bg-surface-modals last:rounded-b last:border-b-0"
-              @click.stop="
-                () => {
-                  if (!gridSettings.editable_grid) {
-                    showRowList[index] = true
-                  }
-                }
-              "
+              class="grid-row flex items-center border-b border-outline-gray-modals bg-surface-modals last:rounded-b last:border-b-0"
             >
               <div
+                v-if="gridSettings.editable_grid"
                 class="grid-row-checkbox inline-flex h-9.5 items-center bg-surface-white justify-center border-r border-outline-gray-modals p-2 w-12"
               >
                 <Checkbox
@@ -117,11 +113,12 @@
                         'Check',
                         'Attach',
                         'Attach Image',
+                        'Table',
                       ].includes(field.fieldtype)
                     "
                     type="text"
                     :placeholder="field.placeholder"
-                    v-model="row[field.fieldname]"
+                    :value="row[field.fieldname]"
                     :disabled="true"
                   />
                   <Link
@@ -136,6 +133,7 @@
                         : row[field.options]
                     "
                     :filters="field.filters"
+                    :disabled="!gridSettings.editable_grid"
                     @change="(v) => fieldChange(v, field, row)"
                     :onCreate="
                       (value, close) => field.create(v, field, row, close)
@@ -147,6 +145,7 @@
                     :value="getUser(row[field.fieldname]).full_name"
                     :doctype="field.options"
                     :filters="field.filters"
+                    :disabled="!gridSettings.editable_grid"
                     @change="(v) => fieldChange(v, field, row)"
                     :placeholder="field.placeholder"
                     :hideMe="true"
@@ -177,9 +176,9 @@
                       <a :href="row[field.fieldname]" target="_blank" rel="noopener" class="truncate text-ink-blue-6 underline">
                         {{ row[field.fieldname] }}
                       </a>
-                      <Button size="sm" variant="subtle" @click.stop="() => { row[field.fieldname] = ''; forceReactiveUpdate(); triggerOnChange(field.fieldname, '', row) }">{{ __('Clear') }}</Button>
+                      <Button v-if="gridSettings.editable_grid" size="sm" variant="subtle" @click.stop="() => { row[field.fieldname] = ''; forceReactiveUpdate(); triggerOnChange(field.fieldname, '', row) }">{{ __('Clear') }}</Button>
                     </div>
-                    <div v-else class="w-full">
+                    <div v-else-if="gridSettings.editable_grid" class="w-full">
                       <FileUploader @success="(file) => onAttachSuccess(file, field, row)">
                         <template #default>
                           <Button variant="outline" class="w-full justify-center">{{ __('Attach') }}</Button>
@@ -205,6 +204,7 @@
                     variant="outline"
                     :formatter="(date) => getFormat(date, '', true)"
                     input-class="border-none text-sm text-ink-gray-8"
+                    :disabled="!gridSettings.editable_grid"
                     @change="(v) => fieldChange(v, field, row)"
                   />
                   <DateTimePicker
@@ -214,6 +214,7 @@
                     variant="outline"
                     :formatter="(date) => getFormat(date, '', true, true)"
                     input-class="border-none text-sm text-ink-gray-8"
+                    :disabled="!gridSettings.editable_grid"
                     @change="(v) => fieldChange(v, field, row)"
                   />
                   <FormControl
@@ -226,6 +227,7 @@
                     type="textarea"
                     variant="outline"
                     :value="row[field.fieldname]"
+                    :disabled="!gridSettings.editable_grid"
                     @change="fieldChange($event.target.value, field, row)"
                   />
                   <FormControl
@@ -235,13 +237,14 @@
                     variant="outline"
                     v-model="row[field.fieldname]"
                     :options="field.options"
+                    :disabled="!gridSettings.editable_grid"
                     @change="(e) => fieldChange(e.target.value, field, row)"
                   />
                   <Password
                     v-else-if="field.fieldtype === 'Password'"
                     variant="outline"
                     :value="row[field.fieldname]"
-                    :disabled="Boolean(field.read_only)"
+                    :disabled="Boolean(field.read_only) || !gridSettings.editable_grid"
                     @change="fieldChange($event.target.value, field, row)"
                   />
                   <FormattedInput
@@ -250,7 +253,7 @@
                     type="text"
                     variant="outline"
                     :value="row[field.fieldname] || '0'"
-                    :disabled="Boolean(field.read_only)"
+                    :disabled="Boolean(field.read_only) || !gridSettings.editable_grid"
                     @change="fieldChange($event.target.value, field, row)"
                   />
                   <FormattedInput
@@ -260,7 +263,7 @@
                     variant="outline"
                     :value="getFloatWithPrecision(field.fieldname, row)"
                     :formattedValue="(row[field.fieldname] || '0') + '%'"
-                    :disabled="Boolean(field.read_only)"
+                    :disabled="Boolean(field.read_only) || !gridSettings.editable_grid"
                     @change="fieldChange(flt($event.target.value), field, row)"
                   />
                   <FormattedInput
@@ -270,7 +273,7 @@
                     variant="outline"
                     :value="getFloatWithPrecision(field.fieldname, row)"
                     :formattedValue="row[field.fieldname]"
-                    :disabled="Boolean(field.read_only)"
+                    :disabled="Boolean(field.read_only) || !gridSettings.editable_grid"
                     @change="fieldChange(flt($event.target.value), field, row)"
                   />
                   <FormattedInput
@@ -282,7 +285,7 @@
                     :formattedValue="
                       getFormattedCurrency(field.fieldname, row, parentDoc)
                     "
-                    :disabled="Boolean(field.read_only)"
+                    :disabled="Boolean(field.read_only) || !gridSettings.editable_grid"
                     @change="fieldChange(flt($event.target.value), field, row)"
                   />
                   <FormControl
@@ -292,7 +295,19 @@
                     variant="outline"
                     v-model="row[field.fieldname]"
                     :options="field.options"
+                    :disabled="!gridSettings.editable_grid"
                     @change="fieldChange($event.target.value, field, row)"
+                  />
+                  <Grid
+                    v-if="field.fieldtype === 'Table'"
+                    v-model="data[field.fieldname]"
+                    v-model:parent="data"
+                    :doctype="field.options"
+                    :parentDoctype="doctype"
+                    :parentFieldname="field.fieldname"
+                    :donorFiltering="getDonorFilteringFromData()"
+                    :readOnly="readOnly || Boolean(field.read_only)"
+                    @donor-selected="$emit('donor-selected', $event)"
                   />
                 </div>
               </div>
@@ -317,6 +332,8 @@
                 :parentDoctype="parentDoctype"
                 :parentFieldname="parentFieldname"
                 :donorFiltering="getDonorFilteringFromParent()"
+                :readOnly="!gridSettings.editable_grid"
+                @field-change="(fieldname, value) => handleGridRowModalFieldChange(index, fieldname, value)"
               />
             </div>
           </template>
@@ -333,19 +350,20 @@
 
     <div v-if="fields?.length" class="mt-2 flex flex-row gap-2">
       <Button
-        v-if="showDeleteBtn"
+        v-if="showDeleteBtn && gridSettings.editable_grid"
         :label="__('Delete')"
         variant="solid"
         theme="red"
         @click="deleteRows"
       />
-      <Button :label="__('Add Row')" @click="addRow" />
+      <Button v-if="gridSettings.editable_grid" :label="__('Add Row')" @click="addRow" />
     </div>
     <GridRowFieldsModal
       v-if="showGridRowFieldsModal"
       v-model="showGridRowFieldsModal"
       :doctype="doctype"
       :parentDoctype="parentDoctype"
+      :readOnly="!gridSettings.editable_grid"
     />
     <GridFieldsEditorModal
       v-if="showGridFieldsEditorModal"
@@ -403,6 +421,10 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  readOnly: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const triggerOnChange = inject('triggerOnChange', () => {})
@@ -445,7 +467,13 @@ const selectedRows = reactive(new Set())
 const showGridFieldsEditorModal = ref(false)
 const showGridRowFieldsModal = ref(false)
 
-const gridSettings = computed(() => getGridSettings())
+const gridSettings = computed(() => {
+  const settings = getGridSettings()
+  if (props.readOnly) {
+    return { ...settings, editable_grid: false }
+  }
+  return settings
+})
 
 const fields = computed(() => {
   let gridViewSettings = getGridViewSettings(props.parentDoctype)
@@ -833,7 +861,7 @@ const deleteRows = () => {
   selectedRows.clear()
 }
 
-const emit = defineEmits(['donor-selected', 'deduction-row-added', 'add-deduction-row', 'deduction-table-cleared'])
+const emit = defineEmits(['donor-selected', 'fund-class-selected', 'deduction-row-added', 'add-deduction-row', 'deduction-table-cleared'])
 
 const { fetchDonorDetails, updateDonorFields, clearDonorFields } = useDonorSelection()
 
@@ -2182,6 +2210,206 @@ async function fieldChange(value, field, row) {
     }
   }
   
+  // Handle items table field changes for auto-fetching
+  if (props.parentFieldname === 'items') {
+    console.log('=== ITEMS TABLE FIELD CHANGE ===')
+    console.log('Field name:', field.fieldname)
+    console.log('Value:', value)
+    console.log('Row:', row)
+    
+    // Handle fund_class change in items table
+    if (field.fieldname === 'fund_class' && value) {
+      console.log('Fund class selected in items table:', value)
+      
+      try {
+        // Fetch fund class details
+        const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
+          fund_class_id: value,
+          company: parentDoc.value?.company || 'Alkhidmat Foundation'
+        })
+        
+        if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
+          console.log('Fund class details received for items:', fundClassDetails)
+          
+          // Update items row with fund class details
+          if (fundClassDetails.service_area) {
+            row.service_area = fundClassDetails.service_area
+          }
+          if (fundClassDetails.subservice_area) {
+            row.subservice_area = fundClassDetails.subservice_area
+          }
+          if (fundClassDetails.product) {
+            row.product = fundClassDetails.product
+          }
+          if (fundClassDetails.cost_center) {
+            row.cost_center = fundClassDetails.cost_center
+          }
+          
+          console.log('Items row updated with fund class details')
+          toast.success('Fund class details loaded successfully')
+        } else {
+          console.log('No fund class details found for items')
+          toast.warning('No fund class details found')
+        }
+      } catch (error) {
+        console.error('Error fetching fund class details for items:', error)
+        toast.error('Error loading fund class details')
+      }
+      
+      // Emit fund-class-selected event for parent components
+      emit('fund-class-selected', { row, fundClassId: value, success: !!value })
+      
+      // Force reactive update
+      forceReactiveUpdate()
+      
+      // Call the original triggerOnChange
+      triggerOnChange(field.fieldname, value, row)
+      
+      return
+    }
+    
+    // Handle donor change in items table
+    if (field.fieldname === 'donor' && value) {
+      console.log('Donor selected in items table:', value)
+      
+      try {
+        // Fetch donor details
+        const donorDetails = await call('frappe.client.get', {
+          doctype: 'Donor',
+          name: value
+        })
+        
+        if (donorDetails) {
+          console.log('Donor details received for items:', donorDetails)
+          
+          // Update items row with donor details
+          if (donorDetails.donor_name) {
+            row.donor_name = donorDetails.donor_name
+          }
+          if (donorDetails.donor_type) {
+            row.donor_type = donorDetails.donor_type
+          }
+          if (donorDetails.donor_desk) {
+            row.donor_desk = donorDetails.donor_desk
+          }
+          
+          console.log('Items row updated with donor details')
+          toast.success('Donor details loaded successfully')
+        } else {
+          console.log('No donor details found for items')
+          toast.warning('No donor details found')
+        }
+      } catch (error) {
+        console.error('Error fetching donor details for items:', error)
+        toast.error('Error loading donor details')
+      }
+      
+      // Emit donor-selected event for parent components
+      emit('donor-selected', { row, donorId: value, success: !!value })
+      
+      // Force reactive update
+      forceReactiveUpdate()
+      
+      // Call the original triggerOnChange
+      triggerOnChange(field.fieldname, value, row)
+      
+      return
+    }
+    
+    // Handle project change in items table (for cost center, service area, etc.)
+    if (field.fieldname === 'project' && value) {
+      console.log('Project selected in items table:', value)
+      
+      try {
+        // Fetch project details
+        const projectDetails = await call('frappe.client.get', {
+          doctype: 'Project',
+          name: value
+        })
+        
+        if (projectDetails) {
+          console.log('Project details received for items:', projectDetails)
+          
+          // Update items row with project details
+          if (projectDetails.cost_center) {
+            row.cost_center = projectDetails.cost_center
+          }
+          if (projectDetails.custom_service_area) {
+            row.service_area = projectDetails.custom_service_area
+          }
+          if (projectDetails.custom_subservice_area) {
+            row.subservice_area = projectDetails.custom_subservice_area
+          }
+          if (projectDetails.custom_product) {
+            row.product = projectDetails.custom_product
+          }
+          if (projectDetails.fund_class) {
+            row.fund_class = projectDetails.fund_class
+          }
+          
+          console.log('Items row updated with project details')
+          toast.success('Project details loaded successfully')
+        } else {
+          console.log('No project details found for items')
+          toast.warning('No project details found')
+        }
+      } catch (error) {
+        console.error('Error fetching project details for items:', error)
+        toast.error('Error loading project details')
+      }
+      
+      // Force reactive update
+      forceReactiveUpdate()
+      
+      // Call the original triggerOnChange
+      triggerOnChange(field.fieldname, value, row)
+      
+      return
+    }
+    
+    // Handle item_code change in items table
+    if (field.fieldname === 'item_code' && value) {
+      console.log('Item code selected in items table:', value)
+      
+      try {
+        // Fetch item details
+        const itemDetails = await call('frappe.client.get', {
+          doctype: 'Item',
+          name: value
+        })
+        
+        if (itemDetails) {
+          console.log('Item details received for items:', itemDetails)
+          
+          // Update items row with item details
+          if (itemDetails.item_name) {
+            row.item_name = itemDetails.item_name
+          }
+          if (itemDetails.valuation_rate) {
+            row.basic_rate = itemDetails.valuation_rate
+          }
+          
+          console.log('Items row updated with item details')
+          toast.success('Item details loaded successfully')
+        } else {
+          console.log('No item details found for items')
+          toast.warning('No item details found')
+        }
+      } catch (error) {
+        console.error('Error fetching item details for items:', error)
+        toast.error('Error loading item details')
+      }
+      
+      // Force reactive update
+      forceReactiveUpdate()
+      
+      // Call the original triggerOnChange
+      triggerOnChange(field.fieldname, value, row)
+      
+      return
+    }
+  }
+  
   // Regular field change handling
   triggerOnChange(field.fieldname, value, row)
 }
@@ -2653,4 +2881,133 @@ watch(
 //     toast.error(`Error loading account for mode of payment: ${error.message}`)
 //   }
 // }
+
+// ADD: Handle field changes from GridRowModal
+function handleGridRowModalFieldChange(rowIndex, fieldname, value) {
+  console.log(' GridRowModal field change received:', { rowIndex, fieldname, value })
+  
+  if (rowIndex >= 0 && rowIndex < data.value.length) {
+    console.log('📝 Updating row data:', { 
+      rowIndex, 
+      fieldname, 
+      value, 
+      currentValue: data.value[rowIndex][fieldname],
+      rowData: data.value[rowIndex]
+    })
+    
+    // Update the row data
+    data.value[rowIndex][fieldname] = value
+    
+    // Force reactive update
+    forceReactiveUpdate()
+    
+    console.log('✅ Row data updated:', { 
+      rowIndex, 
+      fieldname, 
+      newValue: data.value[rowIndex][fieldname],
+      updatedRow: data.value[rowIndex]
+    })
+    
+    // ADD: Handle fetch_from logic for items table
+    if (props.parentFieldname === 'items') {
+      console.log(' Items table field change detected, handling fetch_from logic')
+      
+      // Handle fund_class change - fetch related fields
+      if (fieldname === 'fund_class' && value) {
+        console.log(' Fund class selected in items table:', value)
+        handleFetchFromForItems(rowIndex, 'fund_class', value)
+      }
+      
+      // Handle donor change - fetch related fields  
+      if (fieldname === 'donor' && value) {
+        console.log(' Donor selected in items table:', value)
+        handleFetchFromForItems(rowIndex, 'donor', value)
+      }
+    }
+  } else {
+    console.error('❌ Invalid row index:', { rowIndex, dataLength: data.value.length })
+  }
+}
+
+// ADD: Function to handle fetch_from logic for items table
+async function handleFetchFromForItems(rowIndex, fieldname, value) {
+  try {
+    const row = data.value[rowIndex]
+    
+    if (fieldname === 'fund_class') {
+      // Use the same API as payment details for consistency
+      const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
+        fund_class_id: value,
+        company: parentDoc.value?.company || 'Alkhidmat Foundation'
+      })
+      
+      console.log('📊 Fund class details received for items:', fundClassDetails)
+      
+      if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
+        // Update fields based on fetch_from configuration
+        if (fundClassDetails.service_area) {
+          row.service_area = fundClassDetails.service_area
+          console.log('📝 Updated service_area:', fundClassDetails.service_area)
+        }
+        if (fundClassDetails.subservice_area) {
+          row.subservice_area = fundClassDetails.subservice_area
+          console.log('📝 Updated subservice_area:', fundClassDetails.subservice_area)
+        }
+        if (fundClassDetails.product) {
+          row.product = fundClassDetails.product
+          console.log('📝 Updated product:', fundClassDetails.product)
+        }
+        if (fundClassDetails.cost_center) {
+          row.cost_center = fundClassDetails.cost_center
+          console.log('📝 Updated cost_center:', fundClassDetails.cost_center)
+        }
+        
+        toast.success('Fund class details loaded successfully')
+      } else {
+        console.log('No fund class details found for items')
+        toast.warning('No fund class details found')
+      }
+    }
+    
+    if (fieldname === 'donor') {
+      // Fetch donor details using the same API as backend
+      const donorDetails = await call('frappe.client.get', {
+        doctype: 'Donor',
+        name: value
+      })
+      
+      console.log('👤 Donor details received for items:', donorDetails)
+      
+      if (donorDetails) {
+        // Update fields based on fetch_from configuration
+        if (donorDetails.donor_name) {
+          row.donor_name = donorDetails.donor_name
+          console.log('📝 Updated donor_name:', donorDetails.donor_name)
+        }
+        if (donorDetails.donor_type) {
+          row.donor_type = donorDetails.donor_type
+          console.log('📝 Updated donor_type:', donorDetails.donor_type)
+        }
+        if (donorDetails.donor_desk) {
+          row.donor_desk = donorDetails.donor_desk
+          console.log('📝 Updated donor_desk:', donorDetails.donor_desk)
+        }
+        
+        toast.success('Donor details loaded successfully')
+      } else {
+        console.log('No donor details found for items')
+        toast.warning('No donor details found')
+      }
+    }
+    
+    // Force reactive update
+    forceReactiveUpdate()
+    
+  } catch (error) {
+    console.error('❌ Error fetching details:', error)
+    toast.error(`Error loading ${fieldname} details`)
+  }
+}
+
+// ... existing code ...
 </script>

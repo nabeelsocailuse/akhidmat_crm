@@ -14,7 +14,7 @@
             :hideLabel="!section.label"
             :opened="section.opened"
           >
-            <template v-if="!preview" #actions>
+            <template v-if="!preview && !readOnly" #actions>
               <slot name="actions" v-bind="{ section }">
                 <Button
                   v-if="section.showEditButton"
@@ -66,7 +66,7 @@
                       >
                         <div
                           v-if="
-                            field.read_only &&
+                            (field.read_only || readOnly) &&
                             ![
                               'Int',
                               'Float',
@@ -83,7 +83,12 @@
                           </Tooltip>
                         </div>
                         <div v-else-if="field.fieldtype === 'Dropdown'">
-                          <NestedPopover>
+                          <div v-if="field.read_only || readOnly" class="flex h-7 cursor-pointer items-center px-2 py-1 text-ink-gray-5">
+                            <Tooltip :text="__(field.tooltip)">
+                              <div>{{ doc[field.fieldname] || field.placeholder }}</div>
+                            </Tooltip>
+                          </div>
+                          <NestedPopover v-else>
                             <template #target="{ open }">
                               <Button
                                 :label="doc[field.fieldname]"
@@ -154,7 +159,7 @@
                           @change.stop="
                             fieldChange($event.target.checked, field)
                           "
-                          :disabled="Boolean(field.read_only)"
+                          :disabled="Boolean(field.read_only) || readOnly"
                         />
                         <FormControl
                           v-else-if="
@@ -170,6 +175,7 @@
                           :value="doc[field.fieldname]"
                           :placeholder="field.placeholder"
                           :debounce="500"
+                          :disabled="Boolean(field.read_only) || readOnly"
                           @change.stop="fieldChange($event.target.value, field)"
                         />
                         <FormControl
@@ -179,6 +185,7 @@
                           v-model="doc[field.fieldname]"
                           :options="field.options"
                           :placeholder="field.placeholder"
+                          :disabled="Boolean(field.read_only) || readOnly"
                           @change.stop="fieldChange($event.target.value, field)"
                         />
                         <Link
@@ -190,6 +197,7 @@
                           "
                           doctype="User"
                           :filters="field.filters"
+                          :disabled="Boolean(field.read_only) || readOnly"
                           @change="(v) => fieldChange(v, field)"
                           :placeholder="'Select' + ' ' + field.label + '...'"
                           :hideMe="true"
@@ -229,6 +237,7 @@
                           "
                           :filters="field.filters"
                           :placeholder="field.placeholder"
+                          :disabled="Boolean(field.read_only) || readOnly"
                           @change="(v) => fieldChange(v, field)"
                           :onCreate="field.create"
                         />
@@ -245,6 +254,7 @@
                             :placeholder="field.placeholder"
                             placement="left-start"
                             :hideIcon="true"
+                            :disabled="Boolean(field.read_only) || readOnly"
                             @change="(v) => fieldChange(v, field)"
                           />
                         </div>
@@ -259,6 +269,7 @@
                             :placeholder="field.placeholder"
                             placement="left-start"
                             :hideIcon="true"
+                            :disabled="Boolean(field.read_only) || readOnly"
                             @change="(v) => fieldChange(v, field)"
                           />
                         </div>
@@ -272,7 +283,7 @@
                           @change.stop="
                             fieldChange(flt($event.target.value), field)
                           "
-                          :disabled="Boolean(field.read_only)"
+                          :disabled="Boolean(field.read_only) || readOnly"
                         />
                         <Password
                           v-else-if="field.fieldtype === 'Password'"
@@ -281,7 +292,7 @@
                           :placeholder="field.placeholder"
                           :debounce="500"
                           @change.stop="fieldChange($event.target.value, field)"
-                          :disabled="Boolean(field.read_only)"
+                          :disabled="Boolean(field.read_only) || readOnly"
                         />
                         <FormattedInput
                           v-else-if="field.fieldtype === 'Int'"
@@ -291,7 +302,7 @@
                           :placeholder="field.placeholder"
                           :debounce="500"
                           @change.stop="fieldChange($event.target.value, field)"
-                          :disabled="Boolean(field.read_only)"
+                          :disabled="Boolean(field.read_only) || readOnly"
                         />
                         <FormattedInput
                           v-else-if="field.fieldtype === 'Float'"
@@ -303,7 +314,7 @@
                           @change.stop="
                             fieldChange(flt($event.target.value), field)
                           "
-                          :disabled="Boolean(field.read_only)"
+                          :disabled="Boolean(field.read_only) || readOnly"
                         />
                         <FormattedInput
                           v-else-if="field.fieldtype === 'Currency'"
@@ -315,7 +326,7 @@
                           @change.stop="
                             fieldChange(flt($event.target.value), field)
                           "
-                          :disabled="Boolean(field.read_only)"
+                          :disabled="Boolean(field.read_only) || readOnly"
                         />
                         <FormControl
                           v-else
@@ -324,6 +335,7 @@
                           :value="doc[field.fieldname]"
                           :placeholder="field.placeholder"
                           :debounce="500"
+                          :disabled="Boolean(field.read_only) || readOnly"
                           @change.stop="fieldChange($event.target.value, field)"
                         />
                       </div>
@@ -400,6 +412,10 @@ const props = defineProps({
     required: true,
   },
   preview: {
+    type: Boolean,
+    default: false,
+  },
+  readOnly: {
     type: Boolean,
     default: false,
   },

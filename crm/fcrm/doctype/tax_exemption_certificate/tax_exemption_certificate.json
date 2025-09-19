@@ -1,0 +1,100 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-09-19 11:58:03.706518",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "donor",
+  "donor_address",
+  "date_of_issue",
+  "donation_date",
+  "receipt_number",
+  "column_break_tdee",
+  "donor_cnic__ntn",
+  "certificate_number",
+  "total_donation",
+  "payment_method"
+ ],
+ "fields": [
+  {
+   "fieldname": "donor",
+   "fieldtype": "Link",
+   "label": "Donor",
+   "options": "Donor"
+  },
+  {
+   "fetch_from": "donor.address",
+   "fieldname": "donor_address",
+   "fieldtype": "Data",
+   "label": "Donor Address"
+  },
+  {
+   "fieldname": "date_of_issue",
+   "fieldtype": "Date",
+   "label": "Date of Issue"
+  },
+  {
+   "fieldname": "donation_date",
+   "fieldtype": "Date",
+   "label": "Donation Date"
+  },
+  {
+   "fieldname": "receipt_number",
+   "fieldtype": "Data",
+   "label": "Receipt Number"
+  },
+  {
+   "fieldname": "column_break_tdee",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "donor.cnic",
+   "fieldname": "donor_cnic__ntn",
+   "fieldtype": "Data",
+   "label": "Donor CNIC / NTN"
+  },
+  {
+   "fieldname": "certificate_number",
+   "fieldtype": "Data",
+   "label": "Certificate Number"
+  },
+  {
+   "fieldname": "total_donation",
+   "fieldtype": "Data",
+   "label": "Total Donation"
+  },
+  {
+   "fieldname": "payment_method",
+   "fieldtype": "Link",
+   "label": "Payment Method",
+   "options": "Mode of Payment"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-09-19 11:58:03.706518",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "Tax Exemption Certificate",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

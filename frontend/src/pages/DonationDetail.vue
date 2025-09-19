@@ -32,6 +32,29 @@
           :data="document.doc"
           doctype="Donation"
         />
+        <Button label="Print" @click="printDonation" />
+        <Button label="PDF" @click="openDonationPDF" />
+        <Button 
+          v-if="document.doc && document.doc.docstatus === 0 && document.doc.status === 'Draft'"
+          label="Submit" 
+          variant="solid"
+          @click="submitDonation"
+        />
+        <Dropdown
+          v-if="document.doc && document.doc.docstatus === 1"
+          :options="createDropdownOptions"
+        >
+          <template #default="{ open }">
+            <Button label="Create">
+              <template #suffix>
+                <FeatherIcon
+                  :name="open ? 'chevron-up' : 'chevron-down'"
+                  class="h-4"
+                />
+              </template>
+            </Button>
+          </template>
+        </Dropdown>
       </template>
     </LayoutHeader>
     
@@ -44,6 +67,8 @@
             doctype="Donation"
             :docname="document.doc.name"
             :tabs="tabs"
+            :hideSaveButton="isReadOnly"
+            :readOnly="isReadOnly"
             v-model:reload="reload"
             v-model:tabIndex="tabIndex"
             @beforeSave="saveChanges"
@@ -109,7 +134,7 @@
                   {{ title }}
                 </div>
                 <div class="text-sm text-gray-500">
-                  {{ document.doc.donor_name || __('No donor name') }}
+                  {{ donorName || __('No donor name') }}
                 </div>
               </div>
             </div>
@@ -130,6 +155,7 @@
             :sections="sections.data"
             doctype="Donation"
             :docname="document.doc.name"
+            :readOnly="isReadOnly"
             @reload="sections.reload"
             @afterFieldChange="reloadAssignees"
             @open-create-modal="openCreateModal"
@@ -146,6 +172,184 @@
           </template>
         </div>
       </Resizer>
+      
+      <!-- Return/Credit Note Modal -->
+      <Dialog v-model="showReturnModal" :options="{ size: '6xl' }">
+        <template #body>
+          <div class="bg-surface-modal px-4 pb-6 pt-5 sm:px-6">
+            <div class="mb-5 flex items-center justify-between">
+              <div>
+                <h3 class="text-2xl font-semibold leading-6 text-ink-gray-9">
+                  {{ __('Return / Credit Note') }}
+                </h3>
+                <p class="mt-1 text-sm text-ink-gray-5">
+                  {{ __('Return against: {0}', [document.doc?.name]) }}
+                </p>
+              </div>
+              <div class="flex items-center gap-2">
+                <Button
+                  v-if="returnDocument && returnDocument.docstatus === 0"
+                  variant="outline"
+                  :loading="isReturnCreating"
+                  @click="saveReturnAsDraft"
+                >
+                  {{ __('Save as Draft') }}
+                </Button>
+                <Button
+                  v-if="returnDocument && returnDocument.docstatus === 0"
+                  variant="solid"
+                  :loading="isReturnSubmitting"
+                  @click="submitReturnDocument"
+                >
+                  {{ __('Submit') }}
+                </Button>
+                <Button variant="ghost" class="w-7" @click="showReturnModal = false">
+                  <template #icon>
+                    <FeatherIcon name="x" class="h-4 w-4" />
+                  </template>
+                </Button>
+              </div>
+            </div>
+            <div v-if="returnDocument">
+              <div v-if="sections.data" class="space-y-6">
+                <div v-for="tab in sections.data" :key="tab.name" class="space-y-4">
+                  <h4 class="text-lg font-medium text-ink-gray-9">{{ tab.label || tab.name }}</h4>
+                  <div v-for="section in tab.sections" :key="section.name" class="space-y-3">
+                    <h5 class="text-sm font-medium text-ink-gray-7">{{ section.label || section.name }}</h5>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div v-for="field in section.fields" :key="field.fieldname" class="space-y-1">
+                        <label class="block text-sm font-medium text-ink-gray-7">
+                          {{ field.label }}
+                          <span v-if="field.reqd" class="text-red-500">*</span>
+                        </label>
+                        
+                        <!-- Text Input -->
+                        <FormControl
+                          v-if="['Data', 'Small Text', 'Text'].includes(field.fieldtype)"
+                          type="text"
+                          :value="returnDocument[field.fieldname]"
+                          :placeholder="field.placeholder"
+                          @change="returnDocument[field.fieldname] = $event.target.value"
+                        />
+                        
+                        <!-- Select -->
+                        <FormControl
+                          v-else-if="field.fieldtype === 'Select'"
+                          type="select"
+                          :value="returnDocument[field.fieldname]"
+                          :options="field.options"
+                          @change="returnDocument[field.fieldname] = $event.target.value"
+                        />
+                        
+                        <!-- Link -->
+                        <Link
+                          v-else-if="['Link', 'Dynamic Link'].includes(field.fieldtype)"
+                          :value="returnDocument[field.fieldname]"
+                          :doctype="field.fieldtype === 'Link' ? field.options : returnDocument[field.options]"
+                          :filters="field.filters"
+                          @change="returnDocument[field.fieldname] = $event"
+                        />
+                        
+                        <!-- Date -->
+                        <DatePicker
+                          v-else-if="field.fieldtype === 'Date'"
+                          :value="returnDocument[field.fieldname]"
+                          @change="returnDocument[field.fieldname] = $event"
+                        />
+                        
+                        <!-- Datetime -->
+                        <DateTimePicker
+                          v-else-if="field.fieldtype === 'Datetime'"
+                          :value="returnDocument[field.fieldname]"
+                          @change="returnDocument[field.fieldname] = $event"
+                        />
+                        
+                        <!-- Checkbox -->
+                        <Checkbox
+                          v-else-if="field.fieldtype === 'Check'"
+                          :modelValue="returnDocument[field.fieldname]"
+                          @change="returnDocument[field.fieldname] = $event"
+                        />
+                        
+                        <!-- Currency -->
+                        <FormControl
+                          v-else-if="field.fieldtype === 'Currency'"
+                          type="text"
+                          :value="returnDocument[field.fieldname]"
+                          @change="returnDocument[field.fieldname] = $event.target.value"
+                        />
+                        
+                        <!-- Float -->
+                        <FormControl
+                          v-else-if="field.fieldtype === 'Float'"
+                          type="text"
+                          :value="returnDocument[field.fieldname]"
+                          @change="returnDocument[field.fieldname] = $event.target.value"
+                        />
+                        
+                        <!-- Int -->
+                        <FormControl
+                          v-else-if="field.fieldtype === 'Int'"
+                          type="text"
+                          :value="returnDocument[field.fieldname]"
+                          @change="returnDocument[field.fieldname] = $event.target.value"
+                        />
+                        
+                        <!-- Percent -->
+                        <FormControl
+                          v-else-if="field.fieldtype === 'Percent'"
+                          type="text"
+                          :value="returnDocument[field.fieldname]"
+                          @change="returnDocument[field.fieldname] = $event.target.value"
+                        />
+                        
+                        <!-- Textarea -->
+                        <FormControl
+                          v-else-if="['Long Text', 'Code'].includes(field.fieldtype)"
+                          type="textarea"
+                          :value="returnDocument[field.fieldname]"
+                          :placeholder="field.placeholder"
+                          @change="returnDocument[field.fieldname] = $event.target.value"
+                        />
+                        
+                        <!-- Table -->
+                        <div v-else-if="field.fieldtype === 'Table'" class="border rounded p-4">
+                          <h6 class="text-sm font-medium mb-2">{{ field.label }}</h6>
+                          <div v-if="returnDocument[field.fieldname] && returnDocument[field.fieldname].length > 0" class="space-y-2">
+                            <div v-for="(row, index) in returnDocument[field.fieldname]" :key="index" class="border rounded p-2 bg-gray-50">
+                              <div class="text-xs text-gray-600 mb-1">Row {{ index + 1 }}</div>
+                              <div class="grid grid-cols-2 gap-2 text-sm">
+                                <div v-for="(value, key) in row" :key="key" v-if="value">
+                                  <span class="font-medium">{{ key }}:</span> {{ value }}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div v-else class="text-sm text-gray-500">No data</div>
+                        </div>
+                        
+                        <!-- Default -->
+                        <div v-else class="text-sm text-gray-500">
+                          {{ returnDocument[field.fieldname] || 'No value' }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="text-center py-8 text-gray-500">
+                Loading form fields...
+              </div>
+            </div>
+            <div v-else-if="isReturnCreating" class="flex items-center justify-center py-8">
+              <div class="text-center">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p class="text-sm text-ink-gray-5">{{ __('Preparing Return/Credit Note...') }}</p>
+              </div>
+            </div>
+          </div>
+        </template>
+      </Dialog>
     </div>
   </AppStyling>
   
@@ -154,6 +358,36 @@
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
+  
+  <div v-if="showPrintModal" class="fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-black/50" @click="closePrintModal"></div>
+    <div class="relative z-10 w-[420px] rounded-lg bg-white shadow-xl">
+      <div class="flex items-center justify-between border-b px-4 py-3">
+        <div class="text-base font-medium">{{ __('Select Print Format') }}</div>
+        <button class="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100" @click="closePrintModal">{{ __('Close') }}</button>
+      </div>
+      <div class="space-y-2 px-4 py-4">
+        <label class="block text-sm text-gray-700">{{ __('Print Format') }}</label>
+        <select
+          class="block w-full rounded border px-3 py-2 text-sm"
+          v-model="selectedPrintFormat"
+        >
+          <option value="" disabled>{{ loadingFormats ? __('Loading...') : __('Select a format') }}</option>
+          <option v-for="f in printFormats" :key="f.name" :value="f.name">{{ f.name }}</option>
+        </select>
+      </div>
+      <div class="flex items-center justify-end gap-2 border-t px-4 py-3">
+        <button class="rounded px-3 py-1.5 text-sm hover:bg-gray-100" @click="closePrintModal">{{ __('Cancel') }}</button>
+        <button
+          class="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="!selectedPrintFormat || loadingFormats"
+          @click="confirmPrint"
+        >
+          {{ __('Print') }}
+        </button>
+      </div>
+    </div>
+  </div>
   
   <FilesUploader
     v-if="document.doc?.name"
@@ -177,6 +411,7 @@
     :tabs="filteredTabs" 
     :data="document.doc" 
     :doctype="'Donation'"
+    :readOnly="isReadOnly"
     :triggerOnChange="customTriggerOnChange"
     :triggerOnRowRemove="customTriggerOnRowRemove"
     @open-create-modal="openCreateModal"
@@ -243,6 +478,11 @@ import {
   usePageMeta,
   toast,
   FeatherIcon,
+  FormControl,
+  Link,
+  DatePicker,
+  DateTimePicker,
+  Checkbox,
 } from 'frappe-ui'
 import { ref as vueRef, reactive, computed as vueComputed, onMounted as vueOnMounted, watch as vueWatch, nextTick, h } from 'vue'
 import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
@@ -313,10 +553,22 @@ const breadcrumbs = computed(() => [
   { label: document.doc?.name || props.donationId, route: { name: 'DonationDetail', params: { donationId: props.donationId } } }
 ])
 
+// Get donor name from payment detail rows
+const donorName = computed(() => {
+  if (document.doc?.payment_detail && document.doc.payment_detail.length > 0) {
+    // Get the first payment detail row that has a donor name
+    const firstRowWithDonor = document.doc.payment_detail.find(row => row.donor_name)
+    if (firstRowWithDonor) {
+      return firstRowWithDonor.donor_name
+    }
+  }
+  return null
+})
+
 // Title for display
 const title = computed(() => {
-  if (document.doc?.donor_name) {
-    return document.doc.donor_name
+  if (donorName.value) {
+    return donorName.value
   }
   if (document.doc?.name) {
     return document.doc.name
@@ -964,8 +1216,112 @@ function handleCopyToClipboard(text) {
 
 // Open email box
 function openEmailBox() {
-  // Implementation for opening email box
   console.log('Opening email box for:', document.data.email)
+}
+
+function printDonation() {
+  try {
+    const doctype = 'Donation'
+    const name = document?.doc?.name
+    if (!name) {
+      toast?.error && toast.error(__('Document not loaded'))
+      return
+    }
+    openPrintModal()
+  } catch (e) {
+    console.error('Error opening print view:', e)
+  }
+}
+
+// Print modal state and logic
+const showPrintModal = ref(false)
+const printFormats = ref([])
+const selectedPrintFormat = ref('')
+const loadingFormats = ref(false)
+
+async function openPrintModal() {
+  showPrintModal.value = true
+  selectedPrintFormat.value = ''
+  await fetchPrintFormats()
+}
+
+function closePrintModal() {
+  showPrintModal.value = false
+}
+
+async function fetchPrintFormats() {
+  loadingFormats.value = true
+  try {
+    const formats = await call('frappe.client.get_list', {
+      doctype: 'Print Format',
+      fields: ['name'],
+      filters: { doc_type: 'Donation', disabled: 0 },
+      order_by: 'name asc',
+      limit_page_length: 1000,
+    })
+    printFormats.value = Array.isArray(formats) ? formats : []
+    if (printFormats.value.length === 1) {
+      selectedPrintFormat.value = printFormats.value[0].name
+    }
+  } catch (e) {
+    console.error('Error fetching print formats:', e)
+    toast.error(__('Failed to load print formats'))
+  } finally {
+    loadingFormats.value = false
+  }
+}
+
+function confirmPrint() {
+  const format = selectedPrintFormat.value
+  if (!format) {
+    toast.error(__('Please select a print format'))
+    return
+  }
+  openPrintView(format)
+  closePrintModal()
+}
+
+function openPrintView(format) {
+  try {
+    const doctype = 'Donation'
+    const name = document?.doc?.name
+    if (!name) return
+    const params = new URLSearchParams({
+      doctype,
+      name: encodeURIComponent(name),
+      trigger_print: '1',
+      format,
+      no_letterhead: '1',
+    })
+    const url = `/printview?${params.toString()}`
+    window.open(url, '_blank')
+  } catch (e) {
+    console.error('Error opening print view:', e)
+  }
+}
+
+// Open direct PDF using existing backend endpoint
+function openDonationPDF() {
+  try {
+    const doctype = 'Donation'
+    const name = document?.doc?.name
+    if (!name) {
+      toast?.error && toast.error(__('Document not loaded'))
+      return
+    }
+    // Default to Standard print format; users can print via the modal for others
+    const format = selectedPrintFormat.value || 'Standard'
+    const params = new URLSearchParams({
+      doctype,
+      name: encodeURIComponent(name),
+      format,
+      no_letterhead: '0',
+    })
+    const url = `/api/method/frappe.utils.print_format.download_pdf?${params.toString()}`
+    window.open(url, '_blank')
+  } catch (e) {
+    console.error('Error opening PDF:', e)
+  }
 }
 
 // Activities reference
@@ -973,8 +1329,8 @@ const activities = ref(null)
 
 // Page meta
 usePageMeta({
-  title: computed(() => document.data?.donor_name || document.data?.name || __('Donation')),
-  description: computed(() => `Donation details for ${document.data?.donor_name || document.data?.name}`),
+  title: computed(() => donorName.value || document.data?.name || __('Donation')),
+  description: computed(() => `Donation details for ${donorName.value || document.data?.name}`),
   icon: brand.favicon,
 })
 
@@ -1038,13 +1394,12 @@ async function refreshDeductionBreakeven() {
   }
 }
 
-// CRITICAL FIX: Enhanced function to detect and preserve user modifications when document loads
 function detectAndPreserveUserModifications() {
+  isUpdatingFromAPI = true
+  
   if (document.doc.deduction_breakeven && Array.isArray(document.doc.deduction_breakeven)) {
     document.doc.deduction_breakeven.forEach((row, index) => {
       if (row) {
-        // CRITICAL: Always preserve the current percentage values as user modifications
-        // This prevents ANY backend API from overriding them
         row._isUserModified = true
         row._userModifiedPercentage = true
         row._originalPercentage = row.percentage
@@ -1062,6 +1417,11 @@ function detectAndPreserveUserModifications() {
       }
     })
   }
+  
+  // Reset flag after initialization
+  setTimeout(() => {
+    isUpdatingFromAPI = false
+  }, 100)
 }
 
 // CRITICAL FIX: Enhanced onMounted to detect user modifications
@@ -1133,6 +1493,10 @@ function mapFundClass(row, fc) {
 async function enrichOnceAfterLoad() {
   if (didEnrichOnce || !document.doc) return
   didEnrichOnce = true
+  
+  // Set flag to prevent save state changes during enrichment
+  isUpdatingFromAPI = true
+  
   try {
     // Payment Details
     if (Array.isArray(document.doc.payment_detail)) {
@@ -1168,6 +1532,22 @@ async function enrichOnceAfterLoad() {
   } catch (e) {
     // Fail-safe: do not break page
     console.error('Enrichment error:', e)
+  } finally {
+    // After enrichment, sync originalDoc to current doc so UI does not show Not Saved
+    try {
+      if (document && document.doc) {
+        const snapshot = JSON.parse(JSON.stringify(document.doc))
+        document.originalDoc = snapshot
+        // also reset any explicit dirty flags if present
+        if (typeof document.isDirty !== 'undefined') {
+          document.isDirty = false
+        }
+      }
+    } catch (syncErr) {
+      console.warn('Failed to sync originalDoc after enrichment:', syncErr)
+    }
+    // Reset flag after enrichment is complete
+    isUpdatingFromAPI = false
   }
 }
 
@@ -1175,6 +1555,21 @@ onMounted(async () => {
   await nextTick()
   // small delay to ensure doc rendered
   setTimeout(() => { enrichOnceAfterLoad() }, 300)
+
+  // Final stabilization: after all initial timers and watchers settle, sync baseline
+  setTimeout(() => {
+    try {
+      if (document && document.doc) {
+        const snapshot = JSON.parse(JSON.stringify(document.doc))
+        document.originalDoc = snapshot
+        if (typeof document.isDirty !== 'undefined') {
+          document.isDirty = false
+        }
+      }
+    } catch (e) {
+      console.warn('Stabilization sync failed:', e)
+    }
+  }, 1500)
 })
 
 watch(() => document.doc?.name, () => { didEnrichOnce = false; setTimeout(() => { enrichOnceAfterLoad() }, 300) })
@@ -1840,7 +2235,7 @@ async function populateDeductionBreakevenFrontend() {
       // Force reactive update
       document.doc = { ...document.doc }
       
-      toast.success(`Successfully populated ${deductionBreakevenRows.length} deduction breakeven rows`)
+      // toast.success(`Successfully populated ${deductionBreakevenRows.length} deduction breakeven rows`)
     } else {
       console.log('No deduction breakeven rows to create')
       toast.info('No deduction details found for the selected fund classes')
@@ -1948,7 +2343,7 @@ async function populateDeductionBreakevenFromAPI() {
       
       // Show success message only if there are actual rows
       if (result.deduction_breakeven && result.deduction_breakeven.length > 0) {
-        toast.success(`Successfully populated ${result.deduction_breakeven.length} deduction breakeven rows`)
+        // toast.success(`Successfully populated ${result.deduction_breakeven.length} deduction breakeven rows`)
       } else {
         console.log('No deduction breakeven rows to populate')
       }
@@ -2151,7 +2546,7 @@ async function setDeductionBreakevenFromAPI() {
       
       // Show success message only if there are actual rows
       if (result.deduction_breakeven && result.deduction_breakeven.length > 0) {
-        toast.success(`Successfully populated ${result.deduction_breakeven.length} deduction breakeven rows`)
+        // toast.success(`Successfully populated ${result.deduction_breakeven.length} deduction breakeven rows`)
       } else {
         console.log('No deduction breakeven rows to populate')
       }
@@ -2159,7 +2554,7 @@ async function setDeductionBreakevenFromAPI() {
       console.log('Deduction breakeven table rebuilt successfully via backend API')
     } else {
       console.error('Backend API failed to set deduction breakeven:', result.message)
-      toast.error(result.message || 'Failed to set deduction breakeven')
+      // toast.error(result.message || 'Failed to set deduction breakeven')
     }
   } catch (error) {
     console.error('Error calling backend set deduction breakeven API:', error)
@@ -2559,6 +2954,212 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
 
 // Override the triggerOnRowRemove in the document context
 document.triggerOnRowRemove = customTriggerOnRowRemove
+
+// Add computed property for create dropdown options
+const createDropdownOptions = computed(() => {
+  const options = []
+  
+  // Only show Return / Credit Note option if not already a return document
+  if (document.doc && !document.doc.is_return) {
+    options.push({
+      label: 'Return / Credit Note',
+      onClick: () => createReturnCreditNote(),
+    })
+  }
+  
+  return options
+})
+
+
+
+// Add function to handle donation submission
+async function submitDonation() {
+  try {
+    console.log('Submitting donation:', document.doc.name)
+    
+    // Basic validation before submission
+    if (!document.doc.company) {
+      toast.error('Company is required before submitting')
+      return
+    }
+    
+    if (!document.doc.donation_type) {
+      toast.error('Donation Type is required before submitting')
+      return
+    }
+    
+    if (!document.doc.due_date) {
+      toast.error('Due Date is required before submitting')
+      return
+    }
+    
+    if (!document.doc.payment_detail || document.doc.payment_detail.length === 0) {
+      toast.error('At least one payment detail is required before submitting')
+      return
+    }
+    
+    // Refresh the document to get the latest version before submission
+    console.log('Refreshing document before submission...')
+    await document.reload()
+    
+    // Try using the document's submit method first, fallback to frappe.client.submit
+    let result
+    try {
+      // Use the document's submit method if available
+      if (document.submit) {
+        console.log('Using document.submit method...')
+        result = await document.submit()
+      } else {
+        // Fallback to frappe.client.submit
+        console.log('Using frappe.client.submit method...')
+        result = await call('frappe.client.submit', {
+          doc: document.doc
+        })
+      }
+    } catch (submitError) {
+      console.log('Document submit method failed, trying frappe.client.submit...')
+      result = await call('frappe.client.submit', {
+        doc: document.doc
+      })
+    }
+    
+    console.log('Donation submission result:', result)
+    
+    if (result) {
+      // Reload the document to get updated status
+      await document.reload()
+      toast.success('Donation submitted successfully')
+    } else {
+      toast.error('Failed to submit donation')
+    }
+  } catch (error) {
+    console.error('Error submitting donation:', error)
+    
+    // Handle specific timestamp mismatch error
+    if (error.message && error.message.includes('TimestampMismatchError')) {
+      toast.error('Document was modified by another user. Please refresh the page and try again.')
+      // Optionally reload the document
+      await document.reload()
+    } else {
+      toast.error(`Failed to submit donation: ${error.message || error}`)
+    }
+  }
+}
+
+// Add reactive state for Return/Credit Note modal
+const showReturnModal = ref(false)
+const returnDocument = ref(null)
+const isReturnCreating = ref(false)
+const isReturnSubmitting = ref(false)
+
+// Add function to handle Return/Credit Note creation
+async function createReturnCreditNote() {
+  try {
+    console.log('Creating Return/Credit Note for donation:', document.doc.name)
+    
+    // First check if we can create a return (validation)
+    const totalDonorsReturn = await call('akf_accounts.akf_accounts.doctype.donation.donation.get_total_donors_return', {
+      return_against: document.doc.name
+    })
+    
+    console.log('Total donors in returns:', totalDonorsReturn)
+    console.log('Total donors in original:', document.doc.total_donors)
+    
+    // Check if all donors have already been returned
+    if (totalDonorsReturn >= document.doc.total_donors) {
+      toast.error('All donors have already been returned for this donation')
+      return
+    }
+    
+    // Set loading state
+    isReturnCreating.value = true
+    
+    // Call the backend function to create the return donation
+    const result = await call('akf_accounts.akf_accounts.doctype.donation.donation.make_donation_return', {
+      source_name: document.doc.name
+    })
+    
+    console.log('Return/Credit Note creation result:', result)
+    
+    if (result) {
+      // Store the return document and open modal
+      returnDocument.value = result
+      showReturnModal.value = true
+      toast.success('Return/Credit Note prepared successfully')
+    } else {
+      toast.error('Failed to create Return/Credit Note - no result returned')
+    }
+  } catch (error) {
+    console.error('Error creating Return/Credit Note:', error)
+    toast.error(`Failed to create Return/Credit Note: ${error.message || error}`)
+  } finally {
+    isReturnCreating.value = false
+  }
+}
+
+// Add function to save return document as draft
+async function saveReturnAsDraft() {
+  try {
+    console.log('Saving return document as draft:', returnDocument.value.name)
+    
+    isReturnCreating.value = true
+    
+    // Save the document
+    const result = await call('frappe.client.save', {
+      doc: returnDocument.value
+    })
+    
+    console.log('Return document saved:', result)
+    
+    if (result) {
+      returnDocument.value = result
+      toast.success('Return/Credit Note saved as draft')
+    } else {
+      toast.error('Failed to save Return/Credit Note')
+    }
+  } catch (error) {
+    console.error('Error saving return document:', error)
+    toast.error(`Failed to save Return/Credit Note: ${error.message || error}`)
+  } finally {
+    isReturnCreating.value = false
+  }
+}
+
+// Add function to submit return document
+async function submitReturnDocument() {
+  try {
+    console.log('Submitting return document:', returnDocument.value.name)
+    
+    isReturnSubmitting.value = true
+    
+    // Submit the document
+    const result = await call('frappe.client.submit', {
+      doc: returnDocument.value
+    })
+    
+    console.log('Return document submitted:', result)
+    
+    if (result) {
+      returnDocument.value = result
+      toast.success('Return/Credit Note submitted successfully')
+      // Close modal and reload main document
+      showReturnModal.value = false
+      await document.reload()
+    } else {
+      toast.error('Failed to submit Return/Credit Note')
+    }
+  } catch (error) {
+    console.error('Error submitting return document:', error)
+    toast.error(`Failed to submit Return/Credit Note: ${error.message || error}`)
+  } finally {
+    isReturnSubmitting.value = false
+  }
+}
+
+// Add a computed property to debug the read-only state
+const isReadOnly = computed(() => {
+  return document.doc && document.doc.docstatus === 1
+})
 </script>
 
 <style scoped>

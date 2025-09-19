@@ -215,6 +215,18 @@ const routes = [
     component: lazy(() => import('@/pages/EmailGroupMember.vue')),
     props: true,
   },
+  {
+    alias: '/tax-exemption-certificates',
+    path: '/tax-exemption-certificates/view/:viewType?',
+    name: 'TaxExemptionCertificates',
+    component: lazy(() => import('@/pages/TaxExemptionCertificates.vue')),
+  },
+  {
+    path: '/tax-exemption-certificates/:certificateId',
+    name: 'TaxExemptionCertificate',
+    component: lazy(() => import('@/pages/TaxExemptionCertificate.vue')),
+    props: true,
+  },
 ]
 
 let router = createRouter({

@@ -21,6 +21,7 @@
         </template>
       </Button>
       <AppStyling
+        v-if="!readOnly"
         type="button"
         buttonType="create"
         buttonLabel="Save"
@@ -43,6 +44,7 @@
       :tabs="tabs.data"
       :data="document?.doc"
       :doctype="doctype"
+      :readOnly="readOnly"
     />
   </div>
   <DataFieldsModal
@@ -78,6 +80,10 @@ const props = defineProps({
   docname: {
     type: String,
     required: true,
+  },
+  readOnly: {
+    type: Boolean,
+    default: false,
   },
 })
 

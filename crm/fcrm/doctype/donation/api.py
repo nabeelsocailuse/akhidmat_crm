@@ -331,8 +331,9 @@ def set_deduction_breakeven(payment_details, company, contribution_type, donatio
         }
         
     except Exception as e:
-        frappe.log_error(f"Error in set_deduction_breakeven: {str(e)}", "Set Deduction Breakeven Error")
-        return {"success": False, "message": f"Error setting deduction breakeven: {str(e)}"}
+        # frappe.log_error(f"Error in set_deduction_breakeven: {str(e)}", "Set Deduction Breakeven Error")
+        # return {"success": False, "message": f"Error setting deduction breakeven: {str(e)}"}
+        return {} 
 
 @frappe.whitelist()
 def update_deduction_breakeven(payment_details, deduction_breakeven, company, contribution_type, 

@@ -15,7 +15,7 @@
     <FormControl
       v-if="
         field.read_only &&
-        !['Int', 'Float', 'Currency', 'Percent', 'Check', 'Attach', 'Attach Image'].includes(
+        !['Int', 'Float', 'Currency', 'Percent', 'Check', 'Attach', 'Attach Image', 'Table'].includes(
           field.fieldtype,
         )
       "
@@ -33,8 +33,10 @@
       :parentDoctype="doctype"
       :parentFieldname="field.fieldname"
       :donorFiltering="getDonorFilteringFromData()"
+      :readOnly="Boolean(field.read_only)"
       @donor-selected="$emit('donor-selected', $event)"
     />
+    
     <FormControl
       v-else-if="field.fieldtype === 'Select' && getSelectOptions(field).length > 0"
       type="select"
@@ -103,6 +105,7 @@
         @change="(v) => fieldChange(v, field)"
         :placeholder="getPlaceholder(field)"
         :onCreate="field.create"
+        :disabled="Boolean(field.read_only)"
       />
       <Button
         v-if="data[field.fieldname] && field.edit"
@@ -132,6 +135,7 @@
       @change="(v) => fieldChange(v, field)"
       :placeholder="getPlaceholder(field)"
       :hideMe="true"
+      :disabled="Boolean(field.read_only)"
     >
       <template #prefix>
         <UserAvatar
@@ -199,6 +203,7 @@
       :value="data[field.fieldname]"
       :placeholder="getPlaceholder(field)"
       :description="getDescription(field)"
+      :disabled="Boolean(field.read_only)"
       @change="fieldChange($event.target.value, field)"
     />
     <FormattedInput
@@ -243,9 +248,16 @@
         <a :href="data[field.fieldname]" target="_blank" rel="noopener" class="truncate text-ink-blue-6 underline">
           {{ data[field.fieldname] }}
         </a>
-        <Button size="sm" variant="subtle" @click.stop="() => fieldChange('', field)">{{ __('Clear') }}</Button>
+        <Button 
+          v-if="!field.read_only"
+          size="sm" 
+          variant="subtle" 
+          @click.stop="() => fieldChange('', field)"
+        >
+          {{ __('Clear') }}
+        </Button>
       </div>
-      <div v-else class="w-full">
+      <div v-else-if="!field.read_only" class="w-full">
         <FileUploader @success="(file) => onAttachSuccess(file, field)">
           <template #default="{ openFileSelector }">
             <Button variant="outline" class="w-full justify-center" @click="openFileSelector">{{ __('Attach') }}</Button>
@@ -293,6 +305,7 @@ const doctype = inject('doctype')
 const preview = inject('preview')
 const isGridRow = inject('isGridRow')
 const parentFieldname = inject('parentFieldname')
+const readOnly = inject('readOnly', false)
 
 const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
   getMeta(doctype)
@@ -329,6 +342,18 @@ if (!isGridRow) {
 
 const field = computed(() => {
   let field = props.field
+  
+  // Debug: Log the readOnly state
+  console.log('🔒 Field readOnly state:', readOnly, 'for field:', field.fieldname)
+  
+  // Apply global read-only state from FieldLayout
+  // Handle both ref and non-ref cases
+  const isReadOnly = readOnly?.value !== undefined ? readOnly.value : readOnly
+  if (isReadOnly) {
+    field = { ...field, read_only: true }
+    console.log('🔒 Applied read-only to field:', field.fieldname)
+  }
+
   if (field.fieldtype == 'Select' && typeof field.options === 'string') {
     field.options = field.options.split('\n').map((option) => {
       return { label: option, value: option }
@@ -402,6 +427,19 @@ const field = computed(() => {
     field.hidden = false
   }
 
+  // Configure warehouse field with filters for donation form
+  if (field.fieldname === 'warehouse' 
+    && field.fieldtype === 'Link' 
+    && field.options === 'Warehouse'
+    && doctype === 'Donation') {
+    // Apply warehouse-specific filters
+    field.filters = {
+      is_group: 0,
+      is_rejected_warehouse: 0,
+      company: data.value?.company || 'Alkhidmat Foundation'
+    }
+  }
+
   let _field = {
     ...field,
     filters: field.link_filters && JSON.parse(field.link_filters),
@@ -463,23 +501,43 @@ const getDescription = (field) => {
   return ''
 }
 
+// Add emit definition at the top
+const emit = defineEmits(['field-change'])
+
 function fieldChange(value, df) {
+  console.log('🔧 Field.vue fieldChange called:', { 
+    fieldname: df.fieldname, 
+    value, 
+    isGridRow,
+    parentFieldname: inject('parentFieldname')
+  })
+  
   // CRITICAL FIX: Always update the data first
   data.value[df.fieldname] = value
   
   // Emit field change to parent component
-  const onFieldChange = inject('onFieldChange')
+  const onFieldChange = inject('onFieldChange', null)
+  console.log(' onFieldChange function available:', !!onFieldChange)
+  
   if (onFieldChange) {
+    console.log('🔧 Calling onFieldChange with:', { fieldname: df.fieldname, value })
     onFieldChange(df.fieldname, value)
+  } else {
+    console.log('❌ onFieldChange function not available, emitting directly')
+    // Fallback: emit directly to parent
+    emit('field-change', df.fieldname, value)
   }
   
   if (isGridRow) {
+    console.log('🔧 Calling triggerOnChange for grid row')
     triggerOnChange(df.fieldname, value, data.value)
   } else {
     // Add fallback for when triggerOnChange is not available
     if (triggerOnChange) {
+      console.log('🔧 Calling triggerOnChange for non-grid row')
       triggerOnChange(df.fieldname, value)
     } else {
+      console.log('❌ triggerOnChange not available, using fallback')
       // Fallback: directly update the data and force reactivity
       
       // Force a reactive update by triggering Vue's reactivity system
@@ -599,6 +657,18 @@ function getFieldFilters(field) {
     && field.fieldtype === 'Link'
     && field.options === 'DocType') {
     return { name: ['in', ['Donor', 'CRM Lead', 'Contact']] }
+  }
+  
+  // Apply warehouse-specific filters for donation form
+  if (field.fieldname === 'warehouse' 
+    && field.fieldtype === 'Link' 
+    && field.options === 'Warehouse'
+    && doctype === 'Donation') {
+    return {
+      is_group: 0,
+      is_rejected_warehouse: 0,
+      company: data.value?.company || 'Alkhidmat Foundation'
+    }
   }
   
   // Return existing filters if available

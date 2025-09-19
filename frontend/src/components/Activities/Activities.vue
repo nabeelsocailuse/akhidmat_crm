@@ -372,6 +372,7 @@
       <DataFields
         :doctype="doctype"
         :docname="doc.data?.name || docname"
+        :readOnly="readOnly"
         @beforeSave="(data) => emit('beforeSave', data)"
         @afterSave="(data) => emit('afterSave', data)"
       />
@@ -541,6 +542,10 @@ const props = defineProps({
   tabs: {
     type: Array,
     default: () => [],
+  },
+  readOnly: {
+    type: Boolean,
+    default: false,
   },
 })
 

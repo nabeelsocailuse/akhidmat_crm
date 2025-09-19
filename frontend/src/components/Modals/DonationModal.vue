@@ -41,7 +41,6 @@
             />
           </div>
           
-          <!-- Use the same ErrorMessage component as DonorModal -->
           <ErrorMessage class="mt-4" v-if="error" :message="__(error)" />
         </div>
       </AppStyling>
@@ -49,6 +48,7 @@
       <AppStyling type="modal-styling" modalType="footer">
         <div class="flex flex-row-reverse gap-2">
           <AppStyling
+            
             type="button"
             buttonType="submit"
             buttonLabel="Submit Donation"
@@ -138,6 +138,7 @@ const hasActiveSubModals = computed(() => {
   return modalStack.value.length > 0 && modalStack.value.some(modal => modal.visible)
 })
 
+
 function openQuickEntryModal() {
   const currentDoctype = modalStack.value.length > 0 ? modalStack.value[modalStack.value.length - 1].doctype : 'Donation'
   showQuickEntryModal.value = true
@@ -161,6 +162,8 @@ const addPaymentDetailRow = () => {
     donor_name: '',
     cnic: '',
     donor_type: '',
+    donor_desk_id: '',
+    donor_desk: '',
     contact_no: '',
     email: '',
     address: '',
@@ -261,7 +264,7 @@ function getDonorQuery() {
   return {
     doctype: 'Donor',
     filters: filters,
-    fields: ['name', 'donor_name', 'donor_type', 'donor_desk', 'contact_no', 'email', 'city', 'address', 'cnic']
+    fields: ['name', 'donor_name', 'donor_type', 'donor_desk_id', 'donor_desk', 'contact_no', 'email', 'city', 'address', 'cnic']
   }
 }
 
@@ -403,6 +406,17 @@ const filteredTabs = computed(() => {
             enhancedField.depends_on = 'donor_identity'
             enhancedField.filters = getDonorFilters()
             console.log('Configured donor field with query filtering for items')
+          }
+          
+          // Configure fund_class fields in items table
+          if (field.fieldname === 'fund_class') {
+            enhancedField.get_query = () => ({
+              doctype: 'Fund Class',
+              filters: {
+                status: 'Active'
+              }
+            })
+            console.log('Configured fund_class field for items table')
           }
           
           // Configure donation_cost_center (Branch) field with proper filtering
@@ -797,6 +811,7 @@ watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) =>
       row.donor_id = ''
       row.donor_name = ''
       row.donor_type = ''
+      row.donor_desk_id = ''
       row.donor_desk = ''
       row.contact_no = ''
       row.email = ''
@@ -830,6 +845,7 @@ watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) =>
       row.donor_name = ''
       row.donor_type = ''
       row.donor_desk = ''
+      row.donor_desk_id = ''
       // ADD: Clear care-of details fields for items table as well
       row.co_name = ''
       row.co_contact_no = ''
@@ -1175,10 +1191,6 @@ async function handleFundClassSelectionDirect(fundClassId, row) {
       updateFundClassFields(row, fundClassDetails)
       console.log('Fund Class fields updated successfully')
       
-      // Do not assign fund_class_id here; assignment is handled by the deduction row-length watcher to avoid race conditions
-      
-      // REMOVE: Don't show success message to prevent infinite loop
-      // toast.success('Fund Class details loaded successfully')
     } else {
       console.log('No Fund Class details received')
       toast.error('Could not fetch Fund Class details')
@@ -1193,7 +1205,7 @@ async function handleFundClassSelectionDirect(fundClassId, row) {
 async function fetchPaymentModeAccount(modeOfPayment, company) {
   console.log('Fetching payment mode account for:', { modeOfPayment, company })
   
-  try {
+  try { 
     const result = await call('crm.fcrm.doctype.donation.api.get_payment_mode_account', {
       mode_of_payment: modeOfPayment,
       company: company
@@ -1253,6 +1265,8 @@ function updateDonorFields(row, donorDetails) {
   const fieldMappings = {
     'donor_name': 'donor_name',
     'donor_type': 'donor_type',
+    'donor_desk_id': 'donor_desk_id',
+    'donor_desk': 'donor_desk',
     'contact_no': 'contact_no',
     'email': 'email',
     'city': 'city',
@@ -1293,7 +1307,7 @@ function clearDonorFields(row) {
   console.log('Clearing donor fields for row')
   
   const donorFields = [
-    'donor_name', 'donor_type', 'contact_no', 'email', 'city', 'address', 'cnic',
+    'donor_name', 'donor_type', 'donor_desk_id', 'contact_no', 'email', 'city', 'address', 'cnic',
     // ADD: Care-of details fields that were missing
     'co_name', 'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor',
     'area', 'co_city', 'co_country', 'co_designation'
@@ -1767,11 +1781,11 @@ async function setDeductionBreakevenFromAPI() {
       console.log('Deduction breakeven table rebuilt successfully via backend API')
     } else {
       console.error('Backend API failed to set deduction breakeven:', result.message)
-      toast.error(result.message || 'Failed to set deduction breakeven')
+      // toast.error(result.message || 'Failed to set deduction breakeven')
     }
   } catch (error) {
     console.error('Error calling backend set deduction breakeven API:', error)
-    toast.error('Error setting deduction breakeven')
+    // toast.error('Error setting deduction breakeven')
   } finally {
     // Reset the flag after a delay to allow the update to complete
     setTimeout(() => {
@@ -1896,6 +1910,14 @@ async function createNewDonation() {
         
         // Emit success event if needed
         emit('donation-created', result)
+        
+        // Redirect to the donation detail page
+        const refreshTimestamp = Date.now()
+        router.push({ 
+          name: 'DonationDetail', 
+          params: { donationId: result.name }, 
+          query: { refresh: refreshTimestamp } 
+        })
       } else {
         throw new Error('Donation creation failed - no name returned')
       }
@@ -2004,7 +2026,7 @@ function validateDonationForm() {
   }
 
   // Payment detail validation
-  if (!donation.doc.payment_detail || !Array.isArray(donation.doc.payment_detail) || donation.doc.payment_detail.length === 0) {
+  if ( !donation.doc.payment_detail || !Array.isArray(donation.doc.payment_detail) || donation.doc.payment_detail.length === 0) {
     errors.push('At least one payment detail is required')
   } else {
     donation.doc.payment_detail.forEach((row, index) => {
@@ -2664,5 +2686,45 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
 
 // Override the triggerOnRowRemove in the donation context
 donation.triggerOnRowRemove = customTriggerOnRowRemove
+
+function getFieldFilters(field) {
+  // Apply filter to link_doctype field in links/timeline_links child tables
+  // Only allow Donor, CRM Lead, Contact doctypes
+  if ((parentFieldname === 'links' || parentFieldname === 'timeline_links')
+    && field.fieldname === 'link_doctype'
+    && field.fieldtype === 'Link'
+    && field.options === 'DocType') {
+    return { name: ['in', ['Donor', 'CRM Lead', 'Contact']] }
+  }
+  
+  // Apply warehouse-specific filters for donation form
+  if (field.fieldname === 'warehouse' 
+    && field.fieldtype === 'Link' 
+    && field.options === 'Warehouse'
+    && doctype === 'Donation') {
+    return {
+      is_group: 0,
+      is_rejected_warehouse: 0,
+      company: data.value?.company || 'Alkhidmat Foundation'
+    }
+  }
+  
+  // Return existing filters if available
+  if (field.filters) {
+    return field.filters
+  }
+  
+  // Parse link_filters if available
+  if (field.link_filters) {
+    try {
+      const parsedFilters = JSON.parse(field.link_filters)
+      return parsedFilters
+    } catch (e) {
+      return {}
+    }
+  }
+  
+  return {}
+}
 
 </script>

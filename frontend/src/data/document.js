@@ -21,7 +21,19 @@ export function useDocument(doctype, docname) {
       documentsCache[doctype][docname] = createDocumentResource({
         doctype: doctype,
         name: docname,
-        onSuccess: async () => await setupFormScript(),
+        onSuccess: async () => {
+          try {
+            // Set baseline to avoid false dirty state on initial load
+            const current = documentsCache[doctype][docname]?.doc || {}
+            documentsCache[doctype][docname].originalDoc = JSON.parse(
+              JSON.stringify(current),
+            )
+            documentsCache[doctype][docname].isDirty = false
+          } catch (e) {
+            console.warn('Failed to set originalDoc on load:', e)
+          }
+          await setupFormScript()
+        },
         onError: (err) => {
           error.value = err
           if (err.exc_type === 'DoesNotExistError') {

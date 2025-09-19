@@ -25,7 +25,7 @@
 <script setup>
 import Section from '@/components/FieldLayout/Section.vue'
 import { Tabs, TabList, TabPanel } from 'frappe-ui'
-import { ref, computed, provide, onMounted } from 'vue'
+import { ref, computed, provide, onMounted, inject } from 'vue'
 
 const props = defineProps({
   tabs: Array,
@@ -45,6 +45,10 @@ const props = defineProps({
   parentFieldname: {
     type: String,
     default: '',
+  },
+  readOnly: {
+    type: Boolean,
+    default: false,
   },
 })
 
@@ -68,7 +72,25 @@ const reactiveData = computed(() => {
 
 // Function to handle field changes and emit to parent
 const handleFieldChange = (fieldName, value) => {
+  console.log('🔧 FieldLayout handleFieldChange called:', { fieldName, value, parentFieldname: props.parentFieldname })
   emit('field-change', fieldName, value)
+}
+
+// Get the parent's onFieldChange if available (for GridRowModal)
+const parentOnFieldChange = inject('onFieldChange', null)
+
+// Create a combined handler that calls both
+const combinedFieldChange = (fieldName, value) => {
+  console.log(' FieldLayout combinedFieldChange called:', { fieldName, value, hasParent: !!parentOnFieldChange, parentFieldname: props.parentFieldname })
+  
+  // Call parent's handler first (GridRowModal)
+  if (parentOnFieldChange) {
+    console.log(' Calling parent onFieldChange')
+    parentOnFieldChange(fieldName, value)
+  }
+  
+  // Then call our own handler
+  handleFieldChange(fieldName, value)
 }
 
 provide(
@@ -80,7 +102,11 @@ provide('doctype', props.doctype)
 provide('preview', props.preview)
 provide('isGridRow', props.isGridRow)
 provide('parentFieldname', props.parentFieldname)
-provide('onFieldChange', handleFieldChange)
+provide('readOnly', props.readOnly)
+// Always provide the combined handler
+provide('onFieldChange', combinedFieldChange)
+
+console.log('🔧 FieldLayout providing onFieldChange function:', !!combinedFieldChange, 'parentFieldname:', props.parentFieldname)
 
 // Add fallback for missing data
 onMounted(() => {

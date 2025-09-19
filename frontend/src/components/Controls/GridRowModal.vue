@@ -34,6 +34,8 @@
             :doctype="doctype"
             :isGridRow="true"
             :parentFieldname="parentFieldname"
+            :readOnly="readOnly"
+            @field-change="handleFieldChange"
           />
         </div>
       </div>
@@ -46,7 +48,8 @@ import EditIcon from '@/components/Icons/EditIcon.vue'
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import { usersStore } from '@/stores/users'
 import { createResource } from 'frappe-ui'
-import { nextTick, computed, watch, onMounted } from 'vue'
+import { nextTick, computed, watch, onMounted, provide, inject } from 'vue'
+import { call, toast } from 'frappe-ui'
 
 const props = defineProps({
   index: Number,
@@ -58,6 +61,10 @@ const props = defineProps({
   donorFiltering: {
     type: Object,
     default: () => ({})
+  },
+  readOnly: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -65,6 +72,9 @@ const { isManager } = usersStore()
 
 const show = defineModel()
 const showGridRowFieldsModal = defineModel('showGridRowFieldsModal')
+
+// ADD: Define emit for field changes
+const emit = defineEmits(['field-change'])
 
 const tabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
@@ -77,7 +87,7 @@ const tabs = createResource({
   auto: true,
 })
 
-// ADD: Enhanced tabs with donor filtering for grid row editing
+// ADD: Enhanced tabs with proper field visibility and fetching for items table
 const filteredTabs = computed(() => {
   console.log('GridRowModal: filteredTabs computed property recalculating')
   console.log('GridRowModal: tabs.data available:', !!tabs.data)
@@ -98,17 +108,14 @@ const filteredTabs = computed(() => {
     filteredTab.sections = tab.sections.map(section => {
       const filteredSection = { ...section }
       
-      // Track if donor_id has been added to this section
-      let donorIdAddedToSection = false
-      
       // Filter columns within sections
       filteredSection.columns = section.columns.map((column, columnIndex) => {
         const filteredColumn = { ...column }
         
         // Filter fields within columns
         filteredColumn.fields = column.fields.filter(field => {
-          // FIX: Remove 'donor' field (not 'donor_id') from all columns to prevent duplication
-          if (field.fieldname === 'donor' && field.fieldname !== 'donor_id') {
+          // FIX: Don't filter out donor field for items table
+          if (field.fieldname === 'donor' && props.parentFieldname !== 'items') {
             console.log('GridRowModal: Filtering out duplicate donor field from column', columnIndex)
             return false
           }
@@ -123,48 +130,33 @@ const filteredTabs = computed(() => {
             console.log('GridRowModal: Configured donor_id field with comprehensive filtering')
           }
           
-          // FIX: Simple approach - hide donor detail fields if they're empty
-          if (isDonorDetailField(field.fieldname)) {
-            const rowData = props.data || {}
-            const fieldValue = rowData[field.fieldname]
+          // Configure donor field for items table
+          if (field.fieldname === 'donor' && props.parentFieldname === 'items') {
+            enhancedField = configureDonorField(field)
+            console.log('GridRowModal: Configured donor field for items table')
+          }
+          
+          // FIX: Configure field visibility and fetching for items table
+          if (props.parentFieldname === 'items') {
+            // Hide fund class dependent fields initially and make them read-only when visible
+            if (['service_area', 'subservice_area', 'product'].includes(field.fieldname)) {
+              enhancedField.depends_on = 'fund_class'
+              enhancedField.read_only = 1 // Make read-only when visible (like backend)
+              enhancedField.fetch_from = `fund_class.${field.fieldname}` // Add fetch_from
+              console.log('GridRowModal: Configured fund class dependent field:', field.fieldname)
+            }
             
-            // Hide field if it's empty or null
-            if (!fieldValue || fieldValue.toString().trim() === '') {
-              enhancedField.hidden = true
-              console.log('GridRowModal: Hiding empty donor detail field:', field.fieldname)
+            // Hide donor dependent fields initially and make them read-only when visible
+            if (['donor_name', 'donor_type', 'donor_desk'].includes(field.fieldname)) {
+              enhancedField.depends_on = 'donor'
+              enhancedField.read_only = 1 // Make read-only when visible (like backend)
+              enhancedField.fetch_from = `donor.${field.fieldname}` // Add fetch_from
+              console.log('GridRowModal: Configured donor dependent field:', field.fieldname)
             }
           }
           
           return enhancedField
         })
-        
-        // // ADD: Force include donor_id field if it's missing (only once per section)
-        // const hasDonorId = filteredColumn.fields.some(field => field.fieldname === 'donor_id')
-        // if (!hasDonorId && 
-        //     !donorIdAddedToSection && 
-        //     (props.doctype === 'Payment Detail' || props.doctype === 'Deduction Breakeven')) {
-          
-        //   console.log('GridRowModal: Adding missing donor_id field to first column of section')
-          
-        //   // Create donor_id field from meta
-        //   const donorIdField = {
-        //     fieldname: 'donor_id',
-        //     fieldtype: 'Link',
-        //     label: 'Donor ID',
-        //     options: 'Donor',
-        //     reqd: 0,
-        //     hidden: 0,
-        //     read_only: 0,
-        //     __islocal: 1
-        //   }
-          
-        //   // Configure the field with donor filtering
-        //   const configuredField = configureDonorField(donorIdField)
-        //   filteredColumn.fields.unshift(configuredField) // Add at the beginning
-          
-        //   // Mark that donor_id has been added to this section
-        //   donorIdAddedToSection = true
-        // }
         
         return filteredColumn
       })
@@ -175,7 +167,7 @@ const filteredTabs = computed(() => {
     return filteredTab
   })
   
-  console.log('GridRowModal: Final processed tabs with donor filtering:', processedTabs)
+  console.log('GridRowModal: Final processed tabs with field visibility:', processedTabs)
   return { data: processedTabs }
 })
 
@@ -329,4 +321,142 @@ function isDonorDetailField(fieldname) {
     'relationship_with_donor', 'area', 'co_city', 'co_country', 'co_designation'
   ].includes(fieldname)
 }
+
+// Add field change handler for auto-fetching
+async function handleFieldChange(fieldname, value) {
+  console.log(' GridRowModal handleFieldChange called:', { 
+    fieldname, 
+    value, 
+    parentFieldname: props.parentFieldname,
+    data: props.data 
+  })
+  
+  // Emit the field change to parent Grid component
+  emit('field-change', fieldname, value)
+  
+  // Handle fund_class change in items table modal
+  if (fieldname === 'fund_class' && value && props.parentFieldname === 'items') {
+    console.log(' Fund class selected in items modal:', value)
+    
+    try {
+      const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
+        fund_class_id: value,
+        company: 'Alkhidmat Foundation'
+      })
+      
+      console.log('📊 Fund class details received:', fundClassDetails)
+      
+      if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
+        // Emit field changes to parent Grid component with a small delay to ensure proper order
+        setTimeout(() => {
+          if (fundClassDetails.service_area) {
+            console.log('📝 Emitting service_area:', fundClassDetails.service_area)
+            emit('field-change', 'service_area', fundClassDetails.service_area)
+          }
+          if (fundClassDetails.subservice_area) {
+            console.log(' Emitting subservice_area:', fundClassDetails.subservice_area)
+            emit('field-change', 'subservice_area', fundClassDetails.subservice_area)
+          }
+          if (fundClassDetails.product) {
+            console.log(' Emitting product:', fundClassDetails.product)
+            emit('field-change', 'product', fundClassDetails.product)
+          }
+          if (fundClassDetails.cost_center) {
+            console.log('📝 Emitting cost_center:', fundClassDetails.cost_center)
+            emit('field-change', 'cost_center', fundClassDetails.cost_center)
+          }
+        }, 100)
+        
+        toast.success('Fund class details loaded successfully')
+      } else {
+        console.log('⚠️ No fund class details found')
+        toast.warning('No fund class details found')
+      }
+    } catch (error) {
+      console.error('❌ Error fetching fund class details:', error)
+      toast.error('Error loading fund class details')
+    }
+  }
+  
+  // Handle donor change in items table modal
+  if (fieldname === 'donor' && value && props.parentFieldname === 'items') {
+    console.log(' Donor selected in items modal:', value)
+    
+    try {
+      const donorDetails = await call('frappe.client.get', {
+        doctype: 'Donor',
+        name: value
+      })
+      
+      console.log(' Donor details received:', donorDetails)
+      
+      if (donorDetails) {
+        // Emit field changes to parent Grid component with a small delay
+        setTimeout(() => {
+          if (donorDetails.donor_name) {
+            console.log('📝 Emitting donor_name:', donorDetails.donor_name)
+            emit('field-change', 'donor_name', donorDetails.donor_name)
+          }
+          if (donorDetails.donor_type) {
+            console.log('📝 Emitting donor_type:', donorDetails.donor_type)
+            emit('field-change', 'donor_type', donorDetails.donor_type)
+          }
+          if (donorDetails.donor_desk) {
+            console.log('📝 Emitting donor_desk:', donorDetails.donor_desk)
+            emit('field-change', 'donor_desk', donorDetails.donor_desk)
+          }
+        }, 100)
+        
+        toast.success('Donor details loaded successfully')
+      } else {
+        console.log('⚠️ No donor details found')
+        toast.warning('No donor details found')
+      }
+    } catch (error) {
+      console.error('❌ Error fetching donor details:', error)
+      toast.error('Error loading donor details')
+    }
+  }
+  
+  // Handle item_code change in items table modal
+  if (fieldname === 'item_code' && value && props.parentFieldname === 'items') {
+    console.log('🔥 Item code selected in items modal:', value)
+    
+    try {
+      const itemDetails = await call('frappe.client.get', {
+        doctype: 'Item',
+        name: value
+      })
+      
+      console.log('📦 Item details received:', itemDetails)
+      
+      if (itemDetails) {
+        // Get the onFieldChange function from inject
+        const onFieldChange = inject('onFieldChange')
+        console.log('📝 onFieldChange function available:', !!onFieldChange)
+        
+        // Update fields with fetched data
+        if (itemDetails.item_name) {
+          console.log('📝 Updating item_name:', itemDetails.item_name)
+          onFieldChange('item_name', itemDetails.item_name)
+        }
+        if (itemDetails.valuation_rate) {
+          console.log(' Updating basic_rate:', itemDetails.valuation_rate)
+          onFieldChange('basic_rate', itemDetails.valuation_rate)
+        }
+        
+        toast.success('Item details loaded successfully')
+      } else {
+        console.log('⚠️ No item details found')
+        toast.warning('No item details found')
+      }
+    } catch (error) {
+      console.error('❌ Error fetching item details:', error)
+      toast.error('Error loading item details')
+    }
+  }
+}
+
+// Provide the field change handler to child components
+provide('onFieldChange', handleFieldChange)
 </script>
