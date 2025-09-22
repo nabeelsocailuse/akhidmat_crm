@@ -350,7 +350,7 @@ usePageMeta(() => {
     title: title.value,
     icon: brand.favicon,
   }
-})
+})  
 
 const tabs = computed(() => {
   let tabOptions = [

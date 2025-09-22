@@ -22,6 +22,18 @@
         </div>
 
         <div class="flex gap-2">
+          <Button
+            v-if="doctype === 'Donation'"
+            class="whitespace-nowrap"
+            :label="__('Download multiple PDFs')"
+            @click="downloadMultiplePDFs"
+          />
+          <Button
+            v-if="doctype === 'Tax Exemption Certificate'"
+            class="whitespace-nowrap"
+            :label="__('Download multiple PDFs')"
+            @click="downloadTaxPDFs"
+          />
           <Button :label="__('Refresh')" @click="reload()" :loading="isLoading">
             <template #icon>
               <RefreshIcon class="h-4 w-4" />
@@ -148,7 +160,7 @@
       </div>
     </FadedScrollableDiv>
     <div class="-ml-2 h-[70%] border-l" />
-    <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2">
       <div
         v-if="viewUpdated && route.query.view && (!view.public || isManager())"
         class="flex items-center gap-2 border-r pr-2"
@@ -157,6 +169,18 @@
         <Button :label="__('Save Changes')" @click="saveView" />
       </div>
       <div class="flex items-center gap-2">
+        <Button
+          v-if="doctype === 'Donation'"
+          class="whitespace-nowrap"
+          :label="__('Download multiple PDFs')"
+          @click="downloadMultiplePDFs"
+        />
+        <Button
+          v-if="doctype === 'Tax Exemption Certificate'"
+          class="whitespace-nowrap"
+          :label="__('Download multiple PDFs')"
+          @click="downloadTaxPDFs"
+        />
         <Button :label="__('Refresh')" @click="reload()" :loading="isLoading">
           <template #icon>
             <RefreshIcon class="h-4 w-4" />
@@ -191,18 +215,6 @@
           v-model="list"
           :doctype="doctype"
           @update="(isDefault) => updateColumns(isDefault)"
-        />
-        <Button
-          v-if="doctype === 'Donation'"
-          class="whitespace-nowrap"
-          :label="__('Download multiple PDFs')"
-          @click="downloadMultiplePDFs"
-        />
-        <Button
-          v-if="doctype === 'Tax Exemption Certificate'"
-          class="whitespace-nowrap"
-          :label="__('Download multiple PDFs')"
-          @click="downloadTaxPDFs"
         />
         <Dropdown
           v-if="route.params.viewType !== 'kanban' || isManager()"

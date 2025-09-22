@@ -18,9 +18,42 @@
           :actions="document.actions"
         />
         <AssignTo v-model="assignees.data" doctype="Tax Exemption Certificate" :docname="certificateId" />
+        <Button label="Print" @click="printCertificate" />
       </template>
     </LayoutHeader>
-    
+
+    <!-- Print Modal -->
+    <div v-if="showPrintModal" class="fixed inset-0 z-50 flex items-center justify-center">
+      <div class="absolute inset-0 bg-black/50" @click="closePrintModal"></div>
+      <div class="relative z-10 w-[420px] rounded-lg bg-white shadow-xl">
+        <div class="flex items-center justify-between border-b px-4 py-3">
+          <div class="text-base font-medium">{{ __('Select Print Format') }}</div>
+          <button class="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100" @click="closePrintModal">{{ __('Close') }}</button>
+        </div>
+        <div class="space-y-2 px-4 py-4">
+          <label class="block text-sm text-gray-700">{{ __('Print Format') }}</label>
+          <select
+            class="block w-full rounded border px-3 py-2 text-sm"
+            v-model="selectedPrintFormat"
+          >
+            <option value="" disabled>{{ loadingFormats ? __('Loading...') : __('Select a format') }}</option>
+            <option v-for="f in printFormats" :key="f.name" :value="f.name">{{ f.name }}</option>
+          </select>
+        </div>
+        <div class="flex items-center justify-end gap-2 border-t px-4 py-3">
+          <button class="rounded px-3 py-1.5 text-sm hover:bg-gray-100" @click="closePrintModal">{{ __('Cancel') }}</button>
+          <button
+            class="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="!selectedPrintFormat || loadingFormats"
+            @click="confirmPrint"
+          >
+            {{ __('Print') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Existing Content -->
     <div v-if="doc.name" class="flex h-full overflow-hidden !bg-gradient-to-br !from-[#fef7ff] !to-[#f8faff] min-h-screen" style="background: linear-gradient(to bottom right, #fef7ff, #f8faff); min-height: 100vh;">
       <Tabs as="div" v-model="tabIndex" :tabs="tabs">
         <template #tab-panel>
@@ -36,55 +69,55 @@
           />
         </template>
       </Tabs>
-    <Resizer class="flex flex-col justify-between border-l" side="right">
-      <div
-        class="flex h-10.5 cursor-copy items-center border-b px-5 py-2.5 text-lg font-medium text-ink-gray-9"
-        @click="copyToClipboard(certificateId)"
-      >
-        {{ __(certificateId) }}
-      </div>
-      <div class="flex items-center justify-start gap-5 border-b p-5">
-        <div class="group relative size-12">
-          <Avatar
-            size="3xl"
-            class="size-12"
-            :label="title"
-          />
+      <Resizer class="flex flex-col justify-between border-l" side="right">
+        <div
+          class="flex h-10.5 cursor-copy items-center border-b px-5 py-2.5 text-lg font-medium text-ink-gray-9"
+          @click="copyToClipboard(certificateId)"
+        >
+          {{ __(certificateId) }}
         </div>
-        <div class="flex flex-col gap-2.5 truncate">
-          <Tooltip :text="doc.certificate_number || __('Set certificate number')">
-            <div class="truncate text-2xl font-medium text-ink-gray-9">
-              {{ title }}
-            </div>
-          </Tooltip>
-          <div class="flex gap-1.5">
-            <Tooltip :text="__('Delete')">
-              <div>
-                <Button
-                  @click="deleteCertificate"
-                  variant="subtle"
-                  theme="red"
-                  icon="trash-2"
-                />
+        <div class="flex items-center justify-start gap-5 border-b p-5">
+          <div class="group relative size-12">
+            <Avatar
+              size="3xl"
+              class="size-12"
+              :label="title"
+            />
+          </div>
+          <div class="flex flex-col gap-2.5 truncate">
+            <Tooltip :text="doc.certificate_number || __('Set certificate number')">
+              <div class="truncate text-2xl font-medium text-ink-gray-9">
+                {{ title }}
               </div>
             </Tooltip>
+            <div class="flex gap-1.5">
+              <Tooltip :text="__('Delete')">
+                <div>
+                  <Button
+                    @click="deleteCertificate"
+                    variant="subtle"
+                    theme="red"
+                    icon="trash-2"
+                  />
+                </div>
+              </Tooltip>
+            </div>
+            <ErrorMessage :message="__(error)" />
           </div>
-          <ErrorMessage :message="__(error)" />
         </div>
-      </div>
-      <div
-        v-if="sections.data"
-        class="flex flex-1 flex-col justify-between overflow-hidden"
-      >
-        <SidePanelLayout
-          :sections="sections.data"
-          doctype="Tax Exemption Certificate"
-          :docname="certificateId"
-          @reload="sections.reload"
-          @afterFieldChange="reloadAssignees"
-        />
-      </div>
-    </Resizer>
+        <div
+          v-if="sections.data"
+          class="flex flex-1 flex-col justify-between overflow-hidden"
+        >
+          <SidePanelLayout
+            :sections="sections.data"
+            doctype="Tax Exemption Certificate"
+            :docname="certificateId"
+            @reload="sections.reload"
+            @afterFieldChange="reloadAssignees"
+          />
+        </div>
+      </Resizer>
     </div>
   </AppStyling>
   <ErrorPage
@@ -92,7 +125,7 @@
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
-  
+
   <DeleteLinkedDocModal
     v-if="showDeleteLinkedDocModal"
     v-model="showDeleteLinkedDocModal"
@@ -294,6 +327,126 @@ function updateField(name, value) {
       toast.error(err.messages?.[0] || __('Error updating field'))
     },
   })
+}
+
+// Auto-fetch donor details to populate readonly fields on detail page
+async function fetchAndSetDonorDetails(donorId) {
+  if (!donorId) {
+    if (doc.value) {
+      doc.value.donor_name = ''
+      doc.value.donor_cnic__ntn = ''
+      doc.value.donor_address = ''
+    }
+    return
+  }
+  try {
+    const donor = await call('frappe.client.get', {
+      doctype: 'Donor',
+      name: donorId,
+    })
+    if (donor && doc.value) {
+      doc.value.donor_name = donor.donor_name || ''
+      doc.value.donor_cnic__ntn = donor.cnic || ''
+      doc.value.donor_address = donor.address || ''
+    }
+  } catch (e) {
+    // ignore errors
+  }
+}
+
+// Watch donor link for changes and populate fields
+watch(() => doc.value?.donor, async (newDonor, oldDonor) => {
+  if (newDonor !== oldDonor) {
+    await fetchAndSetDonorDetails(newDonor)
+  }
+})
+
+// Import existing components and utilities
+// import {
+//   // call,
+//   toast,
+// } from 'frappe-ui'
+// import { ref } from 'vue'
+
+// Print modal state and logic
+const showPrintModal = ref(false)
+const printFormats = ref([])
+const selectedPrintFormat = ref('')
+const loadingFormats = ref(false)
+
+function printCertificate() {
+  try {
+    const doctype = 'Tax Exemption Certificate'
+    const name = document?.doc?.name
+    if (!name) {
+      toast?.error && toast.error(__('Document not loaded'))
+      return
+    }
+    openPrintModal()
+  } catch (e) {
+    console.error('Error opening print view:', e)
+  }
+}
+
+async function openPrintModal() {
+  showPrintModal.value = true
+  selectedPrintFormat.value = ''
+  await fetchPrintFormats()
+}
+
+function closePrintModal() {
+  showPrintModal.value = false
+}
+
+async function fetchPrintFormats() {
+  loadingFormats.value = true
+  try {
+    const formats = await call('frappe.client.get_list', {
+      doctype: 'Print Format',
+      fields: ['name'],
+      filters: { doc_type: 'Tax Exemption Certificate', disabled: 0 },
+      order_by: 'name asc',
+      limit_page_length: 1000,
+    })
+    printFormats.value = Array.isArray(formats) ? formats : []
+    if (printFormats.value.length === 1) {
+      selectedPrintFormat.value = printFormats.value[0].name
+    }
+  } catch (e) {
+    console.error('Error fetching print formats:', e)
+    toast.error(__('Failed to load print formats'))
+  } finally {
+    loadingFormats.value = false
+  }
+}
+
+function confirmPrint() {
+  const format = selectedPrintFormat.value
+  if (!format) {
+    toast.error(__('Please select a print format'))
+    return
+  }
+  openPrintView(format)
+  closePrintModal()
+}
+
+function openPrintView(format) {
+  try {
+    const doctype = 'Tax Exemption Certificate'
+    const name = document?.doc?.name
+    if (!name) return
+    const params = new URLSearchParams({
+      doctype,
+      name: encodeURIComponent(name),
+      trigger_print: '1',
+      format,
+      no_letterhead: '1',
+    })
+    const url = `/printview?${params.toString()}`
+    window.open(url, '_blank')
+  } catch (e) {
+    console.error('Error opening print view:', e)
+  }
 }
 </script>
 

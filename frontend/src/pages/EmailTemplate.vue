@@ -184,30 +184,22 @@
 <script setup>
 import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
-// import Resizer from '@/components/Resizer.vue'
 import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
 import EmailIcon from '@/components/Icons/EmailIcon.vue'
-// import Email2Icon from '@/components/Icons/Email2Icon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
-// import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
-// import CameraIcon from '@/components/Icons/CameraIcon.vue'
 import LinkIcon from '@/components/Icons/LinkIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
-import FeatherIcon from '@/components/Icons/FeatherIcon.vue'
-// import WebsiteIcon from '@/components/Icons/WebsiteIcon.vue'
-// import FeatherIcon from '@/components/Icons/FeatherIcon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
-// import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import AppStyling from '@/components/AppStyling.vue'
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
@@ -299,16 +291,13 @@ const emailTemplate = createResource({
       errorTitle.value = __('Not permitted')
       errorMessage.value = __(err.messages?.[0])
     } else if (err.exc_type === 'DoesNotExistError') {
-      // Document doesn't exist yet, might be a timing issue
       errorTitle.value = __('Document Not Found')
       errorMessage.value = __('The Email Template might not be fully created yet. Please wait a moment and refresh the page.')
       
-      // Retry after a delay
       setTimeout(() => {
         emailTemplate.fetch()
       }, 1000)
     } else {
-      // Only redirect if it's not a "not found" error
       router.push({ name: 'EmailTemplates' })
     }
   },
@@ -324,7 +313,6 @@ const showFilesUploader = ref(false)
 
 const doc = computed(() => document.doc || {})
 
-// Normalize Use HTML to strict boolean like the modal does
 const useHtml = computed(() => {
   const v = doc.value?.use_html
   return v === 1 || v === true || v === '1'
@@ -356,7 +344,6 @@ const breadcrumbs = computed(() => {
 })
 
 const title = computed(() => {
-  // For Email Template, use name as the title field
   let t = 'name'
   return emailTemplate.data?.[t] || props.emailTemplateId
 })
@@ -422,7 +409,6 @@ const tabs = computed(() => {
 
 const { tabIndex, changeTabTo } = useActiveTabManager(tabs, 'lastEmailTemplateTab')
 
-// Load FieldLayout tabs for detail view and hide response fields (we handle them below)
 const detailTabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
   cache: ['Detail', 'Email Template'],
@@ -454,11 +440,9 @@ const detailTabs = createResource({
 })
 
 function handleFieldChange(fieldname, value) {
-  // Keep use_html in sync and switch editor immediately
   if (fieldname === 'use_html') {
     const normalized = value === 1 || value === true || value === '1'
     updateField('use_html', normalized ? 1 : 0)
-    // If switching to HTML and text exists but html empty, initialize html with text
     if (normalized && !doc.value.response_html && doc.value.response) {
       updateField('response_html', doc.value.response)
     }
@@ -467,7 +451,6 @@ function handleFieldChange(fieldname, value) {
   }
 }
 
-// Email Template sidebar sections for when CRM Fields Layout is not available
 const emailTemplateSidebarSections = computed(() => [
   {
     label: __('Template Details'),
@@ -568,18 +551,14 @@ const emailTemplateSidebarSections = computed(() => [
   }
 ])
 
-// Build computedSections: prefer server sections, otherwise try to build dynamically from doctypeMeta
 const computedSections = vueComputed(() => {
-  // use server-provided sections if available
   if (sections.data && Array.isArray(sections.data) && sections.data.length) {
     return sections.data
   }
 
-  // Attempt to build dynamic sections from doctypeMeta.fields
   try {
     const fields = doctypeMeta?.fields || []
     if (fields.length) {
-      // Group into a simple single 'Template Details' section by default
       const detailFields = fields
         .filter((f) => ['Data', 'Check', 'Text', 'Code', 'Datetime', 'Link', 'Select'].includes(f.fieldtype))
         .map((f) => ({
@@ -606,10 +585,8 @@ const computedSections = vueComputed(() => {
       }
     }
   } catch (e) {
-    // ignore
   }
 
-  // fallback to the simple hardcoded layout
   return emailTemplateSidebarSections.value
 })
 
@@ -630,7 +607,6 @@ const sections = createResource({
   params: { doctype: 'Email Template' },
   auto: true,
   onSuccess: (data) => {
-    // Sections loaded successfully
   },
   transform: (data) => {
     if (!data || !Array.isArray(data)) return data
@@ -657,7 +633,6 @@ const sections = createResource({
         })
       }
     })
-    // Inject a name field if missing so users can edit name from the sidepanel
     let hasName = false
     data.forEach((section) => {
       section.columns?.forEach((column) => {
@@ -678,13 +653,12 @@ const sections = createResource({
           })
         }
       } catch (e) {
-        // ignore
+      
       }
     }
     return data
   },
   onError: (err) => {
-    // Handle sections error silently
   },
 })
 

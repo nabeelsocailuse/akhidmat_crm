@@ -387,6 +387,11 @@ const field = computed(() => {
     }
   }
 
+  // Force specific fields to be read-only for Tax Exemption Certificate across UI
+  if (doctype === 'Tax Exemption Certificate' && ['donor_name', 'donor_cnic__ntn', 'donor_address'].includes(field.fieldname)) {
+    field.read_only = true
+  }
+
   // Make owner_id field readonly for Donor doctype
   if (field.fieldname === 'owner_id' && doctype === 'Donor') {
     field.read_only = true

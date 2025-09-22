@@ -82,6 +82,7 @@
     </Dialog>
   </TransitionRoot>
 </template>
+
 <script setup>
 import {
   TransitionRoot,
@@ -94,9 +95,10 @@ import Email2Icon from '@/components/Icons/Email2Icon.vue'
 import PinIcon from '@/components/Icons/PinIcon.vue'
 import UserDropdown from '@/components/UserDropdown.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
-import DealsIcon from '@/components/Icons/DealsIcon.vue'
+import DonorIcon from '@/components/Icons/DonorIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
-import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
+import DonationIcon from '@/components/Icons/DonationIcon.vue'
+import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import CampaignIcon from '@/components/Icons/CampaignIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
@@ -105,23 +107,22 @@ import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
 import { viewsStore } from '@/stores/views'
 import { unreadNotificationsCount } from '@/stores/notifications'
-import { createResource } from 'frappe-ui'
-import { TrialBanner } from 'frappe-ui/frappe'
-import { computed, h, provide } from 'vue'
+import { computed, h } from 'vue'
 import { mobileSidebarOpened as sidebarOpened } from '@/composables/settings'
 
 const { getPinnedViews, getPublicViews } = viewsStore()
 
+// ✅ Updated links to match AppSidebar
 const links = [
+  {
+    label: 'Dashboard',
+    icon: CampaignIcon,
+    to: 'Dashboard',
+  },
   {
     label: 'Leads',
     icon: LeadsIcon,
     to: 'Leads',
-  },
-  {
-    label: 'Deals',
-    icon: DealsIcon,
-    to: 'Deals',
   },
   {
     label: 'Contacts',
@@ -129,9 +130,9 @@ const links = [
     to: 'Contacts',
   },
   {
-    label: 'Organizations',
-    icon: OrganizationsIcon,
-    to: 'Organizations',
+    label: 'Addresses',
+    icon: LeadsIcon,
+    to: 'Addresses',
   },
   {
     label: 'Notes',
@@ -149,16 +150,59 @@ const links = [
     to: 'Call Logs',
   },
   {
-    label: 'Campaigns',
-    icon: CampaignIcon,
-    to: 'Campaigns',
+    label: 'Donor',
+    icon: DonorIcon,
+    to: 'Donor',
   },
   {
-    label: 'Email Templates',
-    icon: Email2Icon,
-    to: 'Email Templates',
+    label: 'Donation',
+    icon: DonationIcon,
+    to: 'Donations',
+  },
+  {
+    label: 'Tax Exemption Certificates',
+    icon: NoteIcon,
+    to: 'TaxExemptionCertificates',
   },
 ]
+
+// ✅ Added Fundraising Campaign group
+const fundraisingCampaign = {
+  name: 'Fundraising Campaign',
+  opened: false,
+  views: [
+    {
+      label: 'Campaigns',
+      icon: CampaignIcon,
+      to: 'Campaigns',
+    },
+    {
+      label: 'Email Campaign',
+      icon: CampaignIcon,
+      to: 'Email Campaign',
+    },
+    {
+      label: 'Email Template',
+      icon: EmailIcon,
+      to: 'EmailTemplates',
+    },
+    {
+      label: 'Email Group',
+      icon: EmailIcon,
+      to: 'Email Group',
+    },
+    {
+      label: 'Email Group Members',
+      icon: EmailIcon,
+      to: 'Email Group Members',
+    },
+    {
+      label: 'Communication',
+      icon: Email2Icon,
+      to: 'Communication',
+    },
+  ],
+}
 
 const allViews = computed(() => {
   let _views = [
@@ -168,7 +212,9 @@ const allViews = computed(() => {
       opened: true,
       views: links,
     },
+    fundraisingCampaign,
   ]
+
   if (getPublicViews().length) {
     _views.push({
       name: 'Public views',
@@ -207,18 +253,23 @@ function getIcon(routeName, icon) {
   switch (routeName) {
     case 'Leads':
       return LeadsIcon
-    case 'Deals':
-      return DealsIcon
     case 'Contacts':
       return ContactsIcon
-    case 'Organizations':
-      return OrganizationsIcon
     case 'Notes':
       return NoteIcon
     case 'Call Logs':
       return PhoneIcon
     case 'Campaigns':
+    case 'Email Campaign':
       return CampaignIcon
+    case 'Donor':
+      return DonorIcon
+    case 'Email Template':
+      return EmailIcon
+    case 'Tasks':
+      return TaskIcon
+    case 'Notifications':
+      return NotificationsIcon
     default:
       return PinIcon
   }

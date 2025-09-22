@@ -818,7 +818,6 @@ watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) =>
       row.city = ''
       row.address = ''
       row.cnic = ''
-      // ADD: Clear care-of details fields as well
       row.co_name = ''
       row.co_contact_no = ''
       row.co_email = ''
@@ -829,15 +828,12 @@ watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) =>
       row.co_country = ''
       row.co_designation = ''
       
-      // Clear the last donor ID tracker
       row._lastDonorId = null
     })
     
-    // Force reactive update
     donation.doc.payment_detail = [...donation.doc.payment_detail]
   }
   
-  // Clear existing donor selections in items table when donor identity changes
   if (donation.doc.items && Array.isArray(donation.doc.items)) {
     donation.doc.items.forEach((row, index) => {
       // Clear donor-related fields
@@ -845,29 +841,22 @@ watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) =>
       row.donor_name = ''
       row.donor_type = ''
       row.donor_desk = ''
-      row.donor_desk_id = ''
-      // ADD: Clear care-of details fields for items table as well
-      row.co_name = ''
-      row.co_contact_no = ''
-      row.co_email = ''
-      row.co_address = ''
-      row.relationship_with_donor = ''
-      row.area = ''
-      row.co_city = ''
-      row.co_country = ''
-      row.co_designation = ''
       
-      // Clear the last donor ID tracker
+      // Clear fund class-related fields
+      row.fund_class = ''
+      row.service_area = ''
+      row.subservice_area = ''
+      row.product = ''
+      
+      // Clear the last ID trackers
       row._lastItemsDonorId = null
+      row._lastItemsFundClassId = null
     })
     
-    // Force reactive update
     donation.doc.items = [...donation.doc.items]
   }
   
-  // Force re-render of tabs to apply new filtering
   nextTick(() => {
-    // This will trigger the computed filteredTabs to update with new donor filters
     console.log('Tabs re-rendered for new donor identity:', newDonorIdentity)
   })
   
@@ -880,26 +869,20 @@ function handleModalSuccess(idx, doc) {
   modalStack.value.splice(idx, 1)
   
   if (!hasActiveSubModals.value) {
-    // Parent modal can now be closed
   }
 }
 
 function handleModalClose(idx) {
   modalStack.value.splice(idx, 1)
   
-  // If no more sub-modals, allow parent modal to be closed
   if (!hasActiveSubModals.value) {
-    // Reset any modal-specific states if needed
   }
 }
 
-// Enhanced error handling function
 function extractDonationErrorMessage(err) {
   let errorMessage = 'An error occurred while creating the donation.'
   
-  // Handle different error types
   if (err?.exc_type === 'MandatoryError') {
-    // Parse mandatory field errors
     const missingFields = parseMandatoryError(err)
     if (missingFields.length > 0) {
       errorMessage = `Please fill in the following required fields:\n\n${missingFields.map(field => `• ${field}`).join('\n')}`
@@ -915,28 +898,24 @@ function extractDonationErrorMessage(err) {
   } else if (err?.exc_type === 'DuplicateEntryError') {
     errorMessage = 'A donation with this information already exists.'
   } else if (err?.message) {
-    // Try to parse custom error messages
     errorMessage = parseCustomErrorMessage(err.message)
   } else if (err?.exc) {
-    // Parse exception traceback
     errorMessage = parseExceptionMessage(err.exc)
   }
   
   return errorMessage
 }
 
-// Parse MandatoryError to extract field names
 function parseMandatoryError(err) {
   const missingFields = []
   
   if (err.messages && Array.isArray(err.messages)) {
     err.messages.forEach(msg => {
-      // Parse different formats of MandatoryError
       const patterns = [
-        /\[([^,]+),\s*([^\]]+)\]:\s*([^,\s]+)/, // [Donation, DONATION-2025-00007]: equity_account
-        /MandatoryError.*?:\s*([^,\n]+)/, // MandatoryError: equity_account
-        /Field\s+([^,\s]+)\s+is\s+mandatory/, // Field equity_account is mandatory
-        /([^,\s]+)\s+is\s+required/, // equity_account is required
+        /\[([^,]+),\s*([^\]]+)\]:\s*([^,\s]+)/,
+        /MandatoryError.*?:\s*([^,\n]+)/, 
+        /Field\s+([^,\s]+)\s+is\s+mandatory/, 
+        /([^,\s]+)\s+is\s+required/, 
       ]
       
       for (const pattern of patterns) {
@@ -1498,6 +1477,53 @@ watch(() => donation.doc?.payment_detail, async (rows) => {
     }
   } finally {
     pdProcessing2 = false
+  }
+}, { deep: true })
+
+// EXACT BACKEND TRIGGER LOGIC - Items Changes (Donor Selection)
+let isProcessingItems = false
+watch(() => donation.doc.items, async (newItems, oldItems) => {
+  if (isProcessingItems) return
+  
+  if (newItems && Array.isArray(newItems)) {
+    isProcessingItems = true
+    
+    try {
+      let shouldDoReactiveUpdate = false
+      
+      // Process each items row for changes that trigger donor and fund class fetch
+      for (let index = 0; index < newItems.length; index++) {
+        const row = newItems[index]
+        
+        // EXACT backend trigger: donor change
+        if (row.donor && row.donor !== row._lastItemsDonorId) {
+          console.log(`Donor changed in items row ${index}:`, row.donor)
+          row._lastItemsDonorId = row.donor
+          await handleItemsDonorSelection(row.donor, row)
+          shouldDoReactiveUpdate = true
+        }
+        
+        // EXACT backend trigger: fund_class change
+        if (row.fund_class && row.fund_class !== row._lastItemsFundClassId) {
+          console.log(`Fund Class changed in items row ${index}:`, row.fund_class)
+          row._lastItemsFundClassId = row.fund_class
+          await handleItemsFundClassSelection(row.fund_class, row)
+          shouldDoReactiveUpdate = true
+        }
+      }
+      
+      // Force reactive update if needed
+      if (shouldDoReactiveUpdate) {
+        console.log('Forcing reactive update of items table')
+        donation.doc.items = [...donation.doc.items]
+      }
+      
+    } catch (error) {
+      console.error('Error processing items changes:', error)
+      toast.error('Error processing items changes')
+    } finally {
+      isProcessingItems = false
+    }
   }
 }, { deep: true })
 
@@ -2526,6 +2552,148 @@ watch(() => donation.doc.deduction_breakeven, () => {
 watch(() => donation.doc.contribution_type, () => {
   updateCalculationFields()
 })
+
+// ADD: Function to handle donor selection for items table
+async function handleItemsDonorSelection(donorId, row) {
+  console.log('Handling donor selection for items:', { donorId, row })
+  
+  if (!donorId) {
+    clearItemsDonorFields(row)
+    return
+  }
+  
+  try {
+    const donorDetails = await fetchDonorDetails(donorId)
+    if (donorDetails) {
+      updateItemsDonorFields(row, donorDetails)
+      console.log('Items donor fields updated successfully')
+    } else {
+      console.log('No donor details received for items')
+      toast.error('Could not fetch donor details')
+    }
+  } catch (error) {
+    console.error('Error in items donor handling:', error)
+    toast.error('Error loading donor details')
+  }
+}
+
+// ADD: Function to update donor fields in items table
+function updateItemsDonorFields(row, donorDetails) {
+  console.log('Updating items row with donor details:', donorDetails)
+  console.log('Items row before update:', { ...row })
+  
+  // Map donor fields to items fields based on fetch_from configuration
+  const fieldMappings = {
+    'donor_name': 'donor_name',
+    'donor_type': 'donor_type',
+    'donor_desk': 'donor_desk'
+  }
+  
+  // Update each field with donor data
+  Object.entries(fieldMappings).forEach(([donorField, rowField]) => {
+    if (donorDetails[donorField] !== undefined) {
+      const oldValue = row[rowField]
+      row[rowField] = donorDetails[donorField] || ''
+      console.log(`Updated items ${rowField}: ${oldValue} -> ${row[rowField]}`)
+    }
+  })
+  
+  console.log('Items row after donor update:', { ...row })
+  
+  // Force reactive update - CRITICAL for Vue to detect changes
+  if (donation.doc.items) {
+    console.log('Forcing reactive update of items after donor update')
+    donation.doc.items = [...donation.doc.items]
+  }
+}
+
+// ADD: Function to clear donor fields in items table
+function clearItemsDonorFields(row) {
+  console.log('Clearing donor fields for items row')
+  
+  const fieldsToClear = [
+    'donor_name',
+    'donor_type', 
+    'donor_desk'
+  ]
+  
+  fieldsToClear.forEach(field => {
+    row[field] = ''
+  })
+  
+  console.log('Items donor fields cleared')
+}
+
+// ADD: Function to handle fund class selection for items table
+async function handleItemsFundClassSelection(fundClassId, row) {
+  console.log('Handling fund class selection for items:', { fundClassId, row })
+  
+  if (!fundClassId) {
+    clearItemsFundClassFields(row)
+    return
+  }
+  
+  try {
+    const fundClassDetails = await fetchFundClassDetails(fundClassId)
+    if (fundClassDetails) {
+      updateItemsFundClassFields(row, fundClassDetails)
+      console.log('Items fund class fields updated successfully')
+    } else {
+      console.log('No fund class details received for items')
+      toast.error('Could not fetch fund class details')
+    }
+  } catch (error) {
+    console.error('Error in items fund class handling:', error)
+    toast.error('Error loading fund class details')
+  }
+}
+
+// ADD: Function to update fund class fields in items table
+function updateItemsFundClassFields(row, fundClassDetails) {
+  console.log('Updating items row with fund class details:', fundClassDetails)
+  console.log('Items row before fund class update:', { ...row })
+  
+  // Map fund class fields to items fields based on fetch_from configuration
+  const fieldMappings = {
+    'service_area': 'service_area',
+    'subservice_area': 'subservice_area',
+    'product': 'product'
+  }
+  
+  // Update each field with fund class data
+  Object.entries(fieldMappings).forEach(([fundClassField, rowField]) => {
+    if (fundClassDetails[fundClassField] !== undefined) {
+      const oldValue = row[rowField]
+      row[rowField] = fundClassDetails[fundClassField] || ''
+      console.log(`Updated items ${rowField}: ${oldValue} -> ${row[rowField]}`)
+    }
+  })
+  
+  console.log('Items row after fund class update:', { ...row })
+  
+  // Force reactive update - CRITICAL for Vue to detect changes
+  if (donation.doc.items) {
+    console.log('Forcing reactive update of items after fund class update')
+    donation.doc.items = [...donation.doc.items]
+  }
+}
+
+// ADD: Function to clear fund class fields in items table
+function clearItemsFundClassFields(row) {
+  console.log('Clearing fund class fields for items row')
+  
+  const fieldsToClear = [
+    'service_area',
+    'subservice_area',
+    'product'
+  ]
+  
+  fieldsToClear.forEach(field => {
+    row[field] = ''
+  })
+  
+  console.log('Items fund class fields cleared')
+}
 
 // ADD: Function to validate percentage against min/max limits
 function validatePercentageLimits(row, rowIndex) {

@@ -216,12 +216,30 @@ const routes = [
     props: true,
   },
   {
-    alias: '/tax-exemption-certificates',
+    alias: [
+      '/tax-exemption-certificates',
+      // Legacy/alternate aliases for consistency with other doctypes
+      '/taxexemptioncertificate',
+      '/taxexemptioncertificate/list',
+      '/taxexemptioncertificate/view',
+      // Additional common variants
+      '/tax-exemption-certificate',
+      '/tax-exemption-certificate/list',
+      '/tax-exemption-certificate/view',
+      '/taxexemptioncertificates',
+      '/taxexemptioncertificates/view',
+      '/taxexemptioncertificates/list',
+    ],
     path: '/tax-exemption-certificates/view/:viewType?',
     name: 'TaxExemptionCertificates',
     component: lazy(() => import('@/pages/TaxExemptionCertificates.vue')),
   },
   {
+    alias: [
+      '/taxexemptioncertificate/:certificateId',
+      '/tax-exemption-certificate/:certificateId',
+      '/taxexemptioncertificates/:certificateId',
+    ],
     path: '/tax-exemption-certificates/:certificateId',
     name: 'TaxExemptionCertificate',
     component: lazy(() => import('@/pages/TaxExemptionCertificate.vue')),

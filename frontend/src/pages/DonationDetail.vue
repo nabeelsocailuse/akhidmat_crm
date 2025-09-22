@@ -392,7 +392,7 @@
   <FilesUploader
     v-if="document.doc?.name"
     v-model="showFilesUploader"
-    doctype="Donation"
+    doctype="Donation"p
     :docname="document.doc.name"
     @after="() => { activities?.all_activities?.reload(); changeTabTo('attachments') }"
   />

@@ -150,6 +150,41 @@ watch(
   }
 );
 
+// Fetch donor details and populate readonly fields
+async function fetchAndSetDonorDetails(donorId) {
+  if (!donorId) {
+    if (certificate.doc) {
+      certificate.doc.donor_name = '';
+      certificate.doc.donor_cnic__ntn = '';
+      certificate.doc.donor_address = '';
+    }
+    return;
+  }
+  try {
+    const donor = await call('frappe.client.get', {
+      doctype: 'Donor',
+      name: donorId,
+    });
+    if (donor && certificate.doc) {
+      certificate.doc.donor_name = donor.donor_name || '';
+      certificate.doc.donor_cnic__ntn = donor.cnic || '';
+      certificate.doc.donor_address = donor.address || '';
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+// Watch donor link to auto-fill related fields
+watch(
+  () => certificate.doc && certificate.doc.donor,
+  async (newDonor, oldDonor) => {
+    if (newDonor !== oldDonor) {
+      await fetchAndSetDonorDetails(newDonor);
+    }
+  }
+);
+
 async function createNewCertificate() {
   if (duplicateCnicError.value) {
     error.value = __('A certificate with this identification value already exists.');
@@ -199,5 +234,4 @@ async function createNewCertificate() {
 </script>
 
 <style>
-/* Add any specific styles here */
 </style>
