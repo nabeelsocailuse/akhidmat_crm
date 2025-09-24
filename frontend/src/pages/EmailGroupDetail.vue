@@ -582,14 +582,14 @@ function addSubscribers() {
   showAddDialog.value = true
 }
 
-function newNewsletter() {
-  openWebsite(`/app/newsletter/new?email_group=${props.emailGroupId}`)
-}
+// function newNewsletter() {
+//   openWebsite(`/app/newsletter/new?email_group=${props.emailGroupId}`)
+// }
 
 const actions = [
   { label: __('Import Subscribers'), onClick: importSubscribers },
   { label: __('Add Subscribers'), onClick: addSubscribers },
-  { label: __('New Newsletter'), onClick: newNewsletter },
+  // { label: __('New Newsletter'), onClick: newNewsletter },
 ]
 
 const showImportDialog = ref(false)

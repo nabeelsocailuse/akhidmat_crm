@@ -1,21 +1,29 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { defineAsyncComponent } from 'vue'
+import { defineAsyncComponent, h } from 'vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import { userResource } from '@/stores/user'
 import { sessionStore } from '@/stores/session'
 import { viewsStore } from '@/stores/views'
 
-// Move handleMobileView function before routes
-const handleMobileView = (componentName) => {
-  return window.innerWidth < 768 ? `Mobile${componentName}` : 'Mobile' + componentName
-}
-
-// helper to wrap dynamic imports with a loading spinner
+// Helper: show loading spinner while importing
 const lazy = (loader) =>
   defineAsyncComponent({
     loader: typeof loader === 'function' ? loader : () => loader(),
     loadingComponent: LoadingSpinner,
   })
+
+// ✅ Responsive loader for mobile vs desktop
+const responsiveLoader = (desktop, mobile) => {
+  return {
+    render() {
+      const isMobile = window.innerWidth < 768
+      const component = isMobile
+        ? defineAsyncComponent(() => import(`@/pages/${mobile}.vue`))
+        : defineAsyncComponent(() => import(`@/pages/${desktop}.vue`))
+      return h(component)
+    },
+  }
+}
 
 const routes = [
   {
@@ -41,21 +49,9 @@ const routes = [
   {
     path: '/leads/:leadId',
     name: 'Lead',
-    component: lazy(() => import(`@/pages/${handleMobileView('Lead')}.vue`)),
+    component: responsiveLoader('Lead', 'MobileLead'),
     props: true,
   },
-  // {
-  //   alias: '/deals',
-  //   path: '/deals/view/:viewType?',
-  //   name: 'Deals',
-  //   component: () => import('@/pages/Deals.vue'),
-  // },
-  // {
-  //   path: '/deals/:dealId',
-  //   name: 'Deal',
-  //   component: () => import(`@/pages/${handleMobileView('Deal')}.vue`),
-  //   props: true,
-  // },
   {
     alias: '/notes',
     path: '/notes/view/:viewType?',
@@ -77,7 +73,7 @@ const routes = [
   {
     path: '/contacts/:contactId',
     name: 'Contact',
-    component: lazy(() => import(`@/pages/${handleMobileView('Contact')}.vue`)),
+    component: responsiveLoader('Contact', 'MobileContact'),
     props: true,
   },
   {
@@ -92,18 +88,6 @@ const routes = [
     component: lazy(() => import('@/pages/Address.vue')),
     props: true,
   },
-  // {
-  //   alias: '/organizations',
-  //   path: '/organizations/view/:viewType?',
-  //   name: 'Organizations',
-  //   component: () => import('@/pages/Organizations.vue'),
-  // },
-  // {
-  //   path: '/organizations/:organizationId',
-  //   name: 'Organization',
-  //   component: () => import(`@/pages/${handleMobileView('Organization')}.vue`),
-  //   props: true,
-  // },
   {
     alias: '/call-logs',
     path: '/call-logs/view/:viewType?',
@@ -124,7 +108,7 @@ const routes = [
   {
     path: '/campaigns/:campaignId',
     name: 'Campaign',
-    component: lazy(() => import('@/pages/Campaign.vue')),
+    component: responsiveLoader('Campaign', 'MobileCampaign'),
     props: true,
   },
   {
@@ -141,7 +125,7 @@ const routes = [
   {
     path: '/donor/:donorId',
     name: 'DonorDetail',
-    component: lazy(() => import('@/pages/DonorDetail.vue')),
+    component: responsiveLoader('DonorDetail', 'MobileDonorDetail'),
     props: true,
   },
   {
@@ -153,7 +137,7 @@ const routes = [
   {
     path: '/donations/:donationId',
     name: 'DonationDetail',
-    component: lazy(() => import('@/pages/DonationDetail.vue')),
+    component: responsiveLoader('DonationDetail', 'MobileDonationDetail'),
     props: true,
   },
   {
@@ -165,7 +149,7 @@ const routes = [
   {
     path: '/email-template/:emailTemplateId',
     name: 'EmailTemplate',
-    component: lazy(() => import('@/pages/EmailTemplate.vue')),
+    component: responsiveLoader('EmailTemplate', 'MobileEmailTemplate'),
     props: true,
   },
   {
@@ -177,7 +161,7 @@ const routes = [
   {
     path: '/email-campaign/:emailCampaignId',
     name: 'EmailCampaignDetail',
-    component: lazy(() => import('@/pages/EmailCampaignDetail.vue')),
+    component: responsiveLoader('EmailCampaignDetail', 'MobileEmailCampaignDetail'),
     props: true,
   },
   {
@@ -189,7 +173,7 @@ const routes = [
   {
     path: '/email-group/:emailGroupId',
     name: 'EmailGroupDetail',
-    component: lazy(() => import('@/pages/EmailGroupDetail.vue')),
+    component: responsiveLoader('EmailGroupDetail', 'MobileEmailGroupDetail'),
     props: true,
   },
   {
@@ -200,7 +184,7 @@ const routes = [
   {
     path: '/communication/:communicationId',
     name: 'CommunicationDetail',
-    component: lazy(() => import('@/pages/CommunicationDetail.vue')),
+    component: responsiveLoader('CommunicationDetail', 'MobileCommunicationDetail'),
     props: true,
   },
   {
@@ -212,17 +196,15 @@ const routes = [
   {
     path: '/email-group-members/:memberId',
     name: 'EmailGroupMember',
-    component: lazy(() => import('@/pages/EmailGroupMember.vue')),
+    component: responsiveLoader('EmailGroupMember', 'MobileEmailGroupMember'),
     props: true,
   },
   {
     alias: [
       '/tax-exemption-certificates',
-      // Legacy/alternate aliases for consistency with other doctypes
       '/taxexemptioncertificate',
       '/taxexemptioncertificate/list',
       '/taxexemptioncertificate/view',
-      // Additional common variants
       '/tax-exemption-certificate',
       '/tax-exemption-certificate/list',
       '/tax-exemption-certificate/view',
@@ -242,7 +224,7 @@ const routes = [
     ],
     path: '/tax-exemption-certificates/:certificateId',
     name: 'TaxExemptionCertificate',
-    component: lazy(() => import('@/pages/TaxExemptionCertificate.vue')),
+    component: responsiveLoader('TaxExemptionCertificate', 'MobileTaxExemptionCertificate'),
     props: true,
   },
 ]

@@ -19,7 +19,7 @@
         } catch (error) {
           console.error('Error in getRowRoute:', error)
           return { name: 'EmailCampaign' }
-        }
+        } 
       },
       selectable: options.selectable,
       showTooltip: options.showTooltip,

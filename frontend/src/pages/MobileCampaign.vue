@@ -13,7 +13,7 @@
           v-if="doc"
           :options="
             statusOptions(
-              'lead',
+              'campaign',
               document.statuses?.length
                 ? document.statuses
                 : document._statuses,
@@ -24,7 +24,7 @@
           <template #default="{ open }">
             <Button v-if="doc.status" :label="doc.status">
               <template #prefix>
-                <IndicatorIcon :class="getLeadStatus(doc.status).color" />
+                <IndicatorIcon class="bg-green-500" />
               </template>
               <template #suffix>
                 <FeatherIcon
@@ -38,11 +38,12 @@
       </div>
     </header>
   </LayoutHeader>
+
   <div
     v-if="doc.name"
     class="flex h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
   >
-    <AssignTo v-model="assignees.data" doctype="CRM Lead" :docname="leadId" />
+    <AssignTo v-model="assignees.data" doctype="Campaign" :docname="campaignId" />
     <div class="flex items-center gap-2">
       <CustomActions
         v-if="document._actions?.length"
@@ -52,13 +53,9 @@
         v-if="document.actions?.length"
         :actions="document.actions"
       />
-      <Button
-        :label="__('Convert To Donor')"
-        variant="solid"
-        @click="convertLeadToDonor"
-      />
     </div>
   </div>
+
   <div v-if="doc.name" class="flex h-full overflow-hidden">
     <Tabs as="div" v-model="tabIndex" :tabs="tabs" class="overflow-auto">
       <TabList class="!px-3" />
@@ -75,8 +72,8 @@
           >
             <SidePanelLayout
               :sections="sections.data"
-              doctype="CRM Lead"
-              :docname="leadId"
+              doctype="Campaign"
+              :docname="campaignId"
               @reload="sections.reload"
               @afterFieldChange="reloadAssignees"
             />
@@ -84,8 +81,8 @@
         </div>
         <Activities
           v-else
-          doctype="CRM Lead"
-          :docname="leadId"
+          doctype="Campaign"
+          :docname="campaignId"
           :tabs="tabs"
           v-model:reload="reload"
           v-model:tabIndex="tabIndex"
@@ -95,89 +92,64 @@
       </TabPanel>
     </Tabs>
   </div>
+
   <ErrorPage
     v-else-if="errorTitle"
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
-  
-  <DeleteLinkedDocModal
-    v-if="showDeleteLinkedDocModal"
-    v-model="showDeleteLinkedDocModal"
-    :doctype="'CRM Lead'"
-    :docname="leadId"
-    name="Leads"
-  />
-  <div
-    v-if="isConverting"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
-  >
-    <span class="loader"></span>
-  </div>
 </template>
 
 <script setup>
-import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
 import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
 import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
 import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
 import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
+import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
-import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
-import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
-import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import AssignTo from '@/components/AssignTo.vue'
-import Link from '@/components/Controls/Link.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
-import { setupCustomizations } from '@/utils'
-import { getView } from '@/utils/view'
-import { getSettings } from '@/stores/settings'
-import { globalStore } from '@/stores/global'
-import { statusesStore } from '@/stores/statuses'
-import { getMeta } from '@/stores/meta'
-import { useDocument } from '@/data/document'
-import {
-  whatsappEnabled,
-  callEnabled,
-  isMobileView,
-} from '@/composables/settings'
-import { capture } from '@/telemetry'
-import { useActiveTabManager } from '@/composables/useActiveTabManager'
 import {
   createResource,
   Dropdown,
   Tabs,
   TabList,
   TabPanel,
-  Switch,
   Breadcrumbs,
-  call,
   usePageMeta,
-  toast,
 } from 'frappe-ui'
 import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-// import Spinner from '@/components/Spinner.vue'
+import { globalStore } from '@/stores/global'
+import { statusesStore } from '@/stores/statuses'
+import { getMeta } from '@/stores/meta'
+import { useDocument } from '@/data/document'
+import { useActiveTabManager } from '@/composables/useActiveTabManager'
+import { getSettings } from '@/stores/settings'
+import {
+  whatsappEnabled,
+  callEnabled,
+  isMobileView,
+} from '@/composables/settings'
 
 const { brand } = getSettings()
-const { $dialog, $socket } = globalStore()
-const { statusOptions, getLeadStatus } = statusesStore()
-const { doctypeMeta } = getMeta('CRM Lead')
+const { statusOptions } = statusesStore()
+const { doctypeMeta } = getMeta('Campaign')
 const route = useRoute()
 const router = useRouter()
 
 const props = defineProps({
-  leadId: {
+  campaignId: {
     type: String,
     required: true,
   },
@@ -185,23 +157,17 @@ const props = defineProps({
 
 const errorTitle = ref('')
 const errorMessage = ref('')
-const showDeleteLinkedDocModal = ref(false)
-const isConverting = ref(false)
 
-const { triggerOnChange, assignees, document, scripts, error } = useDocument(
-  'CRM Lead',
-  props.leadId,
+const { triggerOnChange, assignees, document, error } = useDocument(
+  'Campaign',
+  props.campaignId,
 )
 
 const doc = computed(() => document.doc || {})
 
 watch(error, (err) => {
   if (err) {
-    errorTitle.value = __(
-      err.exc_type == 'DoesNotExistError'
-        ? 'Document not found'
-        : 'Error occurred',
-    )
+    errorTitle.value = __('Error loading campaign')
     errorMessage.value = __(err.messages?.[0] || 'An error occurred')
   } else {
     errorTitle.value = ''
@@ -209,58 +175,20 @@ watch(error, (err) => {
   }
 })
 
-watch(
-  () => document.doc,
-  async (_doc) => {
-    if (scripts.data?.length) {
-      let s = await setupCustomizations(scripts.data, {
-        doc: _doc,
-        $dialog,
-        $socket,
-        router,
-        toast,
-        updateField,
-        createToast: toast.create,
-        deleteDoc: deleteLead,
-        call,
-      })
-      document._actions = s.actions || []
-      document._statuses = s.statuses || []
-    }
-  },
-  { once: true },
-)
-
 const reload = ref(false)
 
 const breadcrumbs = computed(() => {
-  let items = [{ label: __('Leads'), route: { name: 'Leads' } }]
-
-  if (route.query.view || route.query.viewType) {
-    let view = getView(route.query.view, route.query.viewType, 'CRM Lead')
-    if (view) {
-      items.push({
-        label: __(view.label),
-        icon: view.icon,
-        route: {
-          name: 'Leads',
-          params: { viewType: route.query.viewType },
-          query: { view: route.query.view },
-        },
-      })
-    }
-  }
-
+  let items = [{ label: __('Campaigns'), route: { name: 'Campaigns' } }]
   items.push({
     label: title.value,
-    route: { name: 'Lead', params: { leadId: props.leadId } },
+    route: { name: 'Campaign', params: { campaignId: props.campaignId } },
   })
   return items
 })
 
 const title = computed(() => {
-  let t = doctypeMeta['CRM Lead']?.title_field || 'name'
-  return doc.value?.[t] || props.leadId
+  let t = doctypeMeta['Campaign']?.title_field || 'name'
+  return doc.value?.[t] || props.campaignId
 })
 
 usePageMeta(() => {
@@ -329,14 +257,26 @@ const tabs = computed(() => {
   return tabOptions.filter((tab) => (tab.condition ? tab.condition() : true))
 })
 
-const { tabIndex } = useActiveTabManager(tabs, 'lastLeadTab')
+const { tabIndex } = useActiveTabManager(tabs, 'lastCampaignTab')
 
 const sections = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
-  cache: ['sidePanelSections', 'CRM Lead'],
-  params: { doctype: 'CRM Lead' },
+  cache: ['sidePanelSections', 'Campaign'],
+  params: { doctype: 'Campaign' },
   auto: true,
 })
+
+function saveChanges(data) {
+  document.save.submit(null, {
+    onSuccess: () => reloadAssignees(data),
+  })
+}
+
+function reloadAssignees(data) {
+  if (data?.hasOwnProperty('campaign_owner')) {
+    assignees.reload()
+  }
+}
 
 function updateField(name, value) {
   value = Array.isArray(name) ? '' : value
@@ -356,80 +296,12 @@ function updateField(name, value) {
       } else {
         doc.value[name] = oldValues
       }
-      toast.error(err.messages?.[0] || __('Error updating field'))
     },
   })
-}
-
-function deleteLead() {
-  showDeleteLinkedDocModal.value = true
-}
-
-// Convert to Donor
-async function convertLeadToDonor() {
-  isConverting.value = true
-  try {
-    await call('crm.fcrm.doctype.crm_lead.crm_lead.convert_to_deal', {
-      lead: props.leadId,
-    })
-    toast.success(__('Lead converted to donor'))
-    router.push({ name: 'Leads' })
-  } catch (e) {
-    toast.error(e?.messages?.[0] || __('Error converting lead'))
-  } finally {
-    isConverting.value = false
-  }
 }
 
 async function triggerStatusChange(value) {
   await triggerOnChange('status', value)
   document.save.submit()
 }
-
-function saveChanges(data) {
-  document.save.submit(null, {
-    onSuccess: () => reloadAssignees(data),
-  })
-}
-
-function reloadAssignees(data) {
-  if (data?.hasOwnProperty('lead_owner')) {
-    assignees.reload()
-  }
-}
 </script>
-
-<style>
-.loader {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: inline-block;
-  position: relative;
-  border-top: 4px solid #fff;
-  border-right: 4px solid transparent;
-  box-sizing: border-box;
-  animation: rotation 1s linear infinite;
-}
-.loader::after {
-  content: '';
-  box-sizing: border-box;
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  border-left: 4px solid #FF3D00;
-  border-bottom: 4px solid transparent;
-  animation: rotation 0.5s linear infinite reverse;
-}
-@keyframes rotation {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-</style>

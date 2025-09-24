@@ -2,6 +2,7 @@
   <Dialog v-model="show" :options="{ size: '3xl' }">
     <template #body>
       <AppStyling type="donor-modal-background">
+        <!-- Header -->
         <AppStyling type="modal-styling" modalType="header">
           <div class="mb-5 flex items-center justify-between">
             <div>
@@ -27,16 +28,15 @@
               </Button>
             </div>
           </div>
+
+          <!-- Body -->
           <div>
             <FieldLayout v-if="tabs.data" :tabs="tabs.data" :data="certificate.doc" />
             <ErrorMessage class="mt-4" v-if="error" :message="__(error)" />
-            <ErrorMessage
-              class="mt-4"
-              v-if="duplicateCnicError"
-              :message="__('A certificate with this identification value already exists.')"
-            />
           </div>
         </AppStyling>
+
+        <!-- Footer -->
         <AppStyling type="modal-styling" modalType="footer">
           <div class="flex flex-row-reverse gap-2">
             <AppStyling
@@ -44,7 +44,6 @@
               buttonType="create"
               buttonLabel="Create"
               :buttonLoading="isCertificateCreating"
-              :disabled="duplicateCnicError"
               @click="createNewCertificate"
             />
           </div>
@@ -55,47 +54,46 @@
 </template>
 
 <script setup>
-import EditIcon from '@/components/Icons/EditIcon.vue';
-import FieldLayout from '@/components/FieldLayout/FieldLayout.vue';
-import AppStyling from '@/components/AppStyling.vue';
-import { usersStore } from '@/stores/users';
-import { statusesStore } from '@/stores/statuses';
-import { sessionStore } from '@/stores/session';
-import { isMobileView } from '@/composables/settings';
-import { showQuickEntryModal, quickEntryProps } from '@/composables/modals';
-import { createResource, call } from 'frappe-ui';
-import { useDocument } from '@/data/document';
-import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
-
+import EditIcon from '@/components/Icons/EditIcon.vue'
+import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
+import AppStyling from '@/components/AppStyling.vue'
+import { usersStore } from '@/stores/users'
+import { statusesStore } from '@/stores/statuses'
+import { sessionStore } from '@/stores/session'
+import { isMobileView } from '@/composables/settings'
+import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
+import { createResource, call } from 'frappe-ui'
+import { useDocument } from '@/data/document'
+import { computed, ref, nextTick, watch} from 'vue'
+import { useRouter } from 'vue-router'
 const props = defineProps({
   defaults: Object,
-});
+})
 
-const { user } = sessionStore();
-const { getUser, isManager } = usersStore();
-const { getCertificateStatus, statusOptions } = statusesStore();
+const { user } = sessionStore()
+const { getUser, isManager } = usersStore()
+const { getCertificateStatus, statusOptions } = statusesStore()
 
-const show = defineModel();
-const router = useRouter();
-const error = ref(null);
-const isCertificateCreating = ref(false);
+const show = defineModel()
+const router = useRouter()
+const error = ref(null)
+const isCertificateCreating = ref(false)
 
-const { document: certificate, triggerOnBeforeCreate } = useDocument('Tax Exemption Certificate');
+const { document: certificate, triggerOnBeforeCreate } = useDocument('Tax Exemption Certificate')
 
 const setFieldValue = (fieldName, value) => {
   if (certificate.doc) {
-    certificate.doc[fieldName] = value;
+    certificate.doc[fieldName] = value
   }
-};
+}
 
 const certificateStatuses = computed(() => {
-  let statuses = statusOptions('certificate');
+  let statuses = statusOptions('certificate')
   if (!certificate.doc.status) {
-    certificate.doc.status = statuses?.[0]?.value;
+    certificate.doc.status = statuses?.[0]?.value
   }
-  return statuses;
-});
+  return statuses
+})
 
 const tabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
@@ -108,94 +106,64 @@ const tabs = createResource({
         section.columns.forEach((column) => {
           column.fields.forEach((field) => {
             if (field.fieldname == 'status') {
-              field.fieldtype = 'Select';
-              field.options = certificateStatuses.value;
-              field.prefix = getCertificateStatus(certificate.doc.status).color;
+              field.fieldtype = 'Select'
+              field.options = certificateStatuses.value
+              field.prefix = getCertificateStatus(certificate.doc.status).color
             }
             if (field.fieldtype === 'Table') {
-              certificate.doc[field.fieldname] = [];
+              certificate.doc[field.fieldname] = []
             }
-          });
-        });
-      });
-    });
+          })
+        })
+      })
+    })
   },
-});
+})
 
 const createCertificate = createResource({
   url: 'frappe.client.insert',
-});
+})
 
-const duplicateCnicError = ref(false);
-
-watch(
-  () => certificate.doc && certificate.doc.custom_identification_value,
-  async (newVal) => {
-    duplicateCnicError.value = false;
-    if (newVal && newVal.trim() !== '') {
-      try {
-        const res = await call('frappe.client.get_list', {
-          doctype: 'Tax Exemption Certificate',
-          fields: ['name'],
-          filters: { custom_identification_value: newVal.trim() },
-          limit_page_length: 1,
-        });
-        if (Array.isArray(res) && res.length > 0) {
-          duplicateCnicError.value = true;
-        }
-      } catch (e) {
-        duplicateCnicError.value = false;
-      }
-    }
-  }
-);
-
-// Fetch donor details and populate readonly fields
 async function fetchAndSetDonorDetails(donorId) {
   if (!donorId) {
     if (certificate.doc) {
-      certificate.doc.donor_name = '';
-      certificate.doc.donor_cnic__ntn = '';
-      certificate.doc.donor_address = '';
+      certificate.doc.donor_name = ''
+      certificate.doc.donor_cnic__ntn = ''
+      certificate.doc.donor_address = ''
     }
-    return;
+    return
   }
   try {
     const donor = await call('frappe.client.get', {
       doctype: 'Donor',
       name: donorId,
-    });
+    })
     if (donor && certificate.doc) {
-      certificate.doc.donor_name = donor.donor_name || '';
-      certificate.doc.donor_cnic__ntn = donor.cnic || '';
-      certificate.doc.donor_address = donor.address || '';
+      certificate.doc.donor_name = donor.donor_name || ''
+      certificate.doc.donor_cnic__ntn = donor.cnic || ''
+      certificate.doc.donor_address = donor.address || ''
     }
   } catch (e) {
     // ignore
   }
 }
 
-// Watch donor link to auto-fill related fields
+// Watch donor to auto-fill related fields
 watch(
   () => certificate.doc && certificate.doc.donor,
   async (newDonor, oldDonor) => {
     if (newDonor !== oldDonor) {
-      await fetchAndSetDonorDetails(newDonor);
+      await fetchAndSetDonorDetails(newDonor)
     }
   }
-);
+)
 
 async function createNewCertificate() {
-  if (duplicateCnicError.value) {
-    error.value = __('A certificate with this identification value already exists.');
-    return;
-  }
-
   if (certificate.doc.website && !certificate.doc.website.startsWith('http')) {
-    certificate.doc.website = 'https://' + certificate.doc.website;
+    certificate.doc.website = 'https://' + certificate.doc.website
   }
 
-  await triggerOnBeforeCreate?.();
+  await triggerOnBeforeCreate?.()
 
   createCertificate.submit(
     {
@@ -203,33 +171,45 @@ async function createNewCertificate() {
     },
     {
       validate() {
-        error.value = null;
+        error.value = null
         if (certificate.doc.mobile_no && isNaN(certificate.doc.mobile_no.replace(/[-+() ]/g, ''))) {
-          error.value = __('Mobile No should be a number');
-          return error.value;
+          error.value = __('Mobile No should be a number')
+          return error.value
         }
         if (certificate.doc.email && !certificate.doc.email.includes('@')) {
-          error.value = __('Invalid Email');
-          return error.value;
+          error.value = __('Invalid Email')
+          return error.value
         }
-
-        isCertificateCreating.value = true;
+        isCertificateCreating.value = true
       },
       onSuccess(data) {
-        isCertificateCreating.value = false;
-        show.value = false;
-        router.push({ name: 'TaxExemptionCertificate', params: { certificateId: data.name } });
+        isCertificateCreating.value = false
+        show.value = false
+        router.push({ name: 'TaxExemptionCertificate', params: { certificateId: data.name } })
       },
       onError(err) {
-        isCertificateCreating.value = false;
+        isCertificateCreating.value = false
         if (!err.messages) {
-          error.value = err.message;
-          return;
+          error.value = err.message
+          return
         }
-        error.value = err.messages.join('\n');
+        error.value = err.messages.join('\n')
       },
     }
-  );
+  )
+}
+
+// Open the quick entry/edit modal
+function openQuickEntryModal() {
+  showQuickEntryModal.value = true
+  quickEntryProps.value = { doctype: 'Tax Exemption Certificate' }
+  nextTick(() => (show.value = false))
+}
+
+// Initialize certificate document
+if (!certificate.doc) {
+  certificate.doc = {}
+  Object.assign(certificate.doc, props.defaults)
 }
 </script>
 

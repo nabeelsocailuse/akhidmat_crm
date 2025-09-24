@@ -173,183 +173,13 @@
         </div>
       </Resizer>
       
-      <!-- Return/Credit Note Modal -->
-      <Dialog v-model="showReturnModal" :options="{ size: '6xl' }">
-        <template #body>
-          <div class="bg-surface-modal px-4 pb-6 pt-5 sm:px-6">
-            <div class="mb-5 flex items-center justify-between">
-              <div>
-                <h3 class="text-2xl font-semibold leading-6 text-ink-gray-9">
-                  {{ __('Return / Credit Note') }}
-                </h3>
-                <p class="mt-1 text-sm text-ink-gray-5">
-                  {{ __('Return against: {0}', [document.doc?.name]) }}
-                </p>
-              </div>
-              <div class="flex items-center gap-2">
-                <Button
-                  v-if="returnDocument && returnDocument.docstatus === 0"
-                  variant="outline"
-                  :loading="isReturnCreating"
-                  @click="saveReturnAsDraft"
-                >
-                  {{ __('Save as Draft') }}
-                </Button>
-                <Button
-                  v-if="returnDocument && returnDocument.docstatus === 0"
-                  variant="solid"
-                  :loading="isReturnSubmitting"
-                  @click="submitReturnDocument"
-                >
-                  {{ __('Submit') }}
-                </Button>
-                <Button variant="ghost" class="w-7" @click="showReturnModal = false">
-                  <template #icon>
-                    <FeatherIcon name="x" class="h-4 w-4" />
-                  </template>
-                </Button>
-              </div>
-            </div>
-            <div v-if="returnDocument">
-              <div v-if="sections.data" class="space-y-6">
-                <div v-for="tab in sections.data" :key="tab.name" class="space-y-4">
-                  <h4 class="text-lg font-medium text-ink-gray-9">{{ tab.label || tab.name }}</h4>
-                  <div v-for="section in tab.sections" :key="section.name" class="space-y-3">
-                    <h5 class="text-sm font-medium text-ink-gray-7">{{ section.label || section.name }}</h5>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      <div v-for="field in section.fields" :key="field.fieldname" class="space-y-1">
-                        <label class="block text-sm font-medium text-ink-gray-7">
-                          {{ field.label }}
-                          <span v-if="field.reqd" class="text-red-500">*</span>
-                        </label>
-                        
-                        <!-- Text Input -->
-                        <FormControl
-                          v-if="['Data', 'Small Text', 'Text'].includes(field.fieldtype)"
-                          type="text"
-                          :value="returnDocument[field.fieldname]"
-                          :placeholder="field.placeholder"
-                          @change="returnDocument[field.fieldname] = $event.target.value"
-                        />
-                        
-                        <!-- Select -->
-                        <FormControl
-                          v-else-if="field.fieldtype === 'Select'"
-                          type="select"
-                          :value="returnDocument[field.fieldname]"
-                          :options="field.options"
-                          @change="returnDocument[field.fieldname] = $event.target.value"
-                        />
-                        
-                        <!-- Link -->
-                        <Link
-                          v-else-if="['Link', 'Dynamic Link'].includes(field.fieldtype)"
-                          :value="returnDocument[field.fieldname]"
-                          :doctype="field.fieldtype === 'Link' ? field.options : returnDocument[field.options]"
-                          :filters="field.filters"
-                          @change="returnDocument[field.fieldname] = $event"
-                        />
-                        
-                        <!-- Date -->
-                        <DatePicker
-                          v-else-if="field.fieldtype === 'Date'"
-                          :value="returnDocument[field.fieldname]"
-                          @change="returnDocument[field.fieldname] = $event"
-                        />
-                        
-                        <!-- Datetime -->
-                        <DateTimePicker
-                          v-else-if="field.fieldtype === 'Datetime'"
-                          :value="returnDocument[field.fieldname]"
-                          @change="returnDocument[field.fieldname] = $event"
-                        />
-                        
-                        <!-- Checkbox -->
-                        <Checkbox
-                          v-else-if="field.fieldtype === 'Check'"
-                          :modelValue="returnDocument[field.fieldname]"
-                          @change="returnDocument[field.fieldname] = $event"
-                        />
-                        
-                        <!-- Currency -->
-                        <FormControl
-                          v-else-if="field.fieldtype === 'Currency'"
-                          type="text"
-                          :value="returnDocument[field.fieldname]"
-                          @change="returnDocument[field.fieldname] = $event.target.value"
-                        />
-                        
-                        <!-- Float -->
-                        <FormControl
-                          v-else-if="field.fieldtype === 'Float'"
-                          type="text"
-                          :value="returnDocument[field.fieldname]"
-                          @change="returnDocument[field.fieldname] = $event.target.value"
-                        />
-                        
-                        <!-- Int -->
-                        <FormControl
-                          v-else-if="field.fieldtype === 'Int'"
-                          type="text"
-                          :value="returnDocument[field.fieldname]"
-                          @change="returnDocument[field.fieldname] = $event.target.value"
-                        />
-                        
-                        <!-- Percent -->
-                        <FormControl
-                          v-else-if="field.fieldtype === 'Percent'"
-                          type="text"
-                          :value="returnDocument[field.fieldname]"
-                          @change="returnDocument[field.fieldname] = $event.target.value"
-                        />
-                        
-                        <!-- Textarea -->
-                        <FormControl
-                          v-else-if="['Long Text', 'Code'].includes(field.fieldtype)"
-                          type="textarea"
-                          :value="returnDocument[field.fieldname]"
-                          :placeholder="field.placeholder"
-                          @change="returnDocument[field.fieldname] = $event.target.value"
-                        />
-                        
-                        <!-- Table -->
-                        <div v-else-if="field.fieldtype === 'Table'" class="border rounded p-4">
-                          <h6 class="text-sm font-medium mb-2">{{ field.label }}</h6>
-                          <div v-if="returnDocument[field.fieldname] && returnDocument[field.fieldname].length > 0" class="space-y-2">
-                            <div v-for="(row, index) in returnDocument[field.fieldname]" :key="index" class="border rounded p-2 bg-gray-50">
-                              <div class="text-xs text-gray-600 mb-1">Row {{ index + 1 }}</div>
-                              <div class="grid grid-cols-2 gap-2 text-sm">
-                                <div v-for="(value, key) in row" :key="key" v-if="value">
-                                  <span class="font-medium">{{ key }}:</span> {{ value }}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          <div v-else class="text-sm text-gray-500">No data</div>
-                        </div>
-                        
-                        <!-- Default -->
-                        <div v-else class="text-sm text-gray-500">
-                          {{ returnDocument[field.fieldname] || 'No value' }}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div v-else class="text-center py-8 text-gray-500">
-                Loading form fields...
-              </div>
-            </div>
-            <div v-else-if="isReturnCreating" class="flex items-center justify-center py-8">
-              <div class="text-center">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p class="text-sm text-ink-gray-5">{{ __('Preparing Return/Credit Note...') }}</p>
-              </div>
-            </div>
-          </div>
-        </template>
-      </Dialog>
+    <!-- Return/Credit Note Modal using DonationModal -->
+    <DonationModal 
+      v-model="showReturnModal" 
+      :defaults="returnDocument"
+      :options="{ isReturn: true, returnAgainst: document.doc?.name }"
+      @donation-created="handleReturnDonationCreated"
+    />
     </div>
   </AppStyling>
   
@@ -489,6 +319,7 @@ import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
 import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import Email2Icon from '@/components/Icons/Email2Icon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
+import DonationModal from '@/components/Modals/DonationModal.vue'
 import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
@@ -3050,7 +2881,6 @@ async function submitDonation() {
 const showReturnModal = ref(false)
 const returnDocument = ref(null)
 const isReturnCreating = ref(false)
-const isReturnSubmitting = ref(false)
 
 // Add function to handle Return/Credit Note creation
 async function createReturnCreditNote() {
@@ -3080,10 +2910,86 @@ async function createReturnCreditNote() {
     })
     
     console.log('Return/Credit Note creation result:', result)
+    console.log('Backend result keys:', Object.keys(result))
+    console.log('Backend result sample fields:')
+    console.log('- donation_type:', result.donation_type)
+    console.log('- donor_identity:', result.donor_identity)
+    console.log('- company:', result.company)
+    console.log('- currency:', result.currency)
+    console.log('- total_donation:', result.total_donation)
+    console.log('- net_amount:', result.net_amount)
+    console.log('- payment_detail length:', result.payment_detail?.length)
+    console.log('- items length:', result.items?.length)
+    
+    console.log('Frontend document.doc keys:', Object.keys(document.doc))
+    console.log('Frontend document.doc sample fields:')
+    console.log('- donation_type:', document.doc.donation_type)
+    console.log('- donor_identity:', document.doc.donor_identity)
+    console.log('- company:', document.doc.company)
+    console.log('- currency:', document.doc.currency)
+    console.log('- total_donation:', document.doc.total_donation)
+    console.log('- net_amount:', document.doc.net_amount)
+    console.log('- payment_detail length:', document.doc.payment_detail?.length)
+    console.log('- items length:', document.doc.items?.length)
     
     if (result) {
-      // Store the return document and open modal
-      returnDocument.value = result
+      // Create return document by copying ALL original donation data from frontend
+      // Use the frontend document.doc as the primary source since it has all the data
+      returnDocument.value = {
+        // Copy ALL original donation data from frontend
+        ...document.doc,
+        
+        // Override with return-specific fields
+        name: result.name || `RET-${document.doc.name}`,
+        doctype: 'Donation',
+        docstatus: 0,
+        is_return: 1,
+        return_against: document.doc.name,
+        status: 'Return',
+        
+        // Ensure all form fields are preserved from original donation
+        donation_type: document.doc.donation_type,
+        donor_identity: document.doc.donor_identity,
+        contribution_type: document.doc.contribution_type,
+        company: document.doc.company,
+        currency: document.doc.currency,
+        exchange_rate: document.doc.exchange_rate,
+        donation_cost_center: document.doc.donation_cost_center,
+        due_date: document.doc.due_date,
+        invoice_issuance_time: document.doc.invoice_issuance_time,
+        edit_posting_date_and_time: document.doc.edit_posting_date_and_time,
+        unknown_to_known: document.doc.unknown_to_known,
+        
+        // Preserve all amounts and calculations from original donation
+        net_amount: document.doc.net_amount,
+        outstanding_amount: document.doc.outstanding_amount,
+        total_donation: document.doc.total_donation,
+        total_deduction: document.doc.total_deduction,
+        total_donors: document.doc.total_donors,
+        
+        // Preserve all child tables from original donation
+        items: document.doc.items ? [...document.doc.items] : [],
+        payment_detail: document.doc.payment_detail ? [...document.doc.payment_detail] : [],
+        deduction_breakeven: document.doc.deduction_breakeven ? [...document.doc.deduction_breakeven] : []
+      }
+      
+      console.log('Return document data prepared for modal:', returnDocument.value)
+      console.log('Original donation data:', document.doc)
+      console.log('Key fields check:')
+      console.log('- name:', returnDocument.value.name)
+      console.log('- donation_type:', returnDocument.value.donation_type)
+      console.log('- donor_identity:', returnDocument.value.donor_identity)
+      console.log('- company:', returnDocument.value.company)
+      console.log('- currency:', returnDocument.value.currency)
+      console.log('- is_return:', returnDocument.value.is_return)
+      console.log('- return_against:', returnDocument.value.return_against)
+      console.log('- status:', returnDocument.value.status)
+      console.log('- payment_detail length:', returnDocument.value.payment_detail?.length)
+      console.log('- items length:', returnDocument.value.items?.length)
+      console.log('- total_donation:', returnDocument.value.total_donation)
+      console.log('- net_amount:', returnDocument.value.net_amount)
+      
+      // Open the DonationModal with the prepared data
       showReturnModal.value = true
       toast.success('Return/Credit Note prepared successfully')
     } else {
@@ -3097,69 +3003,24 @@ async function createReturnCreditNote() {
   }
 }
 
-// Add function to save return document as draft
-async function saveReturnAsDraft() {
-  try {
-    console.log('Saving return document as draft:', returnDocument.value.name)
-    
-    isReturnCreating.value = true
-    
-    // Save the document
-    const result = await call('frappe.client.save', {
-      doc: returnDocument.value
-    })
-    
-    console.log('Return document saved:', result)
-    
-    if (result) {
-      returnDocument.value = result
-      toast.success('Return/Credit Note saved as draft')
-    } else {
-      toast.error('Failed to save Return/Credit Note')
-    }
-  } catch (error) {
-    console.error('Error saving return document:', error)
-    toast.error(`Failed to save Return/Credit Note: ${error.message || error}`)
-  } finally {
-    isReturnCreating.value = false
-  }
-}
-
-// Add function to submit return document
-async function submitReturnDocument() {
-  try {
-    console.log('Submitting return document:', returnDocument.value.name)
-    
-    isReturnSubmitting.value = true
-    
-    // Submit the document
-    const result = await call('frappe.client.submit', {
-      doc: returnDocument.value
-    })
-    
-    console.log('Return document submitted:', result)
-    
-    if (result) {
-      returnDocument.value = result
-      toast.success('Return/Credit Note submitted successfully')
-      // Close modal and reload main document
-      showReturnModal.value = false
-      await document.reload()
-    } else {
-      toast.error('Failed to submit Return/Credit Note')
-    }
-  } catch (error) {
-    console.error('Error submitting return document:', error)
-    toast.error(`Failed to submit Return/Credit Note: ${error.message || error}`)
-  } finally {
-    isReturnSubmitting.value = false
-  }
-}
 
 // Add a computed property to debug the read-only state
 const isReadOnly = computed(() => {
   return document.doc && document.doc.docstatus === 1
 })
+
+
+// Add function to handle when return donation is created in the modal
+function handleReturnDonationCreated(donationDoc) {
+  console.log('Return donation created:', donationDoc)
+  toast.success('Return/Credit Note created successfully')
+  
+  // Close the modal
+  showReturnModal.value = false
+  
+  // Reload the main document to show updated status
+  document.reload()
+}
 </script>
 
 <style scoped>

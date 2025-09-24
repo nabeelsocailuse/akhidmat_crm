@@ -242,6 +242,100 @@ const resetDonationData = () => {
   console.log('Donation data reset successfully')
 }
 
+// Add a flag to prevent watchers from interfering during initialization
+let isInitializingWithDefaults = false
+
+// Function to initialize donation document with defaults (for return/credit note)
+const initializeDonationWithDefaults = () => {
+  try {
+    // Set flag to prevent watchers from interfering
+    isInitializingWithDefaults = true
+    
+    // Create a completely new document object with all defaults
+    const newDoc = {
+      doctype: 'Donation',
+      owner: user.value,
+      ...props.defaults
+    }
+    
+    // Ensure required arrays are properly initialized
+    if (!newDoc.payment_detail) {
+      newDoc.payment_detail = []
+    }
+    if (!newDoc.deduction_breakeven) {
+      newDoc.deduction_breakeven = []
+    }
+    if (!newDoc.items) {
+      newDoc.items = []
+    }
+    
+    // CRITICAL: Force update the document by completely replacing it
+    Object.assign(donation.doc, newDoc)
+    
+    // Set posting date and time if not already set
+    if (!donation.doc.posting_date) {
+      donation.doc.posting_date = new Date().toISOString().slice(0, 10)
+    }
+    if (!donation.doc.posting_time) {
+      donation.doc.posting_time = new Date().toTimeString().slice(0, 5)
+    }
+    
+    // Clear errors
+    error.value = null
+    
+    // Reset flag after a delay to allow watchers to work normally
+    setTimeout(() => {
+      isInitializingWithDefaults = false
+      // Manually trigger calculation update to ensure totals are correct
+      updateCalculationFields()
+    }, 500)
+  } catch (error) {
+    console.error('Error initializing donation with defaults:', error)
+    isInitializingWithDefaults = false
+    // Fallback to normal reset
+    resetDonationData()
+  }
+}
+
+// Initialize donation with defaults-aware logic (doesn't override existing values)
+const initializeDonationWithDefaultsLogic = () => {
+  const now = new Date()
+  
+  // Only set posting_date and posting_time if not already set
+  if (!donation.doc.posting_date) {
+    donation.doc.posting_date = now.toISOString().slice(0, 10)
+  }
+  if (!donation.doc.posting_time) {
+    donation.doc.posting_time = now.toTimeString().slice(0, 5)
+  }
+  
+  // Only set due_date if not already set
+  if (!donation.doc.due_date) {
+    donation.doc.due_date = now.toISOString().slice(0, 10)
+  }
+  
+  // Only set currency and exchange_rate if not already set
+  if (!donation.doc.currency) {
+    donation.doc.currency = 'PKR'
+  }
+  if (!donation.doc.exchange_rate) {
+    donation.doc.exchange_rate = 1
+  }
+  
+  // Initialize edit_posting_date_time to 0 (false) by default if not set
+  if (donation.doc.edit_posting_date_time === undefined) {
+    donation.doc.edit_posting_date_time = 0
+  }
+  
+  // Ensure payment_detail is an array
+  if (!donation.doc.payment_detail) {
+    donation.doc.payment_detail = []
+  }
+  
+  // CRITICAL: Do NOT override is_return, return_against, or status fields
+  // These are set from the defaults and must be preserved
+}
+
 // ADD: Function to get filtered donor query based on donor identity
 function getDonorQuery() {
   const filters = {
@@ -596,32 +690,92 @@ onMounted(() => {
   })
 })
 
-// UPDATE: Enhanced watcher for show value to apply filtering when modal opens
+// Function to apply defaults to donation document
+const applyDefaultsToDonation = () => {
+  console.log('applyDefaultsToDonation called')
+  console.log('props.defaults:', props.defaults)
+  console.log('donation.doc before:', donation.doc)
+  
+  if (props.defaults && Object.keys(props.defaults).length > 0) {
+    console.log('Applying defaults to donation document')
+    console.log('Key fields to set:')
+    console.log('- donation_type:', props.defaults.donation_type)
+    console.log('- donor_identity:', props.defaults.donor_identity)
+    console.log('- company:', props.defaults.company)
+    console.log('- currency:', props.defaults.currency)
+    console.log('- payment_detail length:', props.defaults.payment_detail?.length)
+    
+    // Force reactivity by creating a new object and assigning it
+    const updatedDoc = { ...donation.doc }
+    
+    // Apply defaults to the updated document
+    Object.keys(props.defaults).forEach(key => {
+      if (props.defaults[key] !== undefined && props.defaults[key] !== null) {
+        console.log(`Setting ${key}:`, props.defaults[key])
+        updatedDoc[key] = props.defaults[key]
+      }
+    })
+    
+    // Assign the updated document to trigger reactivity
+    donation.doc = updatedDoc
+    
+    console.log('Defaults applied successfully')
+    console.log('donation.doc after:', donation.doc)
+    console.log('Key fields after applying:')
+    console.log('- donation_type:', donation.doc.donation_type)
+    console.log('- donor_identity:', donation.doc.donor_identity)
+    console.log('- company:', donation.doc.company)
+    console.log('- currency:', donation.doc.currency)
+    console.log('- payment_detail length:', donation.doc.payment_detail?.length)
+  } else {
+    console.log('No defaults to apply')
+  }
+}
+
+// Simple watcher for modal opening
 watch(show, async (val) => {
   if (val && user.value) {
     refreshTabs()
-    resetDonationData() // Use the reset function
     
-    // Ensure all payment detail rows are managed by DonationModal
-    // ensurePaymentDetailRowsManaged() // REMOVED
+    // Check if we have defaults (like for return/credit note)
+    if (props.defaults && Object.keys(props.defaults).length > 0) {
+      // Initialize donation document with defaults instead of resetting
+      initializeDonationWithDefaults()
+      
+      // Force update after a delay to ensure data is applied
+      setTimeout(() => {
+        // Force update all critical fields
+        if (props.defaults.is_return !== undefined) {
+          donation.doc.is_return = props.defaults.is_return
+        }
+        if (props.defaults.return_against !== undefined) {
+          donation.doc.return_against = props.defaults.return_against
+        }
+        if (props.defaults.total_donation !== undefined) {
+          donation.doc.total_donation = props.defaults.total_donation
+        }
+        if (props.defaults.net_amount !== undefined) {
+          donation.doc.net_amount = props.defaults.net_amount
+        }
+        if (props.defaults.payment_detail !== undefined) {
+          donation.doc.payment_detail = [...props.defaults.payment_detail]
+        }
+        if (props.defaults.items !== undefined) {
+          donation.doc.items = [...props.defaults.items]
+        }
+        if (props.defaults.deduction_breakeven !== undefined) {
+          donation.doc.deduction_breakeven = [...props.defaults.deduction_breakeven]
+        }
+      }, 100)
+    } else {
+      // Reset donation data to fresh state
+      resetDonationData()
+    }
     
-    // Apply donor filtering after form is rendered
+    // Apply donor filtering
     nextTick(() => {
       applyDonorFilteringToForm()
     })
-  }
-  
-  // Prevent parent modal from closing when sub-modals are active
-  if (!val && hasActiveSubModals.value) {
-    show.value = true
-  }
-})
-
-// Add this watcher to force refresh when modal opens
-watch(show, async (val) => {
-  if (val && user.value) {
-    refreshTabs()
-    resetDonationData() // Use the reset function
   }
   
   // Prevent parent modal from closing when sub-modals are active
@@ -639,6 +793,34 @@ watch(() => show.value, (newVal, oldVal) => {
     })
   }
 }, { immediate: true })
+
+// Watch for changes in defaults prop and force update
+watch(() => props.defaults, (newDefaults) => {
+  if (newDefaults && Object.keys(newDefaults).length > 0 && show.value) {
+    // Force update all critical fields immediately
+    if (newDefaults.is_return !== undefined) {
+      donation.doc.is_return = newDefaults.is_return
+    }
+    if (newDefaults.return_against !== undefined) {
+      donation.doc.return_against = newDefaults.return_against
+    }
+    if (newDefaults.total_donation !== undefined) {
+      donation.doc.total_donation = newDefaults.total_donation
+    }
+    if (newDefaults.net_amount !== undefined) {
+      donation.doc.net_amount = newDefaults.net_amount
+    }
+    if (newDefaults.payment_detail !== undefined) {
+      donation.doc.payment_detail = [...newDefaults.payment_detail]
+    }
+    if (newDefaults.items !== undefined) {
+      donation.doc.items = [...newDefaults.items]
+    }
+    if (newDefaults.deduction_breakeven !== undefined) {
+      donation.doc.deduction_breakeven = [...newDefaults.deduction_breakeven]
+    }
+  }
+}, { deep: true, immediate: true })
 
 // Ensure main modal stays visible during sub-modal interactions
 const ensureMainModalVisible = () => {
@@ -1315,7 +1497,7 @@ let deductionBreakevenTimeout = null
 
 // EXACT BACKEND TRIGGER LOGIC - Payment Detail Changes
 watch(() => donation.doc.payment_detail, async (newPaymentDetail, oldPaymentDetail) => {
-  if (isProcessingPaymentDetail) return
+  if (isProcessingPaymentDetail || isInitializingWithDefaults) return
   
   if (newPaymentDetail && Array.isArray(newPaymentDetail)) {
     isProcessingPaymentDetail = true
@@ -1431,7 +1613,7 @@ watch(() => donation.doc.payment_detail, async (newPaymentDetail, oldPaymentDeta
 // Add a second watcher for payment_detail (like DonationDetail has)
 let pdProcessing2 = false
 watch(() => donation.doc?.payment_detail, async (rows) => {
-  if (pdProcessing2 || !Array.isArray(rows)) return
+  if (pdProcessing2 || !Array.isArray(rows) || isInitializingWithDefaults) return
   pdProcessing2 = true
   try {
     for (let i = 0; i < rows.length; i++) {
@@ -1483,7 +1665,7 @@ watch(() => donation.doc?.payment_detail, async (rows) => {
 // EXACT BACKEND TRIGGER LOGIC - Items Changes (Donor Selection)
 let isProcessingItems = false
 watch(() => donation.doc.items, async (newItems, oldItems) => {
-  if (isProcessingItems) return
+  if (isProcessingItems || isInitializingWithDefaults) return
   
   if (newItems && Array.isArray(newItems)) {
     isProcessingItems = true
@@ -1530,7 +1712,7 @@ watch(() => donation.doc.items, async (newItems, oldItems) => {
 // EXACT BACKEND TRIGGER LOGIC - Deduction Breakeven Changes
 watch(() => donation.doc.deduction_breakeven, async (newDeductionBreakeven, oldDeductionBreakeven) => {
   // Skip if we're processing or updating from API
-  if (isProcessingDeductionBreakeven || isUpdatingFromAPI) return
+  if (isProcessingDeductionBreakeven || isUpdatingFromAPI || isInitializingWithDefaults) return
   
   // Clear existing timeout
   if (deductionBreakevenTimeout) {
@@ -2526,30 +2708,40 @@ function updateCalculationFields() {
   donation.doc.base_total_deduction = totalDeduction.value
   donation.doc.base_net_amount = netAmount.value
   donation.doc.base_outstanding_amount = outstandingAmount.value
-  donation.doc.base_outstanding_amount = outstandingAmount.value
   donation.doc.outstanding_amount = outstandingAmount.value
+  
+  // Also update the main fields that are displayed in the UI
+  donation.doc.total_donation = totalDonation.value
+  donation.doc.total_deduction = totalDeduction.value
+  donation.doc.net_amount = netAmount.value
   
   console.log('Calculation fields updated:', {
     base_total_donation: donation.doc.base_total_donation,
     base_total_deduction: donation.doc.base_total_deduction,
     base_net_amount: donation.doc.base_net_amount,
     base_outstanding_amount: donation.doc.base_outstanding_amount,
-    outstanding_amount: donation.doc.outstanding_amount
+    outstanding_amount: donation.doc.outstanding_amount,
+    total_donation: donation.doc.total_donation,
+    total_deduction: donation.doc.total_deduction,
+    net_amount: donation.doc.net_amount
   })
 }
 
 // ADD: Watcher to update calculations when payment_detail changes
 watch(() => donation.doc.payment_detail, () => {
+  if (isInitializingWithDefaults) return
   updateCalculationFields()
 }, { deep: true })
 
 // ADD: Watcher to update calculations when deduction_breakeven changes
 watch(() => donation.doc.deduction_breakeven, () => {
+  if (isInitializingWithDefaults) return
   updateCalculationFields()
 }, { deep: true })
 
 // ADD: Watcher to update calculations when contribution_type changes
 watch(() => donation.doc.contribution_type, () => {
+  if (isInitializingWithDefaults) return
   updateCalculationFields()
 })
 

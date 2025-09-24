@@ -8,41 +8,20 @@
           <Icon v-if="item.icon" :icon="item.icon" class="mr-2 h-4" />
         </template>
       </Breadcrumbs>
-      <div class="absolute right-0">
-        <Dropdown
-          v-if="doc"
-          :options="
-            statusOptions(
-              'lead',
-              document.statuses?.length
-                ? document.statuses
-                : document._statuses,
-              triggerStatusChange,
-            )
-          "
-        >
-          <template #default="{ open }">
-            <Button v-if="doc.status" :label="doc.status">
-              <template #prefix>
-                <IndicatorIcon :class="getLeadStatus(doc.status).color" />
-              </template>
-              <template #suffix>
-                <FeatherIcon
-                  :name="open ? 'chevron-up' : 'chevron-down'"
-                  class="h-4"
-                />
-              </template>
-            </Button>
-          </template>
-        </Dropdown>
-      </div>
+      <!-- <div class="absolute right-0">
+        <span v-if="doc.status" class="flex items-center gap-1 pr-3 text-sm">
+          <IndicatorIcon :class="getEmailCampaignStatus(doc.status).color" />
+          <span>{{ doc.status }}</span>
+        </span>
+      </div> -->
     </header>
   </LayoutHeader>
+
   <div
     v-if="doc.name"
     class="flex h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
   >
-    <AssignTo v-model="assignees.data" doctype="CRM Lead" :docname="leadId" />
+    <AssignTo v-model="assignees.data" doctype="Email Campaign" :docname="emailCampaignId" />
     <div class="flex items-center gap-2">
       <CustomActions
         v-if="document._actions?.length"
@@ -52,13 +31,14 @@
         v-if="document.actions?.length"
         :actions="document.actions"
       />
-      <Button
-        :label="__('Convert To Donor')"
-        variant="solid"
-        @click="convertLeadToDonor"
-      />
+    <Button
+    :label="__('Send Now')"
+    class="flex h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
+    @click="sendNow"
+    />
     </div>
   </div>
+
   <div v-if="doc.name" class="flex h-full overflow-hidden">
     <Tabs as="div" v-model="tabIndex" :tabs="tabs" class="overflow-auto">
       <TabList class="!px-3" />
@@ -75,8 +55,8 @@
           >
             <SidePanelLayout
               :sections="sections.data"
-              doctype="CRM Lead"
-              :docname="leadId"
+              doctype="Email Campaign"
+              :docname="emailCampaignId"
               @reload="sections.reload"
               @afterFieldChange="reloadAssignees"
             />
@@ -84,8 +64,8 @@
         </div>
         <Activities
           v-else
-          doctype="CRM Lead"
-          :docname="leadId"
+          doctype="Email Campaign"
+          :docname="emailCampaignId"
           :tabs="tabs"
           v-model:reload="reload"
           v-model:tabIndex="tabIndex"
@@ -95,21 +75,22 @@
       </TabPanel>
     </Tabs>
   </div>
+
   <ErrorPage
     v-else-if="errorTitle"
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
-  
+
   <DeleteLinkedDocModal
     v-if="showDeleteLinkedDocModal"
     v-model="showDeleteLinkedDocModal"
-    :doctype="'CRM Lead'"
-    :docname="leadId"
-    name="Leads"
+    :doctype="'Email Campaign'"
+    :docname="emailCampaignId"
+    name="Email Campaigns"
   />
   <div
-    v-if="isConverting"
+    v-if="isSending"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
   >
     <span class="loader"></span>
@@ -121,21 +102,16 @@ import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
 import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
 import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
-import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
-import EmailIcon from '@/components/Icons/EmailIcon.vue'
-import CommentIcon from '@/components/Icons/CommentIcon.vue'
-import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
-import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
+import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
+import EmailIcon from '@/components/Icons/EmailIcon.vue'
+import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
-import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
-import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import AssignTo from '@/components/AssignTo.vue'
-import Link from '@/components/Controls/Link.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
@@ -147,37 +123,31 @@ import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
 import {
-  whatsappEnabled,
-  callEnabled,
-  isMobileView,
-} from '@/composables/settings'
-import { capture } from '@/telemetry'
-import { useActiveTabManager } from '@/composables/useActiveTabManager'
-import {
   createResource,
-  Dropdown,
   Tabs,
   TabList,
   TabPanel,
-  Switch,
   Breadcrumbs,
   call,
   usePageMeta,
   toast,
 } from 'frappe-ui'
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-// import Spinner from '@/components/Spinner.vue'
+import { useActiveTabManager } from '@/composables/useActiveTabManager'
+import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
+import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
+import { whatsappEnabled, callEnabled } from '@/composables/settings'
 
 const { brand } = getSettings()
 const { $dialog, $socket } = globalStore()
-const { statusOptions, getLeadStatus } = statusesStore()
-const { doctypeMeta } = getMeta('CRM Lead')
+const { getEmailCampaignStatus } = statusesStore()
+const { doctypeMeta } = getMeta('Email Campaign')
 const route = useRoute()
 const router = useRouter()
 
 const props = defineProps({
-  leadId: {
+  emailCampaignId: {
     type: String,
     required: true,
   },
@@ -186,11 +156,11 @@ const props = defineProps({
 const errorTitle = ref('')
 const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
-const isConverting = ref(false)
+const isSending = ref(false)
 
 const { triggerOnChange, assignees, document, scripts, error } = useDocument(
-  'CRM Lead',
-  props.leadId,
+  'Email Campaign',
+  props.emailCampaignId,
 )
 
 const doc = computed(() => document.doc || {})
@@ -221,7 +191,7 @@ watch(
         toast,
         updateField,
         createToast: toast.create,
-        deleteDoc: deleteLead,
+        deleteDoc: deleteEmailCampaign,
         call,
       })
       document._actions = s.actions || []
@@ -234,107 +204,58 @@ watch(
 const reload = ref(false)
 
 const breadcrumbs = computed(() => {
-  let items = [{ label: __('Leads'), route: { name: 'Leads' } }]
-
+  let items = [{ label: __('Email Campaigns'), route: { name: 'Email Campaign' } }]
   if (route.query.view || route.query.viewType) {
-    let view = getView(route.query.view, route.query.viewType, 'CRM Lead')
+    let view = getView(route.query.view, route.query.viewType, 'Email Campaign')
     if (view) {
       items.push({
         label: __(view.label),
         icon: view.icon,
         route: {
-          name: 'Leads',
+          name: 'Email Campaign',
           params: { viewType: route.query.viewType },
           query: { view: route.query.view },
         },
       })
     }
   }
-
   items.push({
     label: title.value,
-    route: { name: 'Lead', params: { leadId: props.leadId } },
+    route: { name: 'EmailCampaignDetail', params: { emailCampaignId: props.emailCampaignId } },
   })
   return items
 })
 
 const title = computed(() => {
-  let t = doctypeMeta['CRM Lead']?.title_field || 'name'
-  return doc.value?.[t] || props.leadId
+  let t = doctypeMeta['Email Campaign']?.title_field || 'name'
+  return doc.value?.[t] || props.emailCampaignId
 })
 
 usePageMeta(() => {
-  return {
-    title: title.value,
-    icon: brand.favicon,
-  }
+  return { title: title.value, icon: brand.favicon }
 })
 
 const tabs = computed(() => {
   let tabOptions = [
-    {
-      name: 'Details',
-      label: __('Details'),
-      icon: DetailsIcon,
-      condition: () => isMobileView.value,
-    },
-    {
-      name: 'Activity',
-      label: __('Activity'),
-      icon: ActivityIcon,
-    },
-    {
-      name: 'Emails',
-      label: __('Emails'),
-      icon: EmailIcon,
-    },
-    {
-      name: 'Comments',
-      label: __('Comments'),
-      icon: CommentIcon,
-    },
-    {
-      name: 'Data',
-      label: __('Data'),
-      icon: DetailsIcon,
-    },
-    {
-      name: 'Calls',
-      label: __('Calls'),
-      icon: PhoneIcon,
-      condition: () => callEnabled.value,
-    },
-    {
-      name: 'Tasks',
-      label: __('Tasks'),
-      icon: TaskIcon,
-    },
-    {
-      name: 'Notes',
-      label: __('Notes'),
-      icon: NoteIcon,
-    },
-    {
-      name: 'Attachments',
-      label: __('Attachments'),
-      icon: AttachmentIcon,
-    },
-    {
-      name: 'WhatsApp',
-      label: __('WhatsApp'),
-      icon: WhatsAppIcon,
-      condition: () => whatsappEnabled.value,
-    },
+    { name: 'Activity', label: __('Activity'), icon: ActivityIcon },
+    { name: 'Emails', label: __('Emails'), icon: EmailIcon },
+    { name: 'Comments', label: __('Comments'), icon: CommentIcon },
+    { name: 'Data', label: __('Data'), icon: DetailsIcon },
+    { name: 'Calls', label: __('Calls'), icon: PhoneIcon, condition: () => callEnabled.value },
+    { name: 'Tasks', label: __('Tasks'), icon: TaskIcon },
+    { name: 'Notes', label: __('Notes'), icon: NoteIcon },
+    { name: 'Attachments', label: __('Attachments'), icon: AttachmentIcon },
+    { name: 'WhatsApp', label: __('WhatsApp'), icon: WhatsAppIcon, condition: () => whatsappEnabled.value },
   ]
   return tabOptions.filter((tab) => (tab.condition ? tab.condition() : true))
 })
 
-const { tabIndex } = useActiveTabManager(tabs, 'lastLeadTab')
+const { tabIndex } = useActiveTabManager(tabs, 'lastEmailCampaignTab')
 
 const sections = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
-  cache: ['sidePanelSections', 'CRM Lead'],
-  params: { doctype: 'CRM Lead' },
+  cache: ['sidePanelSections', 'Email Campaign'],
+  params: { doctype: 'Email Campaign' },
   auto: true,
 })
 
@@ -361,25 +282,44 @@ function updateField(name, value) {
   })
 }
 
-function deleteLead() {
+function deleteEmailCampaign() {
   showDeleteLinkedDocModal.value = true
 }
 
-// Convert to Donor
-async function convertLeadToDonor() {
-  isConverting.value = true
+async function sendNow() {
+  isSending.value = true;
+  toast.info(__('Sending emails...'));
+
   try {
-    await call('crm.fcrm.doctype.crm_lead.crm_lead.convert_to_deal', {
-      lead: props.leadId,
-    })
-    toast.success(__('Lead converted to donor'))
-    router.push({ name: 'Leads' })
-  } catch (e) {
-    toast.error(e?.messages?.[0] || __('Error converting lead'))
+    const response = await call('crm.api.extended_email_campaign.send_email_to_leads_or_contacts_extended', {
+      force: 1,
+      email_campaign_id: props.emailCampaignId,
+    });
+    console.log('Email sending job queued:', response.job_id);
+  } catch (err) {
+    console.error(err);
+    toast.error(__('Failed to enqueue email sending job'));
   } finally {
-    isConverting.value = false
+    isSending.value = false;
   }
 }
+
+// Listen for realtime job completion
+onMounted(() => {
+  if ($socket) {
+    $socket.on('email_campaign_progress', (data) => {
+      console.log('Realtime event received:', data);
+      if (data.status === 'Completed') {
+        isSending.value = false;
+        toast.success(data.message || __('Emails sent successfully'));
+        document.reload();
+      } else if (data.status === 'Failed') {
+        isSending.value = false;
+        toast.error(data.message || __('Email sending failed'));
+      }
+    });
+  }
+});
 
 async function triggerStatusChange(value) {
   await triggerOnChange('status', value)
@@ -393,7 +333,7 @@ function saveChanges(data) {
 }
 
 function reloadAssignees(data) {
-  if (data?.hasOwnProperty('lead_owner')) {
+  if (data?.hasOwnProperty('campaign_owner')) {
     assignees.reload()
   }
 }
