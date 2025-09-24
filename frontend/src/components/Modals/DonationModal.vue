@@ -244,12 +244,45 @@ const resetDonationData = () => {
 
 // Add a flag to prevent watchers from interfering during initialization
 let isInitializingWithDefaults = false
+let isApplyingDefaults = false
+
+// Helper function to apply all defaults to donation document
+const applyAllDefaultsToDocument = (defaults) => {
+  if (!defaults || Object.keys(defaults).length === 0 || isApplyingDefaults) return
+  
+  isApplyingDefaults = true
+  
+  try {
+    console.log('Applying all defaults to document:', defaults)
+    
+    // Apply all fields from defaults
+    Object.keys(defaults).forEach(key => {
+      if (defaults[key] !== undefined && defaults[key] !== null) {
+        // Handle arrays by creating new instances to ensure reactivity
+        if (Array.isArray(defaults[key])) {
+          donation.doc[key] = [...defaults[key]]
+        } else {
+          donation.doc[key] = defaults[key]
+        }
+      }
+    })
+    
+    console.log('Document after applying all defaults:', donation.doc)
+  } finally {
+    // Reset flag after a short delay to prevent immediate re-triggering
+    setTimeout(() => {
+      isApplyingDefaults = false
+    }, 100)
+  }
+}
 
 // Function to initialize donation document with defaults (for return/credit note)
 const initializeDonationWithDefaults = () => {
   try {
     // Set flag to prevent watchers from interfering
     isInitializingWithDefaults = true
+    
+    console.log('Initializing donation with defaults:', props.defaults)
     
     // Create a completely new document object with all defaults
     const newDoc = {
@@ -272,6 +305,9 @@ const initializeDonationWithDefaults = () => {
     // CRITICAL: Force update the document by completely replacing it
     Object.assign(donation.doc, newDoc)
     
+    // Apply all defaults to ensure complete field population
+    applyAllDefaultsToDocument(props.defaults)
+    
     // Set posting date and time if not already set
     if (!donation.doc.posting_date) {
       donation.doc.posting_date = new Date().toISOString().slice(0, 10)
@@ -282,6 +318,8 @@ const initializeDonationWithDefaults = () => {
     
     // Clear errors
     error.value = null
+    
+    console.log('Donation document initialized with defaults:', donation.doc)
     
     // Reset flag after a delay to allow watchers to work normally
     setTimeout(() => {
@@ -744,27 +782,14 @@ watch(show, async (val) => {
       
       // Force update after a delay to ensure data is applied
       setTimeout(() => {
-        // Force update all critical fields
-        if (props.defaults.is_return !== undefined) {
-          donation.doc.is_return = props.defaults.is_return
-        }
-        if (props.defaults.return_against !== undefined) {
-          donation.doc.return_against = props.defaults.return_against
-        }
-        if (props.defaults.total_donation !== undefined) {
-          donation.doc.total_donation = props.defaults.total_donation
-        }
-        if (props.defaults.net_amount !== undefined) {
-          donation.doc.net_amount = props.defaults.net_amount
-        }
-        if (props.defaults.payment_detail !== undefined) {
-          donation.doc.payment_detail = [...props.defaults.payment_detail]
-        }
-        if (props.defaults.items !== undefined) {
-          donation.doc.items = [...props.defaults.items]
-        }
-        if (props.defaults.deduction_breakeven !== undefined) {
-          donation.doc.deduction_breakeven = [...props.defaults.deduction_breakeven]
+        // Only apply if we're not already applying defaults
+        if (!isApplyingDefaults) {
+          applyAllDefaultsToDocument(props.defaults)
+          
+          // Force DOM update to ensure all fields are properly displayed
+          nextTick(() => {
+            console.log('All fields updated from defaults:', donation.doc)
+          })
         }
       }, 100)
     } else {
@@ -795,32 +820,21 @@ watch(() => show.value, (newVal, oldVal) => {
 }, { immediate: true })
 
 // Watch for changes in defaults prop and force update
-watch(() => props.defaults, (newDefaults) => {
+watch(() => props.defaults, (newDefaults, oldDefaults) => {
+  // Prevent infinite loops by checking if we're already applying defaults
+  if (isApplyingDefaults || isInitializingWithDefaults) return
+  
+  // Only apply if we have new defaults and the modal is open
   if (newDefaults && Object.keys(newDefaults).length > 0 && show.value) {
-    // Force update all critical fields immediately
-    if (newDefaults.is_return !== undefined) {
-      donation.doc.is_return = newDefaults.is_return
-    }
-    if (newDefaults.return_against !== undefined) {
-      donation.doc.return_against = newDefaults.return_against
-    }
-    if (newDefaults.total_donation !== undefined) {
-      donation.doc.total_donation = newDefaults.total_donation
-    }
-    if (newDefaults.net_amount !== undefined) {
-      donation.doc.net_amount = newDefaults.net_amount
-    }
-    if (newDefaults.payment_detail !== undefined) {
-      donation.doc.payment_detail = [...newDefaults.payment_detail]
-    }
-    if (newDefaults.items !== undefined) {
-      donation.doc.items = [...newDefaults.items]
-    }
-    if (newDefaults.deduction_breakeven !== undefined) {
-      donation.doc.deduction_breakeven = [...newDefaults.deduction_breakeven]
+    // Check if defaults actually changed to prevent unnecessary updates
+    if (JSON.stringify(newDefaults) !== JSON.stringify(oldDefaults)) {
+      // Apply all defaults to ensure complete field population
+      applyAllDefaultsToDocument(newDefaults)
+      
+      console.log('All fields updated from defaults watcher:', donation.doc)
     }
   }
-}, { deep: true, immediate: true })
+}, { deep: true, immediate: false })
 
 // Ensure main modal stays visible during sub-modal interactions
 const ensureMainModalVisible = () => {
