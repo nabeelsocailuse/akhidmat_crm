@@ -10,9 +10,9 @@ export function useDonorSelection() {
     
     try {
       console.log('Fetching donor details for:', donorId)
-      
-      const donorDetails = await call('akf_accounts.akf_accounts.doctype.donation.donation.get_donor_details', {
-        donor_id: donorId
+      const donorDetails = await call('frappe.client.get', {
+        doctype: 'Donor',
+        name: donorId
       })
       
       console.log('Donor details fetched successfully:', donorDetails)

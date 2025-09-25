@@ -169,6 +169,15 @@ async function createNewLead() {
     return
   }
 
+  // Validate mobile number before proceeding
+  if (lead.doc.mobile_no && lead.doc.country) {
+    const validation = await validatePhoneNumber(lead.doc.mobile_no, lead.doc.country)
+    if (!validation.isValid) {
+      error.value = validation.message || __('Invalid Mobile No')
+      return
+    }
+  }
+
   if (lead.doc.website && !lead.doc.website.startsWith('http')) {
     lead.doc.website = 'https://' + lead.doc.website
   }
