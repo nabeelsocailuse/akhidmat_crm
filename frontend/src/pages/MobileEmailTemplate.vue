@@ -1,6 +1,7 @@
 <template>
   <div class="flex flex-col h-full">
     <!-- Header -->
+      <div class="min-h-screen bg-gradient-to-b from-[#fef7ff] to-[#F5F9FF]">
     <LayoutHeader v-if="emailTemplate.data">
       <template #left-header>
         <Breadcrumbs :items="breadcrumbs" />
@@ -91,6 +92,7 @@
       name="Email Templates"
     />
   </div>
+    </div>
 </template>
 
 <script setup>

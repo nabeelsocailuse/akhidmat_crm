@@ -1,118 +1,129 @@
 <template>
-  <LayoutHeader>
-    <header
-      class="relative flex h-10.5 items-center justify-between gap-2 py-2.5 pl-2"
-    >
-      <Breadcrumbs :items="breadcrumbs">
-        <template #prefix="{ item }">
-          <Icon v-if="item.icon" :icon="item.icon" class="mr-2 h-4" />
-        </template>
-      </Breadcrumbs>
-      <div class="absolute right-0">
-        <Dropdown
-          v-if="doc"
-          :options="
-            statusOptions(
-              'lead',
-              document.statuses?.length
-                ? document.statuses
-                : document._statuses,
-              triggerStatusChange,
-            )
-          "
-        >
-          <template #default="{ open }">
-            <Button v-if="doc.status" :label="doc.status">
-              <template #prefix>
-                <IndicatorIcon :class="getLeadStatus(doc.status).color" />
-              </template>
-              <template #suffix>
-                <FeatherIcon
-                  :name="open ? 'chevron-up' : 'chevron-down'"
-                  class="h-4"
-                />
-              </template>
-            </Button>
+  <div class="min-h-screen bg-gradient-to-b from-[#fef7ff] to-[#F5F9FF]">
+    <LayoutHeader>
+      <header
+        class="relative flex h-10.5 items-center justify-between gap-2 py-2.5 pl-2"
+      >
+        <Breadcrumbs :items="breadcrumbs">
+          <template #prefix="{ item }">
+            <Icon v-if="item.icon" :icon="item.icon" class="mr-2 h-4" />
           </template>
-        </Dropdown>
-      </div>
-    </header>
-  </LayoutHeader>
-  <div
-    v-if="doc.name"
-    class="flex h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
-  >
-    <AssignTo v-model="assignees.data" doctype="CRM Lead" :docname="leadId" />
-    <div class="flex items-center gap-2">
-      <CustomActions
-        v-if="document._actions?.length"
-        :actions="document._actions"
-      />
-      <CustomActions
-        v-if="document.actions?.length"
-        :actions="document.actions"
-      />
-      <Button
-        :label="__('Convert To Donor')"
-        variant="solid"
-        @click="convertLeadToDonor"
-      />
-    </div>
-  </div>
-  <div v-if="doc.name" class="flex h-full overflow-hidden">
-    <Tabs as="div" v-model="tabIndex" :tabs="tabs" class="overflow-auto">
-      <TabList class="!px-3" />
-      <TabPanel v-slot="{ tab }">
-        <div v-if="tab.name == 'Details'">
-          <SLASection
-            v-if="doc.sla_status"
-            v-model="doc"
-            @updateField="updateField"
-          />
-          <div
-            v-if="sections.data"
-            class="flex flex-1 flex-col justify-between overflow-hidden"
+        </Breadcrumbs>
+        <div class="absolute right-0">
+          <Dropdown
+            v-if="doc"
+            :options="
+              statusOptions(
+                'lead',
+                document.statuses?.length
+                  ? document.statuses
+                  : document._statuses,
+                triggerStatusChange,
+              )
+            "
           >
-            <SidePanelLayout
-              :sections="sections.data"
-              doctype="CRM Lead"
-              :docname="leadId"
-              @reload="sections.reload"
-              @afterFieldChange="reloadAssignees"
-            />
-          </div>
+            <template #default="{ open }">
+              <Button v-if="doc.status" :label="doc.status">
+                <template #prefix>
+                  <IndicatorIcon :class="getLeadStatus(doc.status).color" />
+                </template>
+                <template #suffix>
+                  <FeatherIcon
+                    :name="open ? 'chevron-up' : 'chevron-down'"
+                    class="h-4"
+                  />
+                </template>
+              </Button>
+            </template>
+          </Dropdown>
         </div>
-        <Activities
-          v-else
-          doctype="CRM Lead"
-          :docname="leadId"
-          :tabs="tabs"
-          v-model:reload="reload"
-          v-model:tabIndex="tabIndex"
-          @beforeSave="saveChanges"
-          @afterSave="reloadAssignees"
+      </header>
+    </LayoutHeader>
+
+    <!-- Top Bar -->
+    <div
+      v-if="doc.name"
+      class="flex h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
+    >
+      <AssignTo v-model="assignees.data" doctype="CRM Lead" :docname="leadId" />
+      <div class="flex items-center gap-2">
+        <CustomActions
+          v-if="document._actions?.length"
+          :actions="document._actions"
         />
-      </TabPanel>
-    </Tabs>
-  </div>
-  <ErrorPage
-    v-else-if="errorTitle"
-    :errorTitle="errorTitle"
-    :errorMessage="errorMessage"
-  />
-  
-  <DeleteLinkedDocModal
-    v-if="showDeleteLinkedDocModal"
-    v-model="showDeleteLinkedDocModal"
-    :doctype="'CRM Lead'"
-    :docname="leadId"
-    name="Leads"
-  />
-  <div
-    v-if="isConverting"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
-  >
-    <span class="loader"></span>
+        <CustomActions
+          v-if="document.actions?.length"
+          :actions="document.actions"
+        />
+        <Button
+          :label="__('Convert To Donor')"
+          variant="solid"
+          @click="convertLeadToDonor"
+        />
+      </div>
+    </div>
+
+    <!-- Tabs + Content -->
+    <div v-if="doc.name" class="flex h-full overflow-hidden">
+      <Tabs as="div" v-model="tabIndex" :tabs="tabs" class="overflow-auto">
+        <TabList class="!px-3" />
+        <TabPanel v-slot="{ tab }">
+          <div v-if="tab.name == 'Details'">
+            <SLASection
+              v-if="doc.sla_status"
+              v-model="doc"
+              @updateField="updateField"
+            />
+            <div
+              v-if="sections.data"
+              class="flex flex-1 flex-col justify-between overflow-hidden"
+            >
+              <SidePanelLayout
+                :sections="sections.data"
+                doctype="CRM Lead"
+                :docname="leadId"
+                @reload="sections.reload"
+                @afterFieldChange="reloadAssignees"
+              />
+            </div>
+          </div>
+          <Activities
+            v-else
+            doctype="CRM Lead"
+            :docname="leadId"
+            :tabs="tabs"
+            v-model:reload="reload"
+            v-model:tabIndex="tabIndex"
+            @beforeSave="saveChanges"
+            @afterSave="reloadAssignees"
+          />
+        </TabPanel>
+      </Tabs>
+    </div>
+
+    <!-- Error Page -->
+    <ErrorPage
+      v-else-if="errorTitle"
+      :errorTitle="errorTitle"
+      :errorMessage="errorMessage"
+    />
+
+    <!-- Delete Modal -->
+    <DeleteLinkedDocModal
+      v-if="showDeleteLinkedDocModal"
+      v-model="showDeleteLinkedDocModal"
+      :doctype="'CRM Lead'"
+      :docname="leadId"
+      name="Leads"
+    />
+
+    <!-- Loader -->
+    <div
+      v-if="isConverting"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
+    >
+      <span class="loader"></span>
+    </div>
   </div>
 </template>
 
@@ -167,7 +178,6 @@ import {
 } from 'frappe-ui'
 import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-// import Spinner from '@/components/Spinner.vue'
 
 const { brand } = getSettings()
 const { $dialog, $socket } = globalStore()

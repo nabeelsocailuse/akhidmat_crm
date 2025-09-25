@@ -1,4 +1,5 @@
 <template>
+    <div class="min-h-screen bg-gradient-to-b from-[#fef7ff] to-[#F5F9FF]">
     <LayoutHeader>
       <header class="relative flex h-10.5 items-center justify-between gap-2 py-2.5 pl-2">
         <Breadcrumbs :items="breadcrumbs" />
@@ -61,6 +62,7 @@
         }
       "
     />
+    </div>
   </template>
   
   <script setup>

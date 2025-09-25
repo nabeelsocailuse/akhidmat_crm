@@ -72,8 +72,9 @@ import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
+import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import AssignTo from '@/components/AssignTo.vue'
-import CustomActions from '@/components/CustomActions.vue'
+import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
 import AppStyling from '@/components/AppStyling.vue'
 import {
   createResource,
@@ -130,7 +131,41 @@ const title = computed(() => {
 
 usePageMeta(() => ({ title: title.value, icon: brand.favicon }))
 
-const tabs = computed(() => [{ name: 'Data', label: __('Data') }])
+const tabs = computed(() => {
+  let tabOptions = [
+    // {
+    //   name: 'Activity',
+    //   label: __('Activity'),
+    //   icon: ActivityIcon,
+    // },
+    // {
+    //   name: 'Emails',
+    //   label: __('Emails'),
+    //   icon: EmailIcon,
+    // },
+    // {
+    //   name: 'Comments',
+    //   label: __('Comments'),
+    //   icon: CommentIcon,
+    // },
+    {
+      name: 'Data',
+      label: __('Data'),
+      icon: DetailsIcon,
+    },
+    {
+      name: 'Notes',
+      label: __('Notes'),
+      icon: NoteIcon,
+    },
+    // {
+    //   name: 'Attachments',
+    //   label: __('Attachments'),
+    //   icon: AttachmentIcon,
+    // },
+  ]
+  return tabOptions
+})
 const { tabIndex } = useActiveTabManager(tabs, 'lastTaxExemptionCertificateTab')
 
 function saveChanges(data) {

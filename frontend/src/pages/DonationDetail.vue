@@ -687,7 +687,7 @@ async function validateDonationForm() {
   }
 
   // Payment detail validation
-  if (!document.doc.payment_detail || !Array.isArray(document.doc.payment_detail) || document.doc.payment_detail.length === 0) {
+  if (document.doc.donation_type !== 'In Kind Donation' && (!document.doc.payment_detail || !Array.isArray(document.doc.payment_detail) || document.doc.payment_detail.length === 0)) {
     errors.push('At least one payment detail is required')
   } else {
     document.doc.payment_detail.forEach((row, index) => {
@@ -2824,7 +2824,7 @@ async function submitDonation() {
       return
     }
     
-    if (!document.doc.payment_detail || document.doc.payment_detail.length === 0) {
+    if (document.doc.donation_type !== 'In Kind Donation' && (!document.doc.payment_detail || document.doc.payment_detail.length === 0)) {
       toast.error('At least one payment detail is required before submitting')
       return
     }
@@ -2933,12 +2933,13 @@ async function createReturnCreditNote() {
     console.log('- items length:', document.doc.items?.length)
     
     if (result) {
-      // Create return document by copying ALL original donation data from frontend
-      // Use the frontend document.doc as the primary source since it has all the data
+      // Deep-clone the current document to fully decouple modal edits from main page watchers
+      const clonedDoc = JSON.parse(JSON.stringify(document.doc))
+
+      // Create return document using the deep-cloned source to avoid reactive coupling
       returnDocument.value = {
-        // Copy ALL original donation data from frontend
-        ...document.doc,
-        
+        ...clonedDoc,
+
         // Override with return-specific fields
         name: result.name || `RET-${document.doc.name}`,
         doctype: 'Donation',
@@ -2946,31 +2947,6 @@ async function createReturnCreditNote() {
         is_return: 1,
         return_against: document.doc.name,
         status: 'Return',
-        
-        // Ensure all form fields are preserved from original donation
-        donation_type: document.doc.donation_type,
-        donor_identity: document.doc.donor_identity,
-        contribution_type: document.doc.contribution_type,
-        company: document.doc.company,
-        currency: document.doc.currency,
-        exchange_rate: document.doc.exchange_rate,
-        donation_cost_center: document.doc.donation_cost_center,
-        due_date: document.doc.due_date,
-        invoice_issuance_time: document.doc.invoice_issuance_time,
-        edit_posting_date_and_time: document.doc.edit_posting_date_and_time,
-        unknown_to_known: document.doc.unknown_to_known,
-        
-        // Preserve all amounts and calculations from original donation
-        net_amount: document.doc.net_amount,
-        outstanding_amount: document.doc.outstanding_amount,
-        total_donation: document.doc.total_donation,
-        total_deduction: document.doc.total_deduction,
-        total_donors: document.doc.total_donors,
-        
-        // Preserve all child tables from original donation
-        items: document.doc.items ? [...document.doc.items] : [],
-        payment_detail: document.doc.payment_detail ? [...document.doc.payment_detail] : [],
-        deduction_breakeven: document.doc.deduction_breakeven ? [...document.doc.deduction_breakeven] : []
       }
       
       console.log('Return document data prepared for modal:', returnDocument.value)
@@ -2989,9 +2965,28 @@ async function createReturnCreditNote() {
       console.log('- total_donation:', returnDocument.value.total_donation)
       console.log('- net_amount:', returnDocument.value.net_amount)
       
-      // Open the DonationModal with the prepared data
-      showReturnModal.value = true
-      toast.success('Return/Credit Note prepared successfully')
+      // CRITICAL FIX: Wait for Vue reactivity to update props before opening modal
+      await nextTick()
+      
+      // Additional delay to ensure props are fully reactive
+      setTimeout(() => {
+        console.log('Opening modal with fully reactive data...')
+        console.log('Final returnDocument before opening:', returnDocument.value)
+        console.log('returnDocument keys:', Object.keys(returnDocument.value))
+        console.log('returnDocument payment_detail length:', returnDocument.value.payment_detail?.length)
+        console.log('returnDocument items length:', returnDocument.value.items?.length)
+        
+        // Verify that the returnDocument has all the necessary data
+        if (returnDocument.value && returnDocument.value.donation_type && returnDocument.value.payment_detail && returnDocument.value.payment_detail.length > 0) {
+          console.log('✅ Return document is properly populated, opening modal...')
+          // Open the DonationModal with the prepared data
+          showReturnModal.value = true
+          toast.success('Return/Credit Note prepared successfully')
+        } else {
+          console.error('❌ Return document is not properly populated:', returnDocument.value)
+          toast.error('Failed to prepare Return/Credit Note data')
+        }
+      }, 300)
     } else {
       toast.error('Failed to create Return/Credit Note - no result returned')
     }

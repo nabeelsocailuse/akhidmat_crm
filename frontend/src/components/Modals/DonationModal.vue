@@ -5,7 +5,7 @@
       <AppStyling type="modal-styling" modalType="header">
         <div class="mb-5 flex items-center justify-between">
           <h3 class="text-2xl font-semibold text-ink-gray-9">
-            {{ __('Create Donation') }}
+            {{ isReturnMode ? __('Create Return/Credit Note') : __('Create Donation') }}
           </h3>
           <div class="flex items-center gap-1">
             <Button
@@ -29,8 +29,9 @@
           <div class="field-layout-wrapper">
             <FieldLayout 
               v-if="tabs.data" 
+              :key="fieldLayoutKey"
               :tabs="filteredTabs" 
-              :data="donation.doc" 
+              :data="reactiveFieldLayoutData" 
               :doctype="'Donation'"
               :triggerOnRowRemove="customTriggerOnRowRemove"
               @open-create-modal="openCreateModal"
@@ -51,7 +52,7 @@
             
             type="button"
             buttonType="submit"
-            buttonLabel="Submit Donation"
+            :buttonLabel="isReturnMode ? 'Submit Return/Credit Note' : 'Submit Donation'"
             :buttonLoading="isDonationCreating"
             @click="createNewDonation"
           />
@@ -86,7 +87,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onUnmounted, computed, readonly } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed, readonly, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { createResource, call, Dialog, Button, ErrorMessage, toast } from 'frappe-ui'
 import FeatherIcon from '@/components/Icons/FeatherIcon.vue'
@@ -113,6 +114,14 @@ const props = defineProps({
 const emit = defineEmits(['donation-created', 'donation-deleted'])
 
 const show = defineModel()
+
+// Add computed property for options
+const options = computed(() => props.options || {})
+
+// Add computed property to check if we're in return mode
+const isReturnMode = computed(() => {
+  return options.value.isReturn || donation.doc.is_return
+})
 
 // Create a computed property to control the show value
 const controlledShow = computed({
@@ -244,96 +253,19 @@ const resetDonationData = () => {
 
 // Add a flag to prevent watchers from interfering during initialization
 let isInitializingWithDefaults = false
-let isApplyingDefaults = false
 
-// Helper function to apply all defaults to donation document
-const applyAllDefaultsToDocument = (defaults) => {
-  if (!defaults || Object.keys(defaults).length === 0 || isApplyingDefaults) return
-  
-  isApplyingDefaults = true
-  
-  try {
-    console.log('Applying all defaults to document:', defaults)
-    
-    // Apply all fields from defaults
-    Object.keys(defaults).forEach(key => {
-      if (defaults[key] !== undefined && defaults[key] !== null) {
-        // Handle arrays by creating new instances to ensure reactivity
-        if (Array.isArray(defaults[key])) {
-          donation.doc[key] = [...defaults[key]]
-        } else {
-          donation.doc[key] = defaults[key]
-        }
-      }
-    })
-    
-    console.log('Document after applying all defaults:', donation.doc)
-  } finally {
-    // Reset flag after a short delay to prevent immediate re-triggering
-    setTimeout(() => {
-      isApplyingDefaults = false
-    }, 100)
-  }
-}
+// Add a reactive key to force component updates
+const forceUpdateKey = ref(0)
+const fieldLayoutKey = ref(0)
 
-// Function to initialize donation document with defaults (for return/credit note)
-const initializeDonationWithDefaults = () => {
-  try {
-    // Set flag to prevent watchers from interfering
-    isInitializingWithDefaults = true
-    
-    console.log('Initializing donation with defaults:', props.defaults)
-    
-    // Create a completely new document object with all defaults
-    const newDoc = {
-      doctype: 'Donation',
-      owner: user.value,
-      ...props.defaults
-    }
-    
-    // Ensure required arrays are properly initialized
-    if (!newDoc.payment_detail) {
-      newDoc.payment_detail = []
-    }
-    if (!newDoc.deduction_breakeven) {
-      newDoc.deduction_breakeven = []
-    }
-    if (!newDoc.items) {
-      newDoc.items = []
-    }
-    
-    // CRITICAL: Force update the document by completely replacing it
-    Object.assign(donation.doc, newDoc)
-    
-    // Apply all defaults to ensure complete field population
-    applyAllDefaultsToDocument(props.defaults)
-    
-    // Set posting date and time if not already set
-    if (!donation.doc.posting_date) {
-      donation.doc.posting_date = new Date().toISOString().slice(0, 10)
-    }
-    if (!donation.doc.posting_time) {
-      donation.doc.posting_time = new Date().toTimeString().slice(0, 5)
-    }
-    
-    // Clear errors
-    error.value = null
-    
-    console.log('Donation document initialized with defaults:', donation.doc)
-    
-    // Reset flag after a delay to allow watchers to work normally
-    setTimeout(() => {
-      isInitializingWithDefaults = false
-      // Manually trigger calculation update to ensure totals are correct
-      updateCalculationFields()
-    }, 500)
-  } catch (error) {
-    console.error('Error initializing donation with defaults:', error)
-    isInitializingWithDefaults = false
-    // Fallback to normal reset
-    resetDonationData()
-  }
-}
+// Add timeout guards to prevent rapid successive calls
+let lastUpdateTime = 0
+const UPDATE_THROTTLE_MS = 100
+
+// REMOVED: All problematic helper functions that were causing infinite loops
+// We now handle defaults application directly in the show watcher
+
+// REMOVED: Old initialization function - now handled directly in show watcher
 
 // Initialize donation with defaults-aware logic (doesn't override existing values)
 const initializeDonationWithDefaultsLogic = () => {
@@ -728,6 +660,12 @@ onMounted(() => {
   })
 })
 
+// Cleanup on unmount
+onUnmounted(() => {
+  // Reset any flags
+  isInitializingWithDefaults = false
+})
+
 // Function to apply defaults to donation document
 const applyDefaultsToDonation = () => {
   console.log('applyDefaultsToDonation called')
@@ -770,28 +708,148 @@ const applyDefaultsToDonation = () => {
   }
 }
 
-// Simple watcher for modal opening
+// Simple watcher for modal opening - COMPLETELY REWRITTEN to prevent infinite loops
 watch(show, async (val) => {
   if (val && user.value) {
     refreshTabs()
     
+    // CRITICAL: Wait for props to be fully available
+    await nextTick()
+    
     // Check if we have defaults (like for return/credit note)
     if (props.defaults && Object.keys(props.defaults).length > 0) {
-      // Initialize donation document with defaults instead of resetting
-      initializeDonationWithDefaults()
+      console.log('Modal opening with defaults, applying all fields...')
+      console.log('Props defaults received:', props.defaults)
+      console.log('Props defaults keys:', Object.keys(props.defaults))
       
-      // Force update after a delay to ensure data is applied
-      setTimeout(() => {
-        // Only apply if we're not already applying defaults
-        if (!isApplyingDefaults) {
-          applyAllDefaultsToDocument(props.defaults)
-          
-          // Force DOM update to ensure all fields are properly displayed
-          nextTick(() => {
-            console.log('All fields updated from defaults:', donation.doc)
-          })
+      // Set flag to prevent any other operations
+      isInitializingWithDefaults = true
+      
+      try {
+        // Create a completely new document with ALL defaults
+        const newDoc = {
+          doctype: 'Donation',
+          owner: user.value,
+          ...props.defaults
         }
-      }, 100)
+        
+        // Ensure required arrays are properly initialized
+        if (!newDoc.payment_detail) newDoc.payment_detail = []
+        if (!newDoc.deduction_breakeven) newDoc.deduction_breakeven = []
+        if (!newDoc.items) newDoc.items = []
+        
+        // Set posting date and time if not already set
+        if (!newDoc.posting_date) {
+          newDoc.posting_date = new Date().toISOString().slice(0, 10)
+        }
+        if (!newDoc.posting_time) {
+          newDoc.posting_time = new Date().toTimeString().slice(0, 5)
+        }
+        
+        // FORCE REACTIVITY: Completely replace the donation document to trigger reactivity
+        donation.doc = { ...newDoc }
+        
+        console.log('All fields applied from defaults:', donation.doc)
+        console.log('Key fields check:')
+        console.log('- donation_type:', donation.doc.donation_type)
+        console.log('- donor_identity:', donation.doc.donor_identity)
+        console.log('- company:', donation.doc.company)
+        console.log('- currency:', donation.doc.currency)
+        console.log('- is_return:', donation.doc.is_return)
+        console.log('- return_against:', donation.doc.return_against)
+        console.log('- total_donation:', donation.doc.total_donation)
+        console.log('- net_amount:', donation.doc.net_amount)
+        
+        // CRITICAL: Force the reactiveFieldLayoutData to update by incrementing the key
+        fieldLayoutKey.value++
+        forceUpdateKey.value++
+        
+        console.log('🔄 Forced reactive updates - fieldLayoutKey:', fieldLayoutKey.value, 'forceUpdateKey:', forceUpdateKey.value)
+        
+        // CRITICAL: Force immediate update of the reactiveFieldLayoutData
+        nextTick(() => {
+          console.log('🔄 Immediate reactiveFieldLayoutData update triggered')
+          // Force another update to ensure the computed property gets the new values
+          fieldLayoutKey.value++
+        })
+        
+        // Clear errors
+        error.value = null
+        
+        // Force multiple DOM updates to ensure all fields are properly displayed
+        nextTick(() => {
+          console.log('First DOM update completed')
+          
+          // Force FieldLayout to re-render immediately
+          forceFieldLayoutUpdate()
+          
+          // Force another update after a short delay
+          setTimeout(() => {
+            console.log('Second DOM update - forcing field updates')
+            
+            // Explicitly trigger field updates for critical fields
+            if (donation.doc.donation_type) {
+              console.log('Setting donation_type:', donation.doc.donation_type)
+            }
+            if (donation.doc.donor_identity) {
+              console.log('Setting donor_identity:', donation.doc.donor_identity)
+            }
+            if (donation.doc.company) {
+              console.log('Setting company:', donation.doc.company)
+            }
+            if (donation.doc.total_donation) {
+              console.log('Setting total_donation:', donation.doc.total_donation)
+            }
+            if (donation.doc.net_amount) {
+              console.log('Setting net_amount:', donation.doc.net_amount)
+            }
+            
+            // Force field updates to ensure form fields are populated
+            forceFieldUpdates()
+            
+            // Force FieldLayout to re-render
+            forceFieldLayoutUpdate()
+            
+            // Multiple DOM updates to ensure all fields are populated
+            nextTick(() => {
+              console.log('Third DOM update - final field population')
+              
+              // Force another update
+              forceFieldUpdates()
+              
+            // Force FieldLayout to re-render again
+            forceFieldLayoutUpdate()
+            
+            // AGGRESSIVE: Force form field values directly
+            forceFormFieldValues()
+            
+            // ULTRA AGGRESSIVE: Force all form fields to update
+            forceAllFormFields()
+            
+            // FINAL SOLUTION: Direct DOM manipulation for ALL fields
+            forceAllFieldsDirectly()
+            
+            // ULTIMATE SOLUTION: Force FieldLayout data update
+            forceFieldLayoutDataUpdate()
+            
+            // Trigger calculation update to ensure totals are correct
+            updateCalculationFields()
+            
+            console.log('Final donation.doc state:', donation.doc)
+            })
+          }, 100)
+        })
+        
+      } catch (error) {
+        console.error('Error applying defaults:', error)
+        // Fallback to normal reset
+        resetDonationData()
+      } finally {
+        // Reset flag after a delay
+        setTimeout(() => {
+          isInitializingWithDefaults = false
+        }, 200)
+      }
     } else {
       // Reset donation data to fresh state
       resetDonationData()
@@ -819,22 +877,491 @@ watch(() => show.value, (newVal, oldVal) => {
   }
 }, { immediate: true })
 
-// Watch for changes in defaults prop and force update
-watch(() => props.defaults, (newDefaults, oldDefaults) => {
-  // Prevent infinite loops by checking if we're already applying defaults
-  if (isApplyingDefaults || isInitializingWithDefaults) return
+// Watch for donation document changes to ensure form fields are updated
+watch(() => donation.doc, (newDoc, oldDoc) => {
+  if (newDoc && show.value) {
+    console.log('Donation document changed, ensuring form fields are updated')
+    console.log('New doc keys:', Object.keys(newDoc))
+    console.log('Critical fields:')
+    console.log('- donation_type:', newDoc.donation_type)
+    console.log('- donor_identity:', newDoc.donor_identity)
+    console.log('- company:', newDoc.company)
+    console.log('- total_donation:', newDoc.total_donation)
+    console.log('- net_amount:', newDoc.net_amount)
+    
+    // Force FieldLayout re-render
+    fieldLayoutKey.value++
+    
+    // Force DOM update to ensure form fields reflect the data
+    nextTick(() => {
+      console.log('Form fields should now reflect the updated data')
+    })
+  }
+}, { deep: true })
+
+// Watch for fieldLayoutKey changes to ensure FieldLayout re-renders
+watch(fieldLayoutKey, (newKey) => {
+  if (show.value) {
+    console.log('FieldLayout key changed, forcing re-render:', newKey)
+  }
+})
+
+// CRITICAL: Watch for donation.doc changes to force FieldLayout updates
+// ADDED GUARDS TO PREVENT INFINITE LOOPS
+watch(() => donation.doc, (newDoc, oldDoc) => {
+  // Prevent infinite loops by checking if we're already updating
+  if (isInitializingWithDefaults) return
   
-  // Only apply if we have new defaults and the modal is open
-  if (newDefaults && Object.keys(newDefaults).length > 0 && show.value) {
-    // Check if defaults actually changed to prevent unnecessary updates
-    if (JSON.stringify(newDefaults) !== JSON.stringify(oldDefaults)) {
-      // Apply all defaults to ensure complete field population
-      applyAllDefaultsToDocument(newDefaults)
+  if (show.value && newDoc) {
+    console.log('🔄 donation.doc changed, forcing FieldLayout update')
+    console.log('New doc total_donation:', newDoc.total_donation)
+    console.log('New doc net_amount:', newDoc.net_amount)
+    
+    // Only update if the values actually changed to prevent loops
+    if (JSON.stringify(newDoc) !== JSON.stringify(oldDoc)) {
+      // Force FieldLayout to re-render by updating the key
+      fieldLayoutKey.value++
       
-      console.log('All fields updated from defaults watcher:', donation.doc)
+      // Force another update after a short delay
+      setTimeout(() => {
+        fieldLayoutKey.value++
+        console.log('🔄 Second FieldLayout update triggered')
+      }, 50)
+    }
+  }
+}, { deep: true })
+
+// CRITICAL: Watch for props.defaults changes to handle late updates
+// ADDED GUARDS TO PREVENT INFINITE LOOPS
+watch(() => props.defaults, (newDefaults, oldDefaults) => {
+  // Prevent infinite loops by checking if we're already updating
+  if (isInitializingWithDefaults) return
+  
+  if (newDefaults && Object.keys(newDefaults).length > 0 && show.value) {
+    // Only update if the defaults actually changed to prevent loops
+    if (JSON.stringify(newDefaults) !== JSON.stringify(oldDefaults)) {
+      console.log('Props defaults changed, applying to modal...')
+      console.log('New defaults:', newDefaults)
+      console.log('Old defaults:', oldDefaults)
+      
+      // Set flag to prevent other operations
+      isInitializingWithDefaults = true
+      
+      try {
+        // Apply ALL defaults at once to prevent partial updates
+        const updatedDoc = { ...donation.doc }
+        
+        // Apply all defaults
+        Object.keys(newDefaults).forEach(key => {
+          if (newDefaults[key] !== undefined && newDefaults[key] !== null) {
+            console.log(`Setting ${key} from defaults:`, newDefaults[key])
+            updatedDoc[key] = newDefaults[key]
+          }
+        })
+        
+        // Force reactivity by replacing the entire document
+        donation.doc = updatedDoc
+        
+        console.log('All defaults applied successfully:', donation.doc)
+        console.log('Key fields after applying defaults:')
+        console.log('- donation_type:', donation.doc.donation_type)
+        console.log('- donor_identity:', donation.doc.donor_identity)
+        console.log('- company:', donation.doc.company)
+        console.log('- currency:', donation.doc.currency)
+        console.log('- total_donation:', donation.doc.total_donation)
+        console.log('- net_amount:', donation.doc.net_amount)
+        console.log('- is_return:', donation.doc.is_return)
+        console.log('- return_against:', donation.doc.return_against)
+        console.log('- payment_detail length:', donation.doc.payment_detail?.length)
+        console.log('- items length:', donation.doc.items?.length)
+        
+        // Force field layout update
+        fieldLayoutKey.value++
+        
+      } finally {
+        // Reset flag after a delay
+        setTimeout(() => {
+          isInitializingWithDefaults = false
+        }, 100)
+      }
     }
   }
 }, { deep: true, immediate: false })
+
+// ADD: Special watcher for return mode to ensure proper initialization
+watch(() => [show.value, props.defaults], async ([showVal, defaults]) => {
+  if (showVal && defaults && Object.keys(defaults).length > 0 && defaults.is_return) {
+    console.log('🔄 Return mode detected, ensuring proper initialization...')
+    console.log('Return defaults:', defaults)
+    
+    // Wait for the modal to be fully rendered
+    await nextTick()
+    
+    // Force apply all return data
+    if (defaults.payment_detail && defaults.payment_detail.length > 0) {
+      console.log('🔄 Applying return payment details:', defaults.payment_detail.length)
+      donation.doc.payment_detail = [...defaults.payment_detail]
+    }
+    
+    if (defaults.items && defaults.items.length > 0) {
+      console.log('🔄 Applying return items:', defaults.items.length)
+      donation.doc.items = [...defaults.items]
+    }
+    
+    if (defaults.deduction_breakeven && defaults.deduction_breakeven.length > 0) {
+      console.log('🔄 Applying return deduction breakeven:', defaults.deduction_breakeven.length)
+      donation.doc.deduction_breakeven = [...defaults.deduction_breakeven]
+    }
+    
+    // Force field layout update
+    fieldLayoutKey.value++
+    
+    console.log('🔄 Return mode initialization completed')
+  }
+}, { deep: true })
+
+// Function to force field updates in the form
+const forceFieldUpdates = () => {
+  console.log('Forcing field updates in form...')
+  
+  // Force reactivity by creating new references
+  const currentDoc = { ...donation.doc }
+  
+  // Explicitly set each critical field to force reactivity
+  if (currentDoc.donation_type) {
+    donation.doc.donation_type = currentDoc.donation_type
+  }
+  if (currentDoc.donor_identity) {
+    donation.doc.donor_identity = currentDoc.donor_identity
+  }
+  if (currentDoc.company) {
+    donation.doc.company = currentDoc.company
+  }
+  if (currentDoc.currency) {
+    donation.doc.currency = currentDoc.currency
+  }
+  if (currentDoc.total_donation) {
+    donation.doc.total_donation = currentDoc.total_donation
+  }
+  if (currentDoc.net_amount) {
+    donation.doc.net_amount = currentDoc.net_amount
+  }
+  if (currentDoc.total_deduction) {
+    donation.doc.total_deduction = currentDoc.total_deduction
+  }
+  
+  // Force component update by incrementing the key
+  forceUpdateKey.value++
+  fieldLayoutKey.value++
+  
+  console.log('Field updates forced, current state:', donation.doc)
+  console.log('Force update key:', forceUpdateKey.value)
+  console.log('Field layout key:', fieldLayoutKey.value)
+}
+
+// Function to force FieldLayout to completely re-render
+// ADDED THROTTLING TO PREVENT INFINITE LOOPS
+const forceFieldLayoutUpdate = () => {
+  const now = Date.now()
+  
+  // Throttle updates to prevent infinite loops
+  if (now - lastUpdateTime < UPDATE_THROTTLE_MS) {
+    console.log('⏱️ Throttling FieldLayout update to prevent infinite loops')
+    return
+  }
+  
+  lastUpdateTime = now
+  console.log('Forcing FieldLayout to re-render...')
+  
+  // Increment the key to force complete re-render
+  fieldLayoutKey.value++
+  
+  // Force multiple updates to ensure the component re-renders
+  nextTick(() => {
+    console.log('FieldLayout re-render triggered')
+    
+    // Force another update after a short delay
+    setTimeout(() => {
+      fieldLayoutKey.value++
+      console.log('FieldLayout second re-render triggered')
+    }, 50)
+  })
+}
+
+// AGGRESSIVE: Function to force form field values directly
+const forceFormFieldValues = () => {
+  console.log('🚀 AGGRESSIVE: Forcing form field values directly...')
+  
+  // Wait for DOM to be ready
+  nextTick(() => {
+    // Try to find and update form fields directly
+    const totalDonationField = document.querySelector('input[name="total_donation"], [data-fieldname="total_donation"]')
+    const netAmountField = document.querySelector('input[name="net_amount"], [data-fieldname="net_amount"]')
+    const totalDeductionField = document.querySelector('input[name="total_deduction"], [data-fieldname="total_deduction"]')
+    
+    if (totalDonationField && donation.doc.total_donation) {
+      totalDonationField.value = donation.doc.total_donation
+      totalDonationField.dispatchEvent(new Event('input', { bubbles: true }))
+      console.log('🚀 Set total_donation field directly:', donation.doc.total_donation)
+    }
+    
+    if (netAmountField && donation.doc.net_amount) {
+      netAmountField.value = donation.doc.net_amount
+      netAmountField.dispatchEvent(new Event('input', { bubbles: true }))
+      console.log('🚀 Set net_amount field directly:', donation.doc.net_amount)
+    }
+    
+    if (totalDeductionField && donation.doc.total_deduction) {
+      totalDeductionField.value = donation.doc.total_deduction
+      totalDeductionField.dispatchEvent(new Event('input', { bubbles: true }))
+      console.log('🚀 Set total_deduction field directly:', donation.doc.total_deduction)
+    }
+    
+    // Force another update after DOM manipulation
+    setTimeout(() => {
+      fieldLayoutKey.value++
+      console.log('🚀 Final FieldLayout update after DOM manipulation')
+    }, 100)
+  })
+}
+
+// ULTRA AGGRESSIVE: Function to force all form fields to update with correct values
+const forceAllFormFields = () => {
+  console.log('🚀 ULTRA AGGRESSIVE: Forcing ALL form fields to update...')
+  
+  // Wait for DOM to be ready
+  nextTick(() => {
+    // Force update all critical fields
+    if (donation.doc.total_donation) {
+      // Try multiple selectors to find the field
+      const totalDonationFields = document.querySelectorAll('input[name="total_donation"], [data-fieldname="total_donation"], input[placeholder*="Total Donation"]')
+      totalDonationFields.forEach(field => {
+        field.value = donation.doc.total_donation
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+        field.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🚀 Set total_donation field:', donation.doc.total_donation)
+      })
+    }
+    
+    if (donation.doc.net_amount) {
+      const netAmountFields = document.querySelectorAll('input[name="net_amount"], [data-fieldname="net_amount"], input[placeholder*="Net Amount"]')
+      netAmountFields.forEach(field => {
+        field.value = donation.doc.net_amount
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+        field.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🚀 Set net_amount field:', donation.doc.net_amount)
+      })
+    }
+    
+    if (donation.doc.total_deduction) {
+      const totalDeductionFields = document.querySelectorAll('input[name="total_deduction"], [data-fieldname="total_deduction"], input[placeholder*="Total Deduction"]')
+      totalDeductionFields.forEach(field => {
+        field.value = donation.doc.total_deduction
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+        field.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🚀 Set total_deduction field:', donation.doc.total_deduction)
+      })
+    }
+    
+    // Force is_return checkbox to be checked
+    if (donation.doc.is_return) {
+      const isReturnCheckboxes = document.querySelectorAll('input[name="is_return"], [data-fieldname="is_return"], input[type="checkbox"][value*="return"]')
+      isReturnCheckboxes.forEach(checkbox => {
+        checkbox.checked = true
+        checkbox.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🚀 Set is_return checkbox to checked')
+      })
+    }
+    
+    // Force another update after DOM manipulation
+    setTimeout(() => {
+      fieldLayoutKey.value++
+      console.log('🚀 ULTRA AGGRESSIVE: Final update completed')
+    }, 100)
+  })
+}
+
+// FINAL SOLUTION: Direct DOM manipulation to force field updates
+const forceAllFieldsDirectly = () => {
+  console.log('🔥 FINAL SOLUTION: Direct DOM manipulation...')
+  
+  // Wait for DOM to be ready
+  nextTick(() => {
+    // Find ALL input fields and update them directly
+    const allInputs = document.querySelectorAll('input, textarea, select')
+    
+    allInputs.forEach(input => {
+      const fieldName = input.name || input.getAttribute('data-fieldname') || input.id
+      
+      // Update total_donation field
+      if (fieldName === 'total_donation' && donation.doc.total_donation) {
+        input.value = donation.doc.total_donation
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🔥 DIRECT: Set total_donation =', donation.doc.total_donation)
+      }
+      
+      // Update net_amount field
+      if (fieldName === 'net_amount' && donation.doc.net_amount) {
+        input.value = donation.doc.net_amount
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🔥 DIRECT: Set net_amount =', donation.doc.net_amount)
+      }
+      
+      // Update total_deduction field
+      if (fieldName === 'total_deduction' && donation.doc.total_deduction) {
+        input.value = donation.doc.total_deduction
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🔥 DIRECT: Set total_deduction =', donation.doc.total_deduction)
+      }
+      
+      // Update donation_type field
+      if (fieldName === 'donation_type' && donation.doc.donation_type) {
+        input.value = donation.doc.donation_type
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🔥 DIRECT: Set donation_type =', donation.doc.donation_type)
+      }
+      
+      // Update donor_identity field
+      if (fieldName === 'donor_identity' && donation.doc.donor_identity) {
+        input.value = donation.doc.donor_identity
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🔥 DIRECT: Set donor_identity =', donation.doc.donor_identity)
+      }
+      
+      // Update company field
+      if (fieldName === 'company' && donation.doc.company) {
+        input.value = donation.doc.company
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🔥 DIRECT: Set company =', donation.doc.company)
+      }
+      
+      // Update currency field
+      if (fieldName === 'currency' && donation.doc.currency) {
+        input.value = donation.doc.currency
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🔥 DIRECT: Set currency =', donation.doc.currency)
+      }
+      
+      // Update is_return checkbox
+      if (fieldName === 'is_return' && donation.doc.is_return) {
+        input.checked = true
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+        console.log('🔥 DIRECT: Set is_return checkbox = checked')
+      }
+    })
+    
+    // Force multiple updates
+    setTimeout(() => {
+      fieldLayoutKey.value++
+      console.log('🔥 FINAL SOLUTION: First update completed')
+      
+      // Second update
+      setTimeout(() => {
+        fieldLayoutKey.value++
+        console.log('🔥 FINAL SOLUTION: Second update completed')
+        
+        // Third update
+        setTimeout(() => {
+          fieldLayoutKey.value++
+          console.log('🔥 FINAL SOLUTION: Final update completed')
+        }, 100)
+      }, 100)
+    }, 100)
+  })
+}
+
+// Computed property to force reactivity on donation document
+const reactiveDonationDoc = computed(() => {
+  // This will trigger whenever donation.doc changes
+  return { ...donation.doc, _key: forceUpdateKey.value }
+})
+
+// FINAL WATCHER: Force field updates when reactiveFieldLayoutData changes
+watch(() => reactiveFieldLayoutData.value, (newData) => {
+  if (show.value && newData) {
+    console.log('🔥 FINAL WATCHER: reactiveFieldLayoutData changed, forcing field updates')
+    console.log('New data:', newData)
+    
+    // Force immediate field updates
+    nextTick(() => {
+      forceAllFieldsDirectly()
+    })
+  }
+}, { deep: true, immediate: false })
+
+// ULTIMATE SOLUTION: Force FieldLayout to re-render with correct data
+const forceFieldLayoutDataUpdate = () => {
+  console.log('🚀 ULTIMATE: Forcing FieldLayout data update...')
+  
+  // Force multiple updates to ensure FieldLayout gets the data
+  fieldLayoutKey.value++
+  forceUpdateKey.value++
+  
+  // Wait for DOM to update
+  nextTick(() => {
+    // Force another update
+    fieldLayoutKey.value++
+    
+    // Force direct field updates
+    forceAllFieldsDirectly()
+    
+    console.log('🚀 ULTIMATE: FieldLayout data update completed')
+  })
+}
+
+// FINAL SOLUTION: Force FieldLayout data to be completely reactive
+const reactiveFieldLayoutData = computed(() => {
+  console.log('🔥 FINAL: reactiveFieldLayoutData computed triggered')
+  console.log('🔥 FINAL: donation.doc keys:', Object.keys(donation.doc))
+  console.log('🔥 FINAL: props.defaults keys:', props.defaults ? Object.keys(props.defaults) : 'No defaults')
+  
+  // Create a completely new reactive object
+  const newData = reactive({})
+  
+  // Copy ALL data from donation.doc
+  Object.assign(newData, donation.doc)
+  
+  // CRITICAL: Force all critical fields from props.defaults
+  if (props.defaults) {
+    console.log('🔥 FINAL: Applying props.defaults to newData')
+    
+    // Force all critical fields
+    newData.donation_type = props.defaults.donation_type || donation.doc.donation_type
+    newData.donor_identity = props.defaults.donor_identity || donation.doc.donor_identity
+    newData.company = props.defaults.company || donation.doc.company
+    newData.currency = props.defaults.currency || donation.doc.currency
+    newData.total_donation = props.defaults.total_donation || donation.doc.total_donation
+    newData.net_amount = props.defaults.net_amount || donation.doc.net_amount
+    newData.total_deduction = props.defaults.total_deduction || donation.doc.total_deduction
+    newData.is_return = props.defaults.is_return || donation.doc.is_return
+    newData.return_against = props.defaults.return_against || donation.doc.return_against
+    
+    console.log('🔥 FINAL: Applied defaults - total_donation:', newData.total_donation)
+    console.log('🔥 FINAL: Applied defaults - net_amount:', newData.net_amount)
+    console.log('🔥 FINAL: Applied defaults - is_return:', newData.is_return)
+  }
+  
+  // Add reactive keys
+  newData._layoutKey = fieldLayoutKey.value
+  newData._forceUpdateKey = forceUpdateKey.value
+  newData._timestamp = Date.now()
+  
+  console.log('🔥 FINAL: Final newData keys:', Object.keys(newData))
+  console.log('🔥 FINAL: Final newData values:', {
+    total_donation: newData.total_donation,
+    net_amount: newData.net_amount,
+    is_return: newData.is_return
+  })
+  
+  return newData
+})
 
 // Ensure main modal stays visible during sub-modal interactions
 const ensureMainModalVisible = () => {

@@ -240,7 +240,7 @@ const options = computed(() => [
       showDatePicker.value = true
       setTimeout(() => datePickerRef.value?.open(), 0)
       preset.value = 'Custom Range'
-      filters.period = null // Reset period to allow custom date selection
+      filters.period = null 
     },
   },
 ])

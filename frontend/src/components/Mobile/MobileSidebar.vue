@@ -12,7 +12,7 @@
         leave-to="-translate-x-full"
       >
         <div
-          class="relative z-10 flex h-full w-[260px] flex-col justify-between border-r bg-white transition-all duration-300 ease-in-out"
+          class="relative z-10 flex h-full w-[260px] flex-col justify-between border-r bg-white transition-all duration-300 ease-in-out mobile-sidebar "
         >
           <!-- User Dropdown -->
           <div>
@@ -221,3 +221,9 @@ function getIcon(routeName, icon) {
   }
 }
 </script>
+
+<style scoped>
+.mobile-sidebar {
+  @apply bg-gradient-to-b from-[#e9d5ff] to-[#c7d2fe];
+}
+</style>
