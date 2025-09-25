@@ -174,6 +174,14 @@
       </Resizer>
       
     </div>
+
+    <!-- Return / Credit Note uses wrapper that reuses Create Donation form -->
+    <ReturnNoteModal
+      v-if="showReturnDonationModal && document.doc?.name"
+      v-model="showReturnDonationModal"
+      :donationId="document.doc.name"
+      @success="document.reload?.()"
+    />
   </AppStyling>
   
   <ErrorPage
@@ -312,7 +320,6 @@ import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
 import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import Email2Icon from '@/components/Icons/Email2Icon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
-// removed DonationModal import as return flow no longer uses modal
 import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
@@ -2787,13 +2794,70 @@ const createDropdownOptions = computed(() => {
   if (document.doc && !document.doc.is_return) {
     options.push({
       label: 'Return / Credit Note',
-      
+      onClick: openReturnNote
     })
   }
   
   return options
 })
 
+
+// Return / Credit Note: reuse DonationModal with prefilled defaults
+import DonationModal from '@/components/Modals/DonationModal.vue'
+import ReturnNoteModal from '@/components/Modals/ReturnNoteModal.vue'
+const showReturnDonationModal = ref(false)
+const returnDefaultsRef = ref(null)
+
+function deepClone(obj) {
+  try {
+    return JSON.parse(JSON.stringify(obj))
+  } catch (e) {
+    return {}
+  }
+}
+
+function sanitizeChildRows(rows = []) {
+  return (rows || []).map((r) => {
+    const clone = { ...r }
+    delete clone.name
+    delete clone.owner
+    delete clone.creation
+    delete clone.modified
+    delete clone.modified_by
+    delete clone.docstatus
+    return clone
+  })
+}
+
+function buildReturnDefaults(src) {
+  const base = deepClone(src || {})
+  // Remove server-managed/meta fields
+  delete base.name
+  delete base.owner
+  delete base.creation
+  delete base.modified
+  delete base.modified_by
+  base.docstatus = 0
+  base.status = 'Draft'
+  // Mark as return against the current document
+  base.is_return = 1
+  base.return_against = document.doc?.name || ''
+  // Reset workflow-related flags if any
+  base.amended_from = undefined
+  // Sanitize child tables
+  base.payment_detail = sanitizeChildRows(base.payment_detail)
+  base.items = sanitizeChildRows(base.items)
+  base.deduction_breakeven = sanitizeChildRows(base.deduction_breakeven)
+  return Object.freeze(base)
+}
+
+function openReturnNote() {
+  // Initialize defaults safely and open modal
+  const src = document?.doc || {}
+  // Assign a brand-new frozen object to avoid reactive deep mutation loops
+  returnDefaultsRef.value = buildReturnDefaults(src)
+  showReturnDonationModal.value = true
+}
 
 
 // Add function to handle donation submission

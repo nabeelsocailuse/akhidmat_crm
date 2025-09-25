@@ -114,6 +114,8 @@ const props = defineProps({
 const emit = defineEmits(['donation-created', 'donation-deleted'])
 
 const show = defineModel()
+// Guard: ensure defaults are applied only once per modal open
+const hasAppliedDefaultsOnce = ref(false)
 
 // Add computed property for options
 const options = computed(() => props.options || {})
@@ -134,6 +136,13 @@ const controlledShow = computed({
       return // Don't allow closing
     }
     show.value = value
+  }
+})
+
+// Reset one-time guards when the modal is opened
+watch(() => show.value, (val) => {
+  if (val) {
+    hasAppliedDefaultsOnce.value = false
   }
 })
 
@@ -797,6 +806,8 @@ watch(() => donation.doc, (newDoc, oldDoc) => {
 watch(() => props.defaults, (newDefaults, oldDefaults) => {
   // Prevent infinite loops by checking if we're already updating
   if (isInitializingWithDefaults) return
+  // Apply defaults only once per open
+  if (hasAppliedDefaultsOnce.value) return
   
   if (newDefaults && Object.keys(newDefaults).length > 0 && show.value) {
     // Only update if the defaults actually changed to prevent loops
@@ -840,9 +851,10 @@ watch(() => props.defaults, (newDefaults, oldDefaults) => {
         fieldLayoutKey.value++
         
       } finally {
-        // Reset flag after a delay
+        // Reset initializing flag and mark applied once
         setTimeout(() => {
           isInitializingWithDefaults = false
+          hasAppliedDefaultsOnce.value = true
         }, 100)
       }
     }
@@ -851,7 +863,7 @@ watch(() => props.defaults, (newDefaults, oldDefaults) => {
 
 // ADD: Special watcher for return mode to ensure proper initialization
 watch(() => [show.value, props.defaults], async ([showVal, defaults]) => {
-  if (showVal && defaults && Object.keys(defaults).length > 0 && defaults.is_return) {
+  if (showVal && defaults && Object.keys(defaults).length > 0 && defaults.is_return && !hasAppliedDefaultsOnce.value) {
     console.log('🔄 Return mode detected, ensuring proper initialization...')
     console.log('Return defaults:', defaults)
     

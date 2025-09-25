@@ -111,6 +111,7 @@ import {
 } from 'frappe-ui'
 import { ref, computed, watch, nextTick, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useDonorFieldValidation } from '@/composables/useDonorFieldValidation'
 
 const route = useRoute()
 const router = useRouter()
@@ -174,28 +175,127 @@ const sections = createResource({
   auto: true,
 })
 
-function updateField(name, value) {
-  value = Array.isArray(name) ? '' : value
-  let oldValues = Array.isArray(name) ? {} : donorDocument.doc?.[name]
+const {
+  showCnicExistsDialog,
+  cnicExistsMessage,
+  showCnicValidationDialog,
+  cnicValidationMessage,
+  validateCnicFormat,
+  validatePhoneNumber
+} = useDonorFieldValidation();
 
-  if (!donorDocument.doc) return
+async function validateBeforeSave() {
+  const errors = [];
 
-  if (Array.isArray(name)) {
-    name.forEach((field) => (donorDocument.doc[field] = value))
-  } else {
-    donorDocument.doc[name] = value
+  // CNIC Validation
+  if (donorDocument.doc?.identification_type && donorDocument.doc?.identification_type !== 'Others') {
+    if (!donorDocument.doc?.cnic || donorDocument.doc.cnic.trim() === '') {
+      errors.push('CNIC is required when identification type is set');
+    } else if (!validateCnicFormat(donorDocument.doc.cnic, donorDocument.doc.identification_type)) {
+      errors.push(`Invalid ${donorDocument.doc.identification_type} format. Please enter a valid ${donorDocument.doc.identification_type} number.`);
+    }
   }
 
-  donorDocument.save.submit(null, {
-    onSuccess: () => (reload.value = true),
-    onError: (err) => {
-      if (Array.isArray(name)) {
-        name.forEach((field) => (donorDocument.doc[field] = oldValues[field]))
-      } else {
-        donorDocument.doc[name] = oldValues
+  // Phone Number Validation
+  if (donorDocument.doc?.country) {
+    const phoneFields = ['contact_no', 'mobile_no'];
+    for (const field of phoneFields) {
+      const value = donorDocument.doc[field];
+      if (value && value.trim() !== '') {
+        const validation = await validatePhoneNumber(value, donorDocument.doc.country);
+        if (!validation.isValid) {
+          errors.push(`${field}: ${validation.message}`);
+        }
       }
-      toast.error(err.messages?.[0] || __('Error updating field'))
-    },
+    }
+  }
+
+  // Email Validation
+  const emailFields = ['email'];
+  for (const field of emailFields) {
+    const value = donorDocument.doc[field];
+    if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      errors.push(`${field}: Invalid email format.`);
+    }
+  }
+
+  // Required Fields
+  const requiredFields = ['donor_name', 'email'];
+  for (const field of requiredFields) {
+    if (!donorDocument.doc[field] || donorDocument.doc[field].trim() === '') {
+      errors.push(`${field} is a required field.`);
+    }
+  }
+
+  // FOA-Specific Validation
+  if (donorDocument.doc?.foa) {
+    const foaFields = [
+      { field: 'co_name', label: 'C/O Name' },
+      { field: 'co_designation', label: 'C/O Designation' },
+      { field: 'co_contact_no', label: 'C/O Contact No' },
+      { field: 'co_email', label: 'C/O Email' },
+      { field: 'co_address', label: 'C/O Address' },
+      { field: 'relationship_with_donor', label: 'Relationship With Donor' },
+      { field: 'area', label: 'Area' },
+      { field: 'co_city', label: 'C/O City' },
+      { field: 'co_country', label: 'C/O Country' },
+    ];
+
+    for (const { field, label } of foaFields) {
+      if (!donorDocument.doc[field] || donorDocument.doc[field].trim() === '') {
+        errors.push(`${label} is required when FOA is enabled.`);
+      }
+    }
+  }
+
+  // Organization-Specific Validation
+  if (donorDocument.doc?.donor_type === 'Organization') {
+    const orgFields = [
+      { field: 'org_contact', label: 'Organization Contact' },
+      { field: 'org_representative_contact_number', label: 'Organization Representative Contact Number' },
+    ];
+
+    for (const { field, label } of orgFields) {
+      const value = donorDocument.doc[field];
+      if (value && value.trim() !== '' && donorDocument.doc?.org_country) {
+        const validation = await validatePhoneNumber(value, donorDocument.doc.org_country);
+        if (!validation.isValid) {
+          errors.push(`${label}: ${validation.message}`);
+        }
+      } else if (!value || value.trim() === '') {
+        errors.push(`${label} is required when Donor Type is Organization.`);
+      }
+    }
+
+    // Email Validation for Organization Representative
+    const emailField = 'org_representative_email_address';
+    const emailValue = donorDocument.doc[emailField];
+    if (emailValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+      errors.push(`${emailField}: Invalid email format.`);
+    } else if (!emailValue || emailValue.trim() === '') {
+      errors.push('Organization Representative Email Address is required when Donor Type is Organization.');
+    }
+  }
+
+  if (errors.length > 0) {
+    toast.error(errors.join('\n'));
+    return false;
+  }
+
+  return true;
+}
+
+function updateField(name, value) {
+  validateBeforeSave().then((isValid) => {
+    if (isValid) {
+      donorDocument.doc[name] = value;
+      donorDocument.save.submit(null, {
+        onSuccess: () => (reload.value = true),
+        onError: (err) => {
+          toast.error(err.messages?.[0] || __('Error updating field'))
+        },
+      })
+    }
   })
 }
 
@@ -206,8 +306,12 @@ function reloadAssignees(data) {
 }
 
 function saveChanges(data) {
-  donorDocument.save.submit(null, {
-    onSuccess: () => reloadAssignees(data),
+  validateBeforeSave().then((isValid) => {
+    if (isValid) {
+      donorDocument.save.submit(null, {
+        onSuccess: () => reloadAssignees(data),
+      })
+    }
   })
 }
 
@@ -250,4 +354,3 @@ async function updateDonorStatus(newStatus) {
   }
 }
 </script>
-  
