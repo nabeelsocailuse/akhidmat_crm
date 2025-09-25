@@ -5,7 +5,7 @@
       <AppStyling type="modal-styling" modalType="header">
         <div class="mb-5 flex items-center justify-between">
           <h3 class="text-2xl font-semibold text-ink-gray-9">
-            {{ isReturnMode ? __('Create Return/Credit Note') : __('Create Donation') }}
+            {{  __('Create Donation') }}
           </h3>
           <div class="flex items-center gap-1">
             <Button
@@ -716,145 +716,6 @@ watch(show, async (val) => {
     // CRITICAL: Wait for props to be fully available
     await nextTick()
     
-    // Check if we have defaults (like for return/credit note)
-    if (props.defaults && Object.keys(props.defaults).length > 0) {
-      console.log('Modal opening with defaults, applying all fields...')
-      console.log('Props defaults received:', props.defaults)
-      console.log('Props defaults keys:', Object.keys(props.defaults))
-      
-      // Set flag to prevent any other operations
-      isInitializingWithDefaults = true
-      
-      try {
-        // Create a completely new document with ALL defaults
-        const newDoc = {
-          doctype: 'Donation',
-          owner: user.value,
-          ...props.defaults
-        }
-        
-        // Ensure required arrays are properly initialized
-        if (!newDoc.payment_detail) newDoc.payment_detail = []
-        if (!newDoc.deduction_breakeven) newDoc.deduction_breakeven = []
-        if (!newDoc.items) newDoc.items = []
-        
-        // Set posting date and time if not already set
-        if (!newDoc.posting_date) {
-          newDoc.posting_date = new Date().toISOString().slice(0, 10)
-        }
-        if (!newDoc.posting_time) {
-          newDoc.posting_time = new Date().toTimeString().slice(0, 5)
-        }
-        
-        // FORCE REACTIVITY: Completely replace the donation document to trigger reactivity
-        donation.doc = { ...newDoc }
-        
-        console.log('All fields applied from defaults:', donation.doc)
-        console.log('Key fields check:')
-        console.log('- donation_type:', donation.doc.donation_type)
-        console.log('- donor_identity:', donation.doc.donor_identity)
-        console.log('- company:', donation.doc.company)
-        console.log('- currency:', donation.doc.currency)
-        console.log('- is_return:', donation.doc.is_return)
-        console.log('- return_against:', donation.doc.return_against)
-        console.log('- total_donation:', donation.doc.total_donation)
-        console.log('- net_amount:', donation.doc.net_amount)
-        
-        // CRITICAL: Force the reactiveFieldLayoutData to update by incrementing the key
-        fieldLayoutKey.value++
-        forceUpdateKey.value++
-        
-        console.log('🔄 Forced reactive updates - fieldLayoutKey:', fieldLayoutKey.value, 'forceUpdateKey:', forceUpdateKey.value)
-        
-        // CRITICAL: Force immediate update of the reactiveFieldLayoutData
-        nextTick(() => {
-          console.log('🔄 Immediate reactiveFieldLayoutData update triggered')
-          // Force another update to ensure the computed property gets the new values
-          fieldLayoutKey.value++
-        })
-        
-        // Clear errors
-        error.value = null
-        
-        // Force multiple DOM updates to ensure all fields are properly displayed
-        nextTick(() => {
-          console.log('First DOM update completed')
-          
-          // Force FieldLayout to re-render immediately
-          forceFieldLayoutUpdate()
-          
-          // Force another update after a short delay
-          setTimeout(() => {
-            console.log('Second DOM update - forcing field updates')
-            
-            // Explicitly trigger field updates for critical fields
-            if (donation.doc.donation_type) {
-              console.log('Setting donation_type:', donation.doc.donation_type)
-            }
-            if (donation.doc.donor_identity) {
-              console.log('Setting donor_identity:', donation.doc.donor_identity)
-            }
-            if (donation.doc.company) {
-              console.log('Setting company:', donation.doc.company)
-            }
-            if (donation.doc.total_donation) {
-              console.log('Setting total_donation:', donation.doc.total_donation)
-            }
-            if (donation.doc.net_amount) {
-              console.log('Setting net_amount:', donation.doc.net_amount)
-            }
-            
-            // Force field updates to ensure form fields are populated
-            forceFieldUpdates()
-            
-            // Force FieldLayout to re-render
-            forceFieldLayoutUpdate()
-            
-            // Multiple DOM updates to ensure all fields are populated
-            nextTick(() => {
-              console.log('Third DOM update - final field population')
-              
-              // Force another update
-              forceFieldUpdates()
-              
-            // Force FieldLayout to re-render again
-            forceFieldLayoutUpdate()
-            
-            // AGGRESSIVE: Force form field values directly
-            forceFormFieldValues()
-            
-            // ULTRA AGGRESSIVE: Force all form fields to update
-            forceAllFormFields()
-            
-            // FINAL SOLUTION: Direct DOM manipulation for ALL fields
-            forceAllFieldsDirectly()
-            
-            // ULTIMATE SOLUTION: Force FieldLayout data update
-            forceFieldLayoutDataUpdate()
-            
-            // Trigger calculation update to ensure totals are correct
-            updateCalculationFields()
-            
-            console.log('Final donation.doc state:', donation.doc)
-            })
-          }, 100)
-        })
-        
-      } catch (error) {
-        console.error('Error applying defaults:', error)
-        // Fallback to normal reset
-        resetDonationData()
-      } finally {
-        // Reset flag after a delay
-        setTimeout(() => {
-          isInitializingWithDefaults = false
-        }, 200)
-      }
-    } else {
-      // Reset donation data to fresh state
-      resetDonationData()
-    }
-    
     // Apply donor filtering
     nextTick(() => {
       applyDonorFilteringToForm()
@@ -1335,6 +1196,8 @@ const reactiveFieldLayoutData = computed(() => {
     // Force all critical fields
     newData.donation_type = props.defaults.donation_type || donation.doc.donation_type
     newData.donor_identity = props.defaults.donor_identity || donation.doc.donor_identity
+    // Ensure contribution_type is preserved when opening Return/Credit modal
+    newData.contribution_type = props.defaults.contribution_type || donation.doc.contribution_type
     newData.company = props.defaults.company || donation.doc.company
     newData.currency = props.defaults.currency || donation.doc.currency
     newData.total_donation = props.defaults.total_donation || donation.doc.total_donation
@@ -1342,6 +1205,8 @@ const reactiveFieldLayoutData = computed(() => {
     newData.total_deduction = props.defaults.total_deduction || donation.doc.total_deduction
     newData.is_return = props.defaults.is_return || donation.doc.is_return
     newData.return_against = props.defaults.return_against || donation.doc.return_against
+    // Ensure donation_cost_center (Branch) is preserved when opening Return/Credit modal
+    newData.donation_cost_center = props.defaults.donation_cost_center || donation.doc.donation_cost_center
     
     console.log('🔥 FINAL: Applied defaults - total_donation:', newData.total_donation)
     console.log('🔥 FINAL: Applied defaults - net_amount:', newData.net_amount)
@@ -1705,7 +1570,7 @@ function getFieldLabel(fieldName) {
     'contribution_type': 'Contribution Type',
     'posting_date': 'Posting Date',
     'currency': 'Currency',
-    'donation_cost_center': 'Donation Cost Center',
+    'donation_cost_center': ' Branch (Cost Center) ',
     
     // Payment detail fields
     'equity_account': 'Equity Account',

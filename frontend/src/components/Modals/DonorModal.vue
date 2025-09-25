@@ -268,6 +268,7 @@ const tabs = createResource({
                 if (field.read_only !== true) field.read_only = false
                 if (field.fieldname === 'owner_id') field.read_only = true
                 if (field.fieldname === 'status') field.read_only = true
+                if (field.fieldname === 'branch_abbreviation') field.read_only = true
               }
             })
           })
@@ -290,6 +291,25 @@ watch(() => donor.doc.department, (n, o) => {
   if (n !== o) {
     donor.doc.donor_desk = ''
     if (n) donorDeskResource.reload()
+  }
+})
+
+// Auto-fill branch_abbreviation when branch is selected
+watch(() => donor.doc.branch, async (newBranch) => {
+  if (!newBranch) {
+    donor.doc.branch_abbreviation = ''
+    return
+  }
+  try {
+    const res = await call('frappe.client.get_value', {
+      doctype: 'Cost Center',
+      fieldname: 'custom_abbreviation',
+      filters: { name: newBranch }
+    })
+    const abbr = res?.message?.custom_abbreviation || res?.custom_abbreviation || ''
+    donor.doc.branch_abbreviation = abbr
+  } catch (e) {
+    donor.doc.branch_abbreviation = ''
   }
 })
 
@@ -615,7 +635,7 @@ onMounted(async () => {
   donor.doc.identification_type ||= 'CNIC'
   donor.doc.donor_identity ||= 'Known'
   donor.doc.default_currency ||= 'PKR'
-  donor.doc.naming_series ||= 'DONOR-.{branch_series}.-.YYYY.-'
+  donor.doc.naming_series ||= 'DONOR-.{branch_abbreviation}.-.YYYY.-'
   donor.doc.status ||= 'Active'
   donor.doc.country ||= 'Pakistan'
   if (!donor.doc.owner_id) getCurrentUserId().then(u => donor.doc.owner_id = u)
@@ -664,7 +684,7 @@ function extractErrorMessage(err) {
 }
 
 async function createNewDonor() {
-  if (!donor.doc.naming_series) donor.doc.naming_series = 'DONOR-.{branch_abbreviation}.-.YYYY.-'
+  donor.doc.naming_series = 'DONOR-.{branch_abbreviation}.-.YYYY.-'
   const validationErrors = []
   const validatePhoneField = async (fieldName, label) => {
     if (donor.doc[fieldName] && donor.doc[fieldName].trim() !== '' && donor.doc.country) {
