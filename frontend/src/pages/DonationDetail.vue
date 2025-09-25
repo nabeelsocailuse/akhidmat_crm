@@ -175,13 +175,7 @@
       
     </div>
 
-    <!-- Return / Credit Note uses wrapper that reuses Create Donation form -->
-    <ReturnNoteModal
-      v-if="showReturnDonationModal && document.doc?.name"
-      v-model="showReturnDonationModal"
-      :donationId="document.doc.name"
-      @success="document.reload?.()"
-    />
+    
   </AppStyling>
   
   <ErrorPage
@@ -2794,7 +2788,7 @@ const createDropdownOptions = computed(() => {
   if (document.doc && !document.doc.is_return) {
     options.push({
       label: 'Return / Credit Note',
-      onClick: openReturnNote
+      onClick: createReturnCreditNote
     })
   }
   
@@ -2802,62 +2796,38 @@ const createDropdownOptions = computed(() => {
 })
 
 
-// Return / Credit Note: reuse DonationModal with prefilled defaults
-import DonationModal from '@/components/Modals/DonationModal.vue'
-import ReturnNoteModal from '@/components/Modals/ReturnNoteModal.vue'
-const showReturnDonationModal = ref(false)
-const returnDefaultsRef = ref(null)
-
-function deepClone(obj) {
+// Removed modal-based return flow to avoid UI loops
+// Minimal, loop-free creation using backend mapping and navigation
+async function createReturnCreditNote() {
   try {
-    return JSON.parse(JSON.stringify(obj))
+    if (!document.doc || !document.doc.name) return
+    // Check if returns already cover all donors
+    const totalReturned = await call('akf_accounts.akf_accounts.doctype.donation.donation.get_total_donors_return', {
+      return_against: document.doc.name
+    })
+    if (totalReturned === document.doc.total_donors) {
+      toast.info(__('All donors already returned for this document'))
+      return
+    }
+
+    // Map return donation on backend
+    const mapped = await call('akf_accounts.akf_accounts.doctype.donation.donation.make_donation_return', {
+      source_name: document.doc.name
+    })
+
+    // Insert new Donation as draft and navigate
+    const created = await call('frappe.client.insert', { doc: mapped })
+    if (created && created.name) {
+      toast.success(__('Return / Credit Note created'))
+      router.push({ name: 'DonationDetail', params: { donationId: created.name } })
+    } else {
+      toast.error(__('Failed to create Return / Credit Note'))
+    }
   } catch (e) {
-    return {}
+    toast.error(e?.message || __('Failed to create Return / Credit Note'))
   }
 }
 
-function sanitizeChildRows(rows = []) {
-  return (rows || []).map((r) => {
-    const clone = { ...r }
-    delete clone.name
-    delete clone.owner
-    delete clone.creation
-    delete clone.modified
-    delete clone.modified_by
-    delete clone.docstatus
-    return clone
-  })
-}
-
-function buildReturnDefaults(src) {
-  const base = deepClone(src || {})
-  // Remove server-managed/meta fields
-  delete base.name
-  delete base.owner
-  delete base.creation
-  delete base.modified
-  delete base.modified_by
-  base.docstatus = 0
-  base.status = 'Draft'
-  // Mark as return against the current document
-  base.is_return = 1
-  base.return_against = document.doc?.name || ''
-  // Reset workflow-related flags if any
-  base.amended_from = undefined
-  // Sanitize child tables
-  base.payment_detail = sanitizeChildRows(base.payment_detail)
-  base.items = sanitizeChildRows(base.items)
-  base.deduction_breakeven = sanitizeChildRows(base.deduction_breakeven)
-  return Object.freeze(base)
-}
-
-function openReturnNote() {
-  // Initialize defaults safely and open modal
-  const src = document?.doc || {}
-  // Assign a brand-new frozen object to avoid reactive deep mutation loops
-  returnDefaultsRef.value = buildReturnDefaults(src)
-  showReturnDonationModal.value = true
-}
 
 
 // Add function to handle donation submission

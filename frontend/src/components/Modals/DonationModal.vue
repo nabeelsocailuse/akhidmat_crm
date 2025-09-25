@@ -114,8 +114,6 @@ const props = defineProps({
 const emit = defineEmits(['donation-created', 'donation-deleted'])
 
 const show = defineModel()
-// Guard: ensure defaults are applied only once per modal open
-const hasAppliedDefaultsOnce = ref(false)
 
 // Add computed property for options
 const options = computed(() => props.options || {})
@@ -136,13 +134,6 @@ const controlledShow = computed({
       return // Don't allow closing
     }
     show.value = value
-  }
-})
-
-// Reset one-time guards when the modal is opened
-watch(() => show.value, (val) => {
-  if (val) {
-    hasAppliedDefaultsOnce.value = false
   }
 })
 
@@ -547,9 +538,9 @@ const tabs = createResource({
               donation.doc.status = 'Draft'
             }
             
-            if (field.fieldname === 'company' && !donation.doc.company) {
-              donation.doc.company = 'Alkhidmat Foundation'
-            }
+            // if (field.fieldname === 'company' && !donation.doc.company) {
+            //   donation.doc.company = 'Alkhidmat Foundation'
+            // }
             
             if (field.fieldname === 'donor_identity' && !donation.doc.donor_identity) {
               donation.doc.donor_identity = 'Known'
@@ -599,40 +590,76 @@ const tabs = createResource({
       })
     })
   },
-  onSuccess(data) {
-    // Ensure required fields are set
-    if (!donation.doc.status) {
-      donation.doc.status = 'Draft'
-    }
-    
-    if (!donation.doc.company) {
-      donation.doc.company = 'Alkhidmat Foundation'
-    }
-    
-    if (!donation.doc.donor_identity) {
-      donation.doc.donor_identity = 'Known'
-    }
-    
-    if (!donation.doc.donation_type) {
-      donation.doc.donation_type = 'Cash'  // Default to 'Cash'
-    }
-    
-    // Ensure due_date, currency, and exchange_rate are set
-    if (!donation.doc.due_date) {
-      donation.doc.due_date = new Date().toISOString().slice(0, 10)
-    }
-    
-    if (!donation.doc.currency) {
-      donation.doc.currency = 'PKR'
-    }
-    
-    if (!donation.doc.exchange_rate) {
-      donation.doc.exchange_rate = 1
-    }
-    
-    // Initialize posting_date and posting_time
-    initializeDonation()
+// Replace the existing onSuccess with this async version
+onSuccess: async (data) => {
+  // Ensure required fields are set
+  if (!donation.doc.status) {
+    donation.doc.status = 'Draft'
   }
+
+  // Only fetch & set default company if it's not already populated
+  if (!donation.doc.company) {
+    try {
+      // Try the lightweight get_value first
+      const res = await call('frappe.client.get_value', {
+        doctype: 'Global Defaults',
+        fieldname: 'default_company',
+        filters: {} // explicit empty filters for safety
+      })
+
+      // call() results can differ depending on how `call` wrapper is implemented;
+      // check common shapes and take first non-empty candidate
+      let companyName =
+        (res && res.default_company) ||
+        (res && res.message && (res.message.default_company || res.message.value)) ||
+        null
+
+      // Fallback: fetch full Global Defaults doc (reliable)
+      if (!companyName) {
+        const g = await call('frappe.client.get', {
+          doctype: 'Global Defaults',
+          name: 'Global Defaults'
+        })
+        companyName = (g && (g.default_company || g.message?.default_company)) || null
+      }
+
+      if (companyName) {
+        donation.doc.company = companyName
+        console.log('Set default company from Global Defaults:', companyName)
+      } else {
+        console.warn('Global Defaults.default_company not found; leaving company blank.')
+      }
+    } catch (err) {
+      console.error('Error fetching Global Defaults default_company:', err)
+      // don't crash — simply continue with other defaults
+    }
+  }
+
+  if (!donation.doc.donor_identity) {
+    donation.doc.donor_identity = 'Known'
+  }
+
+  if (!donation.doc.donation_type) {
+    donation.doc.donation_type = 'Cash'  // Default to 'Cash'
+  }
+
+  // Ensure due_date, currency, and exchange_rate are set
+  if (!donation.doc.due_date) {
+    donation.doc.due_date = new Date().toISOString().slice(0, 10)
+  }
+
+  if (!donation.doc.currency) {
+    donation.doc.currency = 'PKR'
+  }
+
+  if (!donation.doc.exchange_rate) {
+    donation.doc.exchange_rate = 1
+  }
+
+  // Initialize posting_date and posting_time
+  initializeDonation()
+}
+
 })
 
 const createDonation = createResource({
@@ -806,8 +833,6 @@ watch(() => donation.doc, (newDoc, oldDoc) => {
 watch(() => props.defaults, (newDefaults, oldDefaults) => {
   // Prevent infinite loops by checking if we're already updating
   if (isInitializingWithDefaults) return
-  // Apply defaults only once per open
-  if (hasAppliedDefaultsOnce.value) return
   
   if (newDefaults && Object.keys(newDefaults).length > 0 && show.value) {
     // Only update if the defaults actually changed to prevent loops
@@ -851,10 +876,9 @@ watch(() => props.defaults, (newDefaults, oldDefaults) => {
         fieldLayoutKey.value++
         
       } finally {
-        // Reset initializing flag and mark applied once
+        // Reset flag after a delay
         setTimeout(() => {
           isInitializingWithDefaults = false
-          hasAppliedDefaultsOnce.value = true
         }, 100)
       }
     }
@@ -863,7 +887,7 @@ watch(() => props.defaults, (newDefaults, oldDefaults) => {
 
 // ADD: Special watcher for return mode to ensure proper initialization
 watch(() => [show.value, props.defaults], async ([showVal, defaults]) => {
-  if (showVal && defaults && Object.keys(defaults).length > 0 && defaults.is_return && !hasAppliedDefaultsOnce.value) {
+  if (showVal && defaults && Object.keys(defaults).length > 0 && defaults.is_return) {
     console.log('🔄 Return mode detected, ensuring proper initialization...')
     console.log('Return defaults:', defaults)
     

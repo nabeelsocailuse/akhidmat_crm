@@ -187,6 +187,7 @@ const {
 async function validateBeforeSave() {
   const errors = [];
 
+  // CNIC Validation
   if (donorDocument.doc?.identification_type && donorDocument.doc?.identification_type !== 'Others') {
     if (!donorDocument.doc?.cnic || donorDocument.doc.cnic.trim() === '') {
       errors.push('CNIC is required when identification type is set');
