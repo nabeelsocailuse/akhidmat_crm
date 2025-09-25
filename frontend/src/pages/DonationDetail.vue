@@ -687,7 +687,7 @@ async function validateDonationForm() {
   }
 
   // Payment detail validation
-  if (document.doc.donation_type !== 'In Kind Donation' && (!document.doc.payment_detail || !Array.isArray(document.doc.payment_detail) || document.doc.payment_detail.length === 0)) {
+  if (!document.doc.payment_detail || !Array.isArray(document.doc.payment_detail) || document.doc.payment_detail.length === 0) {
     errors.push('At least one payment detail is required')
   } else {
     document.doc.payment_detail.forEach((row, index) => {
@@ -2824,7 +2824,7 @@ async function submitDonation() {
       return
     }
     
-    if (document.doc.donation_type !== 'In Kind Donation' && (!document.doc.payment_detail || document.doc.payment_detail.length === 0)) {
+    if (!document.doc.payment_detail || document.doc.payment_detail.length === 0) {
       toast.error('At least one payment detail is required before submitting')
       return
     }
@@ -2933,13 +2933,12 @@ async function createReturnCreditNote() {
     console.log('- items length:', document.doc.items?.length)
     
     if (result) {
-      // Deep-clone the current document to fully decouple modal edits from main page watchers
-      const clonedDoc = JSON.parse(JSON.stringify(document.doc))
-
-      // Create return document using the deep-cloned source to avoid reactive coupling
+      // Create return document by copying ALL original donation data from frontend
+      // Use the frontend document.doc as the primary source since it has all the data
       returnDocument.value = {
-        ...clonedDoc,
-
+        // Copy ALL original donation data from frontend
+        ...document.doc,
+        
         // Override with return-specific fields
         name: result.name || `RET-${document.doc.name}`,
         doctype: 'Donation',
@@ -2947,6 +2946,31 @@ async function createReturnCreditNote() {
         is_return: 1,
         return_against: document.doc.name,
         status: 'Return',
+        
+        // Ensure all form fields are preserved from original donation
+        donation_type: document.doc.donation_type,
+        donor_identity: document.doc.donor_identity,
+        contribution_type: document.doc.contribution_type,
+        company: document.doc.company,
+        currency: document.doc.currency,
+        exchange_rate: document.doc.exchange_rate,
+        donation_cost_center: document.doc.donation_cost_center,
+        due_date: document.doc.due_date,
+        invoice_issuance_time: document.doc.invoice_issuance_time,
+        edit_posting_date_and_time: document.doc.edit_posting_date_and_time,
+        unknown_to_known: document.doc.unknown_to_known,
+        
+        // Preserve all amounts and calculations from original donation
+        net_amount: document.doc.net_amount,
+        outstanding_amount: document.doc.outstanding_amount,
+        total_donation: document.doc.total_donation,
+        total_deduction: document.doc.total_deduction,
+        total_donors: document.doc.total_donors,
+        
+        // Preserve all child tables from original donation
+        items: document.doc.items ? [...document.doc.items] : [],
+        payment_detail: document.doc.payment_detail ? [...document.doc.payment_detail] : [],
+        deduction_breakeven: document.doc.deduction_breakeven ? [...document.doc.deduction_breakeven] : []
       }
       
       console.log('Return document data prepared for modal:', returnDocument.value)

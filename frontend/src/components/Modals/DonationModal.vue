@@ -649,7 +649,7 @@ onMounted(() => {
   console.log('Show value:', show.value)
   
   // Initialize the donation document with required fields
-  initializeDonationDocument()
+  // initializeDonationDocument()
   
   // Configure field queries for child tables
   configureFieldQueries()
@@ -1353,8 +1353,8 @@ const reactiveFieldLayoutData = computed(() => {
   newData._forceUpdateKey = forceUpdateKey.value
   newData._timestamp = Date.now()
   
-  console.log('🔥 FINAL: Final newData keys:', Object.keys(newData))
-  console.log('🔥 FINAL: Final newData values:', {
+  console.log(' FINAL: Final newData keys:', Object.keys(newData))
+  console.log(' FINAL: Final newData values:', {
     total_donation: newData.total_donation,
     net_amount: newData.net_amount,
     is_return: newData.is_return
