@@ -140,7 +140,6 @@ const createLead = createResource({
 
 const duplicateCnicError = ref(false)
 
-// Watch for changes in the custom_identification_value field and check for duplicates
 watch(
   () => lead.doc && lead.doc.custom_identification_value,
   async (newVal) => {
