@@ -652,7 +652,7 @@ onMounted(() => {
   // initializeDonationDocument()
   
   // Configure field queries for child tables
-  configureFieldQueries()
+  // configureFieldQueries()
   
   // Apply donor filtering after form is rendered
   nextTick(() => {

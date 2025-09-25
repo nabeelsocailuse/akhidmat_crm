@@ -269,6 +269,7 @@ const tabs = createResource({
                 if (field.fieldname === 'owner_id') field.read_only = true
                 if (field.fieldname === 'status') field.read_only = true
                 if (field.fieldname === 'branch_abbreviation') field.read_only = true
+                // console.log(field)
               }
             })
           })
