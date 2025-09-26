@@ -277,6 +277,11 @@ async function validateBeforeSave() {
     }
   }
 
+  // Mandatory Contact Number if country is set
+  if (donorDocument.doc?.country && (!donorDocument.doc.contact_no || donorDocument.doc.contact_no.trim() === '')) {
+    errors.push('Contact Number is required when Country is selected');
+  }
+
   if (errors.length > 0) {
     toast.error(errors.join('\n'));
     return false;
@@ -353,4 +358,49 @@ async function updateDonorStatus(newStatus) {
     toast.error(__('Failed to update status'))
   }
 }
+
+// Watcher to clear fields when country changes (matches DonorModal)
+watch(
+  () => donorDocument.doc.country,
+  (newCountry, oldCountry) => {
+    if (oldCountry && newCountry && oldCountry !== newCountry) {
+      const fieldsToClear = [
+        'contact_no',
+        'co_contact_no',
+        'company_contact_number',
+        'organization_contact_person',
+        'company_ownerceo_conatct',
+        'state',
+        'area',
+      ];
+      fieldsToClear.forEach(field => {
+        if (donorDocument.doc[field] !== undefined) {
+          donorDocument.doc[field] = '';
+        }
+      });
+    }
+  }
+);
+
+// Watcher to autofill branch_abbreviation when branch changes (matches DonorModal)
+watch(
+  () => donorDocument.doc.branch,
+  async (newBranch) => {
+    if (!newBranch) {
+      donorDocument.doc.branch_abbreviation = ''
+      return
+    }
+    try {
+      const res = await call('frappe.client.get_value', {
+        doctype: 'Cost Center',
+        fieldname: 'custom_abbreviation',
+        filters: { name: newBranch }
+      })
+      const abbr = res?.message?.custom_abbreviation || res?.custom_abbreviation || ''
+      donorDocument.doc.branch_abbreviation = abbr
+    } catch (e) {
+      donorDocument.doc.branch_abbreviation = ''
+    }
+  }
+);
 </script>

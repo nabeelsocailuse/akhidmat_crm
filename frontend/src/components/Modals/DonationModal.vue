@@ -29,7 +29,7 @@
           <div class="field-layout-wrapper">
             <FieldLayout 
               v-if="tabs.data" 
-              :key="fieldLayoutKey"
+              :key="fieldLayoutRenderKey"
               :tabs="filteredTabs" 
               :data="reactiveFieldLayoutData" 
               :doctype="'Donation'"
@@ -226,7 +226,7 @@ const initializeDonation = () => {
 
 // Add this function after initializeDonation()
 const resetDonationData = () => {
-  console.log('Resetting donation data to fresh state')
+  
   
   // Reset to fresh document
   donation.doc = {
@@ -248,7 +248,7 @@ const resetDonationData = () => {
   // Clear errors
   error.value = null
   
-  console.log('Donation data reset successfully')
+  
 }
 
 // Add a flag to prevent watchers from interfering during initialization
@@ -256,7 +256,9 @@ let isInitializingWithDefaults = false
 
 // Add a reactive key to force component updates
 const forceUpdateKey = ref(0)
+// Separate keys: one internal for donation data logic, one for actual render binding
 const fieldLayoutKey = ref(0)
+const fieldLayoutRenderKey = ref(0)
 
 // Add timeout guards to prevent rapid successive calls
 let lastUpdateTime = 0
@@ -315,7 +317,7 @@ function getDonorQuery() {
   // Add donor identity filter based on the selected donor identity
   if (donation.doc.donor_identity) {
     filters.donor_identity = donation.doc.donor_identity
-    console.log('Adding donor identity filter:', donation.doc.donor_identity)
+    
   }
   
   // Add currency filter if available
@@ -323,7 +325,7 @@ function getDonorQuery() {
     filters.default_currency = donation.doc.currency
   }
   
-  console.log('Donor query filters:', filters)
+  
   
   return {
     doctype: 'Donor',
@@ -461,7 +463,7 @@ const filteredTabs = computed(() => {
             enhancedField.get_query = createDonorQueryFunction()
             enhancedField.depends_on = 'donor_identity'
             enhancedField.filters = getDonorFilters()
-            console.log('Configured donor_id field with query filtering and depends_on')
+            
           }
           
           // Configure donor fields in items table
@@ -469,7 +471,7 @@ const filteredTabs = computed(() => {
             enhancedField.get_query = createDonorQueryFunction()
             enhancedField.depends_on = 'donor_identity'
             enhancedField.filters = getDonorFilters()
-            console.log('Configured donor field with query filtering for items')
+            
           }
           
           // Configure fund_class fields in items table
@@ -480,7 +482,7 @@ const filteredTabs = computed(() => {
                 status: 'Active'
               }
             })
-            console.log('Configured fund_class field for items table')
+            
           }
           
           // Configure donation_cost_center (Branch) field with proper filtering
@@ -492,15 +494,16 @@ const filteredTabs = computed(() => {
             // FIX: Change depends_on to use donation_type while keeping existing filters
             enhancedField.depends_on = "eval: doc.donation_type==\"Cash\";"
             enhancedField.filters = getCostCenterFilters()
-            console.log('Configured donation_cost_center field with donation type dependency')
+            
           }
           
           // Configure contribution_type field with donor identity filtering
           if (field.fieldname === 'contribution_type') {
             enhancedField.get_query = createContributionTypeQueryFunction()
-            enhancedField.depends_on = 'donor_identity'
+            // Hide Contribution Type when Donation Type is In Kind Donation
+            enhancedField.depends_on = "eval: doc.donation_type!=\"In Kind Donation\""
             enhancedField.options = getContributionTypeOptions()
-            console.log('Configured contribution_type field with donor identity dependency')
+            
           }
           
           return enhancedField
@@ -625,12 +628,12 @@ onSuccess: async (data) => {
 
       if (companyName) {
         donation.doc.company = companyName
-        console.log('Set default company from Global Defaults:', companyName)
+        
       } else {
-        console.warn('Global Defaults.default_company not found; leaving company blank.')
+        
       }
     } catch (err) {
-      console.error('Error fetching Global Defaults default_company:', err)
+      
       // don't crash — simply continue with other defaults
     }
   }
@@ -679,10 +682,7 @@ const { user } = sessionStore()
 
 // UPDATE: Enhanced initialization to include donor filtering setup
 onMounted(() => {
-  console.log('DonationModal mounted')
-  console.log('DonationModal props defaults:', props.defaults)
-  console.log('Tabs resource:', tabs)
-  console.log('Show value:', show.value)
+  
   
   // Initialize the donation document with required fields
   // initializeDonationDocument()
@@ -704,18 +704,10 @@ onUnmounted(() => {
 
 // Function to apply defaults to donation document
 const applyDefaultsToDonation = () => {
-  console.log('applyDefaultsToDonation called')
-  console.log('props.defaults:', props.defaults)
-  console.log('donation.doc before:', donation.doc)
+  
   
   if (props.defaults && Object.keys(props.defaults).length > 0) {
-    console.log('Applying defaults to donation document')
-    console.log('Key fields to set:')
-    console.log('- donation_type:', props.defaults.donation_type)
-    console.log('- donor_identity:', props.defaults.donor_identity)
-    console.log('- company:', props.defaults.company)
-    console.log('- currency:', props.defaults.currency)
-    console.log('- payment_detail length:', props.defaults.payment_detail?.length)
+    
     
     // Force reactivity by creating a new object and assigning it
     const updatedDoc = { ...donation.doc }
@@ -723,7 +715,7 @@ const applyDefaultsToDonation = () => {
     // Apply defaults to the updated document
     Object.keys(props.defaults).forEach(key => {
       if (props.defaults[key] !== undefined && props.defaults[key] !== null) {
-        console.log(`Setting ${key}:`, props.defaults[key])
+        
         updatedDoc[key] = props.defaults[key]
       }
     })
@@ -731,16 +723,9 @@ const applyDefaultsToDonation = () => {
     // Assign the updated document to trigger reactivity
     donation.doc = updatedDoc
     
-    console.log('Defaults applied successfully')
-    console.log('donation.doc after:', donation.doc)
-    console.log('Key fields after applying:')
-    console.log('- donation_type:', donation.doc.donation_type)
-    console.log('- donor_identity:', donation.doc.donor_identity)
-    console.log('- company:', donation.doc.company)
-    console.log('- currency:', donation.doc.currency)
-    console.log('- payment_detail length:', donation.doc.payment_detail?.length)
+    
   } else {
-    console.log('No defaults to apply')
+    
   }
 }
 
@@ -777,21 +762,15 @@ watch(() => show.value, (newVal, oldVal) => {
 // Watch for donation document changes to ensure form fields are updated
 watch(() => donation.doc, (newDoc, oldDoc) => {
   if (newDoc && show.value) {
-    console.log('Donation document changed, ensuring form fields are updated')
-    console.log('New doc keys:', Object.keys(newDoc))
-    console.log('Critical fields:')
-    console.log('- donation_type:', newDoc.donation_type)
-    console.log('- donor_identity:', newDoc.donor_identity)
-    console.log('- company:', newDoc.company)
-    console.log('- total_donation:', newDoc.total_donation)
-    console.log('- net_amount:', newDoc.net_amount)
+    
     
     // Force FieldLayout re-render
     fieldLayoutKey.value++
+    // Do not propagate re-render to FieldLayout binding to avoid unmounting child row editors
     
     // Force DOM update to ensure form fields reflect the data
     nextTick(() => {
-      console.log('Form fields should now reflect the updated data')
+      
     })
   }
 }, { deep: true })
@@ -799,7 +778,7 @@ watch(() => donation.doc, (newDoc, oldDoc) => {
 // Watch for fieldLayoutKey changes to ensure FieldLayout re-renders
 watch(fieldLayoutKey, (newKey) => {
   if (show.value) {
-    console.log('FieldLayout key changed, forcing re-render:', newKey)
+    
   }
 })
 
@@ -810,9 +789,7 @@ watch(() => donation.doc, (newDoc, oldDoc) => {
   if (isInitializingWithDefaults) return
   
   if (show.value && newDoc) {
-    console.log('🔄 donation.doc changed, forcing FieldLayout update')
-    console.log('New doc total_donation:', newDoc.total_donation)
-    console.log('New doc net_amount:', newDoc.net_amount)
+    
     
     // Only update if the values actually changed to prevent loops
     if (JSON.stringify(newDoc) !== JSON.stringify(oldDoc)) {
@@ -822,7 +799,7 @@ watch(() => donation.doc, (newDoc, oldDoc) => {
       // Force another update after a short delay
       setTimeout(() => {
         fieldLayoutKey.value++
-        console.log('🔄 Second FieldLayout update triggered')
+        
       }, 50)
     }
   }
@@ -837,9 +814,7 @@ watch(() => props.defaults, (newDefaults, oldDefaults) => {
   if (newDefaults && Object.keys(newDefaults).length > 0 && show.value) {
     // Only update if the defaults actually changed to prevent loops
     if (JSON.stringify(newDefaults) !== JSON.stringify(oldDefaults)) {
-      console.log('Props defaults changed, applying to modal...')
-      console.log('New defaults:', newDefaults)
-      console.log('Old defaults:', oldDefaults)
+      
       
       // Set flag to prevent other operations
       isInitializingWithDefaults = true
@@ -851,7 +826,7 @@ watch(() => props.defaults, (newDefaults, oldDefaults) => {
         // Apply all defaults
         Object.keys(newDefaults).forEach(key => {
           if (newDefaults[key] !== undefined && newDefaults[key] !== null) {
-            console.log(`Setting ${key} from defaults:`, newDefaults[key])
+            
             updatedDoc[key] = newDefaults[key]
           }
         })
@@ -859,18 +834,7 @@ watch(() => props.defaults, (newDefaults, oldDefaults) => {
         // Force reactivity by replacing the entire document
         donation.doc = updatedDoc
         
-        console.log('All defaults applied successfully:', donation.doc)
-        console.log('Key fields after applying defaults:')
-        console.log('- donation_type:', donation.doc.donation_type)
-        console.log('- donor_identity:', donation.doc.donor_identity)
-        console.log('- company:', donation.doc.company)
-        console.log('- currency:', donation.doc.currency)
-        console.log('- total_donation:', donation.doc.total_donation)
-        console.log('- net_amount:', donation.doc.net_amount)
-        console.log('- is_return:', donation.doc.is_return)
-        console.log('- return_against:', donation.doc.return_against)
-        console.log('- payment_detail length:', donation.doc.payment_detail?.length)
-        console.log('- items length:', donation.doc.items?.length)
+        
         
         // Force field layout update
         fieldLayoutKey.value++
@@ -888,38 +852,37 @@ watch(() => props.defaults, (newDefaults, oldDefaults) => {
 // ADD: Special watcher for return mode to ensure proper initialization
 watch(() => [show.value, props.defaults], async ([showVal, defaults]) => {
   if (showVal && defaults && Object.keys(defaults).length > 0 && defaults.is_return) {
-    console.log('🔄 Return mode detected, ensuring proper initialization...')
-    console.log('Return defaults:', defaults)
+    
     
     // Wait for the modal to be fully rendered
     await nextTick()
     
     // Force apply all return data
     if (defaults.payment_detail && defaults.payment_detail.length > 0) {
-      console.log('🔄 Applying return payment details:', defaults.payment_detail.length)
+      
       donation.doc.payment_detail = [...defaults.payment_detail]
     }
     
     if (defaults.items && defaults.items.length > 0) {
-      console.log('🔄 Applying return items:', defaults.items.length)
+      
       donation.doc.items = [...defaults.items]
     }
     
     if (defaults.deduction_breakeven && defaults.deduction_breakeven.length > 0) {
-      console.log('🔄 Applying return deduction breakeven:', defaults.deduction_breakeven.length)
+      
       donation.doc.deduction_breakeven = [...defaults.deduction_breakeven]
     }
     
     // Force field layout update
     fieldLayoutKey.value++
     
-    console.log('🔄 Return mode initialization completed')
+    
   }
 }, { deep: true })
 
 // Function to force field updates in the form
 const forceFieldUpdates = () => {
-  console.log('Forcing field updates in form...')
+  
   
   // Force reactivity by creating new references
   const currentDoc = { ...donation.doc }
@@ -951,9 +914,7 @@ const forceFieldUpdates = () => {
   forceUpdateKey.value++
   fieldLayoutKey.value++
   
-  console.log('Field updates forced, current state:', donation.doc)
-  console.log('Force update key:', forceUpdateKey.value)
-  console.log('Field layout key:', fieldLayoutKey.value)
+  
 }
 
 // Function to force FieldLayout to completely re-render
@@ -963,31 +924,31 @@ const forceFieldLayoutUpdate = () => {
   
   // Throttle updates to prevent infinite loops
   if (now - lastUpdateTime < UPDATE_THROTTLE_MS) {
-    console.log('⏱️ Throttling FieldLayout update to prevent infinite loops')
+    
     return
   }
   
   lastUpdateTime = now
-  console.log('Forcing FieldLayout to re-render...')
+  
   
   // Increment the key to force complete re-render
   fieldLayoutKey.value++
   
   // Force multiple updates to ensure the component re-renders
   nextTick(() => {
-    console.log('FieldLayout re-render triggered')
+    
     
     // Force another update after a short delay
     setTimeout(() => {
       fieldLayoutKey.value++
-      console.log('FieldLayout second re-render triggered')
+      
     }, 50)
   })
 }
 
 // AGGRESSIVE: Function to force form field values directly
 const forceFormFieldValues = () => {
-  console.log('🚀 AGGRESSIVE: Forcing form field values directly...')
+  
   
   // Wait for DOM to be ready
   nextTick(() => {
@@ -999,32 +960,32 @@ const forceFormFieldValues = () => {
     if (totalDonationField && donation.doc.total_donation) {
       totalDonationField.value = donation.doc.total_donation
       totalDonationField.dispatchEvent(new Event('input', { bubbles: true }))
-      console.log('🚀 Set total_donation field directly:', donation.doc.total_donation)
+      
     }
     
     if (netAmountField && donation.doc.net_amount) {
       netAmountField.value = donation.doc.net_amount
       netAmountField.dispatchEvent(new Event('input', { bubbles: true }))
-      console.log('🚀 Set net_amount field directly:', donation.doc.net_amount)
+      
     }
     
     if (totalDeductionField && donation.doc.total_deduction) {
       totalDeductionField.value = donation.doc.total_deduction
       totalDeductionField.dispatchEvent(new Event('input', { bubbles: true }))
-      console.log('🚀 Set total_deduction field directly:', donation.doc.total_deduction)
+      
     }
     
     // Force another update after DOM manipulation
     setTimeout(() => {
       fieldLayoutKey.value++
-      console.log('🚀 Final FieldLayout update after DOM manipulation')
+      
     }, 100)
   })
 }
 
 // ULTRA AGGRESSIVE: Function to force all form fields to update with correct values
 const forceAllFormFields = () => {
-  console.log('🚀 ULTRA AGGRESSIVE: Forcing ALL form fields to update...')
+  
   
   // Wait for DOM to be ready
   nextTick(() => {
@@ -1036,7 +997,7 @@ const forceAllFormFields = () => {
         field.value = donation.doc.total_donation
         field.dispatchEvent(new Event('input', { bubbles: true }))
         field.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🚀 Set total_donation field:', donation.doc.total_donation)
+        
       })
     }
     
@@ -1046,7 +1007,7 @@ const forceAllFormFields = () => {
         field.value = donation.doc.net_amount
         field.dispatchEvent(new Event('input', { bubbles: true }))
         field.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🚀 Set net_amount field:', donation.doc.net_amount)
+        
       })
     }
     
@@ -1056,7 +1017,7 @@ const forceAllFormFields = () => {
         field.value = donation.doc.total_deduction
         field.dispatchEvent(new Event('input', { bubbles: true }))
         field.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🚀 Set total_deduction field:', donation.doc.total_deduction)
+        
       })
     }
     
@@ -1066,21 +1027,21 @@ const forceAllFormFields = () => {
       isReturnCheckboxes.forEach(checkbox => {
         checkbox.checked = true
         checkbox.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🚀 Set is_return checkbox to checked')
+        
       })
     }
     
     // Force another update after DOM manipulation
     setTimeout(() => {
       fieldLayoutKey.value++
-      console.log('🚀 ULTRA AGGRESSIVE: Final update completed')
+      
     }, 100)
   })
 }
 
 // FINAL SOLUTION: Direct DOM manipulation to force field updates
 const forceAllFieldsDirectly = () => {
-  console.log('🔥 FINAL SOLUTION: Direct DOM manipulation...')
+  
   
   // Wait for DOM to be ready
   nextTick(() => {
@@ -1095,7 +1056,7 @@ const forceAllFieldsDirectly = () => {
         input.value = donation.doc.total_donation
         input.dispatchEvent(new Event('input', { bubbles: true }))
         input.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🔥 DIRECT: Set total_donation =', donation.doc.total_donation)
+        
       }
       
       // Update net_amount field
@@ -1103,7 +1064,7 @@ const forceAllFieldsDirectly = () => {
         input.value = donation.doc.net_amount
         input.dispatchEvent(new Event('input', { bubbles: true }))
         input.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🔥 DIRECT: Set net_amount =', donation.doc.net_amount)
+        
       }
       
       // Update total_deduction field
@@ -1111,7 +1072,7 @@ const forceAllFieldsDirectly = () => {
         input.value = donation.doc.total_deduction
         input.dispatchEvent(new Event('input', { bubbles: true }))
         input.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🔥 DIRECT: Set total_deduction =', donation.doc.total_deduction)
+        
       }
       
       // Update donation_type field
@@ -1119,7 +1080,7 @@ const forceAllFieldsDirectly = () => {
         input.value = donation.doc.donation_type
         input.dispatchEvent(new Event('input', { bubbles: true }))
         input.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🔥 DIRECT: Set donation_type =', donation.doc.donation_type)
+        
       }
       
       // Update donor_identity field
@@ -1127,7 +1088,7 @@ const forceAllFieldsDirectly = () => {
         input.value = donation.doc.donor_identity
         input.dispatchEvent(new Event('input', { bubbles: true }))
         input.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🔥 DIRECT: Set donor_identity =', donation.doc.donor_identity)
+        
       }
       
       // Update company field
@@ -1135,7 +1096,7 @@ const forceAllFieldsDirectly = () => {
         input.value = donation.doc.company
         input.dispatchEvent(new Event('input', { bubbles: true }))
         input.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🔥 DIRECT: Set company =', donation.doc.company)
+        
       }
       
       // Update currency field
@@ -1143,31 +1104,31 @@ const forceAllFieldsDirectly = () => {
         input.value = donation.doc.currency
         input.dispatchEvent(new Event('input', { bubbles: true }))
         input.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🔥 DIRECT: Set currency =', donation.doc.currency)
+        
       }
       
       // Update is_return checkbox
       if (fieldName === 'is_return' && donation.doc.is_return) {
         input.checked = true
         input.dispatchEvent(new Event('change', { bubbles: true }))
-        console.log('🔥 DIRECT: Set is_return checkbox = checked')
+        
       }
     })
     
     // Force multiple updates
     setTimeout(() => {
       fieldLayoutKey.value++
-      console.log('🔥 FINAL SOLUTION: First update completed')
+      
       
       // Second update
       setTimeout(() => {
         fieldLayoutKey.value++
-        console.log('🔥 FINAL SOLUTION: Second update completed')
+        
         
         // Third update
         setTimeout(() => {
           fieldLayoutKey.value++
-          console.log('🔥 FINAL SOLUTION: Final update completed')
+          
         }, 100)
       }, 100)
     }, 100)
@@ -1183,8 +1144,7 @@ const reactiveDonationDoc = computed(() => {
 // FINAL WATCHER: Force field updates when reactiveFieldLayoutData changes
 watch(() => reactiveFieldLayoutData.value, (newData) => {
   if (show.value && newData) {
-    console.log('🔥 FINAL WATCHER: reactiveFieldLayoutData changed, forcing field updates')
-    console.log('New data:', newData)
+  
     
     // Force immediate field updates
     nextTick(() => {
@@ -1195,7 +1155,7 @@ watch(() => reactiveFieldLayoutData.value, (newData) => {
 
 // ULTIMATE SOLUTION: Force FieldLayout to re-render with correct data
 const forceFieldLayoutDataUpdate = () => {
-  console.log('🚀 ULTIMATE: Forcing FieldLayout data update...')
+  
   
   // Force multiple updates to ensure FieldLayout gets the data
   fieldLayoutKey.value++
@@ -1209,15 +1169,13 @@ const forceFieldLayoutDataUpdate = () => {
     // Force direct field updates
     forceAllFieldsDirectly()
     
-    console.log('🚀 ULTIMATE: FieldLayout data update completed')
+    
   })
 }
 
 // FINAL SOLUTION: Force FieldLayout data to be completely reactive
 const reactiveFieldLayoutData = computed(() => {
-  console.log('🔥 FINAL: reactiveFieldLayoutData computed triggered')
-  console.log('🔥 FINAL: donation.doc keys:', Object.keys(donation.doc))
-  console.log('🔥 FINAL: props.defaults keys:', props.defaults ? Object.keys(props.defaults) : 'No defaults')
+  
   
   // Create a completely new reactive object
   const newData = reactive({})
@@ -1227,7 +1185,7 @@ const reactiveFieldLayoutData = computed(() => {
   
   // CRITICAL: Force all critical fields from props.defaults
   if (props.defaults) {
-    console.log('🔥 FINAL: Applying props.defaults to newData')
+    
     
     // Force all critical fields
     newData.donation_type = props.defaults.donation_type || donation.doc.donation_type
@@ -1244,9 +1202,7 @@ const reactiveFieldLayoutData = computed(() => {
     // Ensure donation_cost_center (Branch) is preserved when opening Return/Credit modal
     newData.donation_cost_center = props.defaults.donation_cost_center || donation.doc.donation_cost_center
     
-    console.log('🔥 FINAL: Applied defaults - total_donation:', newData.total_donation)
-    console.log('🔥 FINAL: Applied defaults - net_amount:', newData.net_amount)
-    console.log('🔥 FINAL: Applied defaults - is_return:', newData.is_return)
+    
   }
   
   // Add reactive keys
@@ -1254,12 +1210,6 @@ const reactiveFieldLayoutData = computed(() => {
   newData._forceUpdateKey = forceUpdateKey.value
   newData._timestamp = Date.now()
   
-  console.log(' FINAL: Final newData keys:', Object.keys(newData))
-  console.log(' FINAL: Final newData values:', {
-    total_donation: newData.total_donation,
-    net_amount: newData.net_amount,
-    is_return: newData.is_return
-  })
   
   return newData
 })
@@ -1370,10 +1320,7 @@ function openCreateModal({ doctype, initialValue, onSuccess }) {
   }
   
   // ADD: Debug logging to see what's being passed
-  console.log('openCreateModal called with:', { doctype, initialValue, onSuccess })
-  console.log('Current donation.doc.donor_identity:', donation.doc.donor_identity)
-  console.log('Current donation.doc.currency:', donation.doc.currency)
-  console.log('Current donation.doc.company:', donation.doc.company)
+  
   
   // Create modal data with donor filtering information
   const modalData = {
@@ -1389,7 +1336,7 @@ function openCreateModal({ doctype, initialValue, onSuccess }) {
     }
   }
   
-  console.log('Modal data being created:', modalData)
+  
   
   modalStack.value.push(modalData)
   
@@ -1402,27 +1349,26 @@ function openCreateModal({ doctype, initialValue, onSuccess }) {
 
 // ADD: Function to update donor filtering in existing modals
 function updateDonorFilteringInModals() {
-  console.log('Updating donor filtering in existing modals')
-  console.log('Current donor_identity:', donation.doc.donor_identity)
+  
   
   modalStack.value.forEach((modal, index) => {
     if (modal.donorFiltering) {
       modal.donorFiltering.donor_identity = donation.doc.donor_identity
       modal.donorFiltering.currency = donation.doc.currency
       modal.donorFiltering.company = donation.doc.company
-      console.log(`Updated modal ${index} donor filtering:`, modal.donorFiltering)
+      
     }
   })
 }
 
 // ADD: Watcher to update donor filtering in modals when donor identity changes
 watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) => {
-  console.log('Donor Identity changed from', oldDonorIdentity, 'to:', newDonorIdentity)
+  
   
   // Clear contribution_type when donor identity changes to force re-evaluation
   if (donation.doc.contribution_type) {
     donation.doc.contribution_type = ''
-    console.log('Cleared contribution_type due to donor identity change')
+    
   }
   
   // Update donor filtering in existing modals
@@ -1481,10 +1427,10 @@ watch(() => donation.doc.donor_identity, (newDonorIdentity, oldDonorIdentity) =>
   }
   
   nextTick(() => {
-    console.log('Tabs re-rendered for new donor identity:', newDonorIdentity)
+    
   })
   
-  console.log('Donor queries updated for new donor identity:', newDonorIdentity)
+  
 })
 
 function handleModalSuccess(idx, doc) {
@@ -1648,7 +1594,7 @@ function formatFieldName(fieldName) {
 
 // 100% WORKING: Direct donor handling in DonationModal
 async function handleDonorSelectionDirect(donorId, row) {
-  console.log('Handling donor selection directly:', { donorId, row })
+  
   
   if (!donorId) {
     clearDonorFields(row)
@@ -1659,23 +1605,23 @@ async function handleDonorSelectionDirect(donorId, row) {
     const donorDetails = await fetchDonorDetails(donorId)
     if (donorDetails) {
       updateDonorFields(row, donorDetails)
-      console.log('Donor fields updated successfully')
+      
       
       // REMOVE: Don't show success message to prevent infinite loop
       // toast.success('Donor details loaded successfully')
     } else {
-      console.log('No donor details received')
+      
       toast.error('Could not fetch donor details')
     }
   } catch (error) {
-    console.error('Error in direct donor handling:', error)
+    
     toast.error('Error loading donor details')
   }
 }
 
 // NEW: Fund Class handling functionality
 async function fetchFundClassDetails(fundClassId) {
-  console.log('Fetching Fund Class details for:', fundClassId)
+  
   
   try {
     const result = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
@@ -1683,10 +1629,10 @@ async function fetchFundClassDetails(fundClassId) {
       company: donation.doc.company || 'Alkhidmat Foundation Pakistan'
     })
     
-    console.log('Fund Class details received:', result)
+    
     return result
   } catch (error) {
-    console.error('Error fetching Fund Class details:', error)
+    
     toast.error('Error loading Fund Class details')
     return null
   }
@@ -1694,8 +1640,7 @@ async function fetchFundClassDetails(fundClassId) {
 
 // FIX: Update the updateFundClassFields function to ensure proper field mapping
 function updateFundClassFields(row, fundClassDetails) {
-  console.log('Updating row with Fund Class details:', fundClassDetails)
-  console.log('Row before update:', { ...row })
+  
   
   // Map Fund Class fields to payment detail fields
   const fieldMappings = {
@@ -1712,12 +1657,12 @@ function updateFundClassFields(row, fundClassDetails) {
     if (fundClassDetails[fundClassField] !== undefined) {
       const oldValue = row[rowField]
       row[rowField] = fundClassDetails[fundClassField] || ''
-      console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
+      
       
       // CRITICAL: Ensure the field is properly set in the row
       if (fundClassDetails[fundClassField]) {
         row[rowField] = fundClassDetails[fundClassField]
-        console.log(`Set ${rowField} to: ${row[rowField]}`)
+        
       }
     }
   })
@@ -1725,34 +1670,22 @@ function updateFundClassFields(row, fundClassDetails) {
   // CRITICAL: Ensure equity_account and receivable_account are set
   if (fundClassDetails.equity_account) {
     row.equity_account = fundClassDetails.equity_account
-    console.log('Set equity_account to:', row.equity_account)
   }
   
   if (fundClassDetails.receivable_account) {
     row.receivable_account = fundClassDetails.receivable_account
-    console.log('Set receivable_account to:', row.receivable_account)
   }
   
-  console.log('Row after Fund Class update:', { ...row })
   
   // Force reactive update - CRITICAL for Vue to detect changes
   if (donation.doc.payment_detail) {
-    console.log('Forcing reactive update of payment_detail after Fund Class update')
     donation.doc.payment_detail = [...donation.doc.payment_detail]
   }
   
-  // CRITICAL: Log the final state to verify fields are set
-  console.log('Final row state after Fund Class update:', {
-    equity_account: row.equity_account,
-    receivable_account: row.receivable_account,
-    service_area: row.pay_service_area,
-    subservice_area: row.pay_subservice_area,
-    product: row.pay_product
-  })
+  
 }
 
 function clearFundClassFields(row) {
-  console.log('Clearing Fund Class fields for row')
   
   const fundClassFields = [
     'pay_service_area', 'pay_subservice_area', 'pay_product',
@@ -1776,7 +1709,6 @@ const pendingDeductionFundClassQueue = ref([]) // array of fund_class_id in orde
 
 // 100% WORKING: Direct Fund Class handling in DonationModal
 async function handleFundClassSelectionDirect(fundClassId, row) {
-  console.log('Handling Fund Class selection directly:', { fundClassId, row })
   
   if (!fundClassId) {
     clearFundClassFields(row)
@@ -1792,21 +1724,17 @@ async function handleFundClassSelectionDirect(fundClassId, row) {
     const fundClassDetails = await fetchFundClassDetails(fundClassId)
     if (fundClassDetails) {
       updateFundClassFields(row, fundClassDetails)
-      console.log('Fund Class fields updated successfully')
       
     } else {
-      console.log('No Fund Class details received')
       toast.error('Could not fetch Fund Class details')
     }
   } catch (error) {
-    console.error('Error in direct Fund Class handling:', error)
     toast.error('Error loading Fund Class details')
   }
 }
 
 // NEW: Mode of Payment to Account handling functionality
 async function fetchPaymentModeAccount(modeOfPayment, company) {
-  console.log('Fetching payment mode account for:', { modeOfPayment, company })
   
   try { 
     const result = await call('crm.fcrm.doctype.donation.api.get_payment_mode_account', {
@@ -1814,10 +1742,8 @@ async function fetchPaymentModeAccount(modeOfPayment, company) {
       company: company
     })
     
-    console.log('Payment mode account result:', result)
     return result
   } catch (error) {
-    console.error('Error fetching payment mode account:', error)
     toast.error('Error loading payment mode account')
     return null
   }
@@ -1825,16 +1751,13 @@ async function fetchPaymentModeAccount(modeOfPayment, company) {
 
 // Add donor selection handler
 function handleDonorSelected(event) {
-  console.log('Donor selected in payment detail:', event)
   
   const { row, donorId, success } = event
   
   if (success && donorId && row) {
-    console.log('Processing donor selection for row:', row, 'with donor ID:', donorId)
     
     // Force a reactive update of the payment_detail table
     if (donation.doc.payment_detail) {
-      console.log('Forcing reactive update of payment_detail')
       donation.doc.payment_detail = [...donation.doc.payment_detail]
     }
   }
@@ -1842,7 +1765,6 @@ function handleDonorSelected(event) {
 
 // ADD the missing fetchDonorDetails function:
 async function fetchDonorDetails(donorId) {
-  console.log('Fetching donor details for:', donorId)
   
   try {
     const result = await call('frappe.client.get', {
@@ -1850,10 +1772,8 @@ async function fetchDonorDetails(donorId) {
       name: donorId
     })
     
-    console.log('Donor details received:', result)
     return result
   } catch (error) {
-    console.error('Error fetching donor details:', error)
     toast.error('Error loading donor details')
     return null
   }
@@ -1861,8 +1781,6 @@ async function fetchDonorDetails(donorId) {
 
 // ADD the missing updateDonorFields function:
 function updateDonorFields(row, donorDetails) {
-  console.log('Updating row with donor details:', donorDetails)
-  console.log('Row before update:', { ...row })
   
   // Map donor fields to payment detail fields - INCLUDING ALL CARE-OF DETAILS
   const fieldMappings = {
@@ -1892,22 +1810,18 @@ function updateDonorFields(row, donorDetails) {
     if (donorDetails[donorField] !== undefined) {
       const oldValue = row[rowField]
       row[rowField] = donorDetails[donorField] || ''
-      console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
     }
   })
   
-  console.log('Row after donor update:', { ...row })
   
   // Force reactive update - CRITICAL for Vue to detect changes
   if (donation.doc.payment_detail) {
-    console.log('Forcing reactive update of payment_detail after donor update')
     donation.doc.payment_detail = [...donation.doc.payment_detail]
   }
 }
 
 // ADD the missing clearDonorFields function:
 function clearDonorFields(row) {
-  console.log('Clearing donor fields for row')
   
   const donorFields = [
     'donor_name', 'donor_type', 'donor_desk_id', 'contact_no', 'email', 'city', 'address', 'cnic',
@@ -1958,7 +1872,6 @@ watch(() => donation.doc.payment_detail, async (newPaymentDetail, oldPaymentDeta
         
         // EXACT backend trigger: donor_id change
         if (row.donor_id && row.donor_id !== row._lastDonorId) {
-          console.log(`Donor ID changed in row ${index}:`, row.donor_id)
           row._lastDonorId = row.donor_id
           row.donor = row.donor_id
           handleDonorSelectionDirect(row.donor_id, row)
@@ -1967,7 +1880,6 @@ watch(() => donation.doc.payment_detail, async (newPaymentDetail, oldPaymentDeta
         
         // EXACT backend trigger: fund_class_id change
         if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
-          console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
           row._lastFundClassId = row.fund_class_id
           row.fund_class = row.fund_class_id
           
@@ -1983,7 +1895,6 @@ watch(() => donation.doc.payment_detail, async (newPaymentDetail, oldPaymentDeta
         
         // EXACT backend trigger: donation_amount change
         if (row.donation_amount !== row._lastDonationAmount) {
-          console.log(`Donation amount changed in row ${index}:`, row.donation_amount)
           row._lastDonationAmount = row.donation_amount
           shouldTriggerSetDeductionBreakeven = true
           shouldDoReactiveUpdate = true
@@ -1991,7 +1902,6 @@ watch(() => donation.doc.payment_detail, async (newPaymentDetail, oldPaymentDeta
         
         // EXACT backend trigger: intention_id change
         if (row.intention_id !== row._lastIntentionId) {
-          console.log(`Intention ID changed in row ${index}:`, row.intention_id)
           row._lastIntentionId = row.intention_id
           shouldTriggerSetDeductionBreakeven = true
           shouldDoReactiveUpdate = true
@@ -1999,26 +1909,21 @@ watch(() => donation.doc.payment_detail, async (newPaymentDetail, oldPaymentDeta
         
         // EXACT backend trigger: mode of payment - handle account_paid_to auto-fill (exact copy from DonationDetail)
         if (row.mode_of_payment && row.mode_of_payment !== row._lastMOPId) {
-          console.log('🔥 MODE OF PAYMENT CHANGED IN DONATION MODAL 🔥', row.mode_of_payment)
           row._lastMOPId = row.mode_of_payment
           
           try {
             const company = donation.doc?.company || 'Alkhidmat Foundation'
-            console.log('Company:', company)
             
             const result = await call('crm.fcrm.doctype.donation.api.get_payment_mode_account', {
               mode_of_payment: row.mode_of_payment,
               company: company
             })
             
-            console.log('🔥 API RESULT IN DONATION MODAL 🔥', result)
             
             if (result && result.success && result.account) {
-              console.log('✅ Account fetched successfully:', result.account)
               row.account_paid_to = result.account
               toast.success(`Account Paid To auto-filled: ${result.account}`)
             } else {
-              console.log('❌ No account found')
               row.account_paid_to = ''
               
               if (result && result.message) {
@@ -2028,7 +1933,6 @@ watch(() => donation.doc.payment_detail, async (newPaymentDetail, oldPaymentDeta
               }
             }
           } catch (error) {
-            console.error('❌ Error fetching payment mode account:', error)
             row.account_paid_to = ''
             toast.error(`Error loading account for mode of payment: ${error.message}`)
           }
@@ -2037,7 +1941,6 @@ watch(() => donation.doc.payment_detail, async (newPaymentDetail, oldPaymentDeta
       
       // EXACT backend behavior: Call set_deduction_breakeven only when specific fields change
       if (shouldTriggerSetDeductionBreakeven) {
-        console.log('Triggering set_deduction_breakeven due to payment detail changes...')
         await setDeductionBreakevenFromAPI()
       }
       
@@ -2064,26 +1967,21 @@ watch(() => donation.doc?.payment_detail, async (rows) => {
       
       // mode of payment - handle account_paid_to auto-fill (second watcher like DonationDetail)
       if (row.mode_of_payment && row.mode_of_payment !== row._lastMOPId2) {
-        console.log('🔥 MODE OF PAYMENT CHANGED IN DONATION MODAL (SECOND WATCHER) 🔥', row.mode_of_payment)
         row._lastMOPId2 = row.mode_of_payment
         
         try {
           const company = donation.doc?.company || 'Alkhidmat Foundation'
-          console.log('Company:', company)
           
           const result = await call('crm.fcrm.doctype.donation.api.get_payment_mode_account', {
             mode_of_payment: row.mode_of_payment,
             company: company
           })
           
-          console.log('🔥 API RESULT IN DONATION MODAL (SECOND WATCHER) 🔥', result)
           
           if (result && result.success && result.account) {
-            console.log('✅ Account fetched successfully (second watcher):', result.account)
             row.account_paid_to = result.account
             toast.success(`Account Paid To auto-filled: ${result.account}`)
           } else {
-            console.log('❌ No account found (second watcher)')
             row.account_paid_to = ''
             
             if (result && result.message) {
@@ -2093,7 +1991,6 @@ watch(() => donation.doc?.payment_detail, async (rows) => {
             }
           }
         } catch (error) {
-          console.error('❌ Error fetching payment mode account (second watcher):', error)
           row.account_paid_to = ''
           toast.error(`Error loading account for mode of payment: ${error.message}`)
         }
@@ -2121,7 +2018,6 @@ watch(() => donation.doc.items, async (newItems, oldItems) => {
         
         // EXACT backend trigger: donor change
         if (row.donor && row.donor !== row._lastItemsDonorId) {
-          console.log(`Donor changed in items row ${index}:`, row.donor)
           row._lastItemsDonorId = row.donor
           await handleItemsDonorSelection(row.donor, row)
           shouldDoReactiveUpdate = true
@@ -2129,7 +2025,6 @@ watch(() => donation.doc.items, async (newItems, oldItems) => {
         
         // EXACT backend trigger: fund_class change
         if (row.fund_class && row.fund_class !== row._lastItemsFundClassId) {
-          console.log(`Fund Class changed in items row ${index}:`, row.fund_class)
           row._lastItemsFundClassId = row.fund_class
           await handleItemsFundClassSelection(row.fund_class, row)
           shouldDoReactiveUpdate = true
@@ -2138,12 +2033,10 @@ watch(() => donation.doc.items, async (newItems, oldItems) => {
       
       // Force reactive update if needed
       if (shouldDoReactiveUpdate) {
-        console.log('Forcing reactive update of items table')
         donation.doc.items = [...donation.doc.items]
       }
       
     } catch (error) {
-      console.error('Error processing items changes:', error)
       toast.error('Error processing items changes')
     } finally {
       isProcessingItems = false
@@ -2175,7 +2068,6 @@ watch(() => donation.doc.deduction_breakeven, async (newDeductionBreakeven, oldD
       newDeductionBreakeven.forEach((row, index) => {
         // EXACT backend trigger: percentage change
         if (row.percentage !== row._lastPercentage) {
-          console.log(`Percentage changed in deduction row ${index}:`, row.percentage)
           
           // ADD: Validate percentage against min/max limits
           const validationResult = validatePercentageLimits(row, index)
@@ -2191,7 +2083,6 @@ watch(() => donation.doc.deduction_breakeven, async (newDeductionBreakeven, oldD
           if (calculatedAmount !== null) {
             row.amount = calculatedAmount
             row.base_amount = calculatedAmount
-            console.log(`Updated amount for row ${index}: ${calculatedAmount}`)
           }
           
           row._lastPercentage = row.percentage
@@ -2203,14 +2094,12 @@ watch(() => donation.doc.deduction_breakeven, async (newDeductionBreakeven, oldD
         
         // ADD: Track min_percent and max_percent changes (but don't trigger backend API)
         if (row.min_percent !== row._lastMinPercent) {
-          console.log(`Min percent changed in deduction row ${index}:`, row.min_percent)
           row._lastMinPercent = row.min_percent
           row._userModifiedMinPercent = true
           hasChanges = true
         }
         
         if (row.max_percent !== row._lastMaxPercent) {
-          console.log(`Max percent changed in deduction row ${index}:`, row.max_percent)
           row._lastMaxPercent = row.max_percent
           row._userModifiedMaxPercent = true
           hasChanges = true
@@ -2218,7 +2107,6 @@ watch(() => donation.doc.deduction_breakeven, async (newDeductionBreakeven, oldD
         
         // ADD: Track donation_amount changes to recalculate amount
         if (row.donation_amount !== row._lastDonationAmount) {
-          console.log(`Donation amount changed in deduction row ${index}:`, row.donation_amount)
           row._lastDonationAmount = row.donation_amount
           
           // Recalculate amount based on current percentage
@@ -2226,7 +2114,6 @@ watch(() => donation.doc.deduction_breakeven, async (newDeductionBreakeven, oldD
           if (calculatedAmount !== null) {
             row.amount = calculatedAmount
             row.base_amount = calculatedAmount
-            console.log(`Recalculated amount for row ${index}: ${calculatedAmount}`)
           }
           
           hasChanges = true
@@ -2235,7 +2122,6 @@ watch(() => donation.doc.deduction_breakeven, async (newDeductionBreakeven, oldD
       
       // CRITICAL: Allow backend API calls for all cases (restore existing functionality)
       if (shouldTriggerSetDeductionBreakeven) {
-        console.log('Triggering set_deduction_breakeven due to deduction_breakeven changes...')
         await setDeductionBreakevenFromAPI()
       }
       
@@ -2263,15 +2149,12 @@ watch(() => donation.doc.deduction_breakeven, async (newDeductionBreakeven, oldD
 
 // FIXED: Set deduction breakeven when payment details change (like DonationDetail)
 async function setDeductionBreakevenFromAPI() {
-  console.log('Setting deduction breakeven using backend API (exact backend behavior)...')
   
   if (!donation.doc.payment_detail || donation.doc.payment_detail.length === 0) {
-    console.log('No payment details to process')
     return
   }
   
   if (donation.doc.contribution_type === "Pledge") {
-    console.log("Skipping deduction breakeven for Pledge contribution type")
     return
   }
   
@@ -2292,7 +2175,6 @@ async function setDeductionBreakevenFromAPI() {
     })
     
     if (result.success) {
-      console.log('Backend API set deduction breakeven successfully:', result)
       
       // PRESERVE account_paid_to field before backend API replaces the array
       const preservedAccountPaidTo = {}
@@ -2300,7 +2182,6 @@ async function setDeductionBreakevenFromAPI() {
         donation.doc.payment_detail.forEach((row, index) => {
           if (row && row.account_paid_to) {
             preservedAccountPaidTo[index] = row.account_paid_to
-            console.log(`Preserving account_paid_to for row ${index}: ${row.account_paid_to}`)
           }
         })
       }
@@ -2335,7 +2216,6 @@ async function setDeductionBreakevenFromAPI() {
               _userModifiedAmount: row._userModifiedAmount,
               _userModifiedBaseAmount: row._userModifiedBaseAmount
             }
-            console.log(`Preserving deduction values for row ${index}:`, preservedDeductionValues[index])
           }
         })
       }
@@ -2349,7 +2229,6 @@ async function setDeductionBreakevenFromAPI() {
         donation.doc.payment_detail.forEach((row, index) => {
           if (row && preservedAccountPaidTo[index]) {
             row.account_paid_to = preservedAccountPaidTo[index]
-            console.log(`Restored account_paid_to for row ${index}: ${row.account_paid_to}`)
           }
         })
       }
@@ -2370,7 +2249,6 @@ async function setDeductionBreakevenFromAPI() {
               row.percentage = preserved.percentage
               row._lastPercentage = preserved._lastPercentage
               row._userModifiedPercentage = preserved._userModifiedPercentage
-              console.log(`Restored user-modified percentage for row ${index}: ${row.percentage}`)
             }
             
             // ENHANCED: Restore min_percent if it was user-modified
@@ -2383,7 +2261,6 @@ async function setDeductionBreakevenFromAPI() {
               row.min_percent = preserved.min_percent
               row._lastMinPercent = preserved._lastMinPercent
               row._userModifiedMinPercent = preserved._userModifiedMinPercent
-              console.log(`Restored user-modified min_percent for row ${index}: ${row.min_percent}`)
             }
             
             // ENHANCED: Restore max_percent if it was user-modified
@@ -2396,14 +2273,12 @@ async function setDeductionBreakevenFromAPI() {
               row.max_percent = preserved.max_percent
               row._lastMaxPercent = preserved._lastMaxPercent
               row._userModifiedMaxPercent = preserved._userModifiedMaxPercent
-              console.log(`Restored user-modified max_percent for row ${index}: ${row.max_percent}`)
             }
             
             // ENHANCED: Restore donation_amount if it was user-modified
             if (preserved._lastDonationAmount !== undefined) {
               row.donation_amount = preserved.donation_amount
               row._lastDonationAmount = preserved._lastDonationAmount
-              console.log(`Restored donation_amount for row ${index}: ${row.donation_amount}`)
             }
             
             // ENHANCED: Restore calculated amount if it was user-modified
@@ -2418,7 +2293,6 @@ async function setDeductionBreakevenFromAPI() {
               row.base_amount = preserved.base_amount
               row._userModifiedAmount = preserved._userModifiedAmount
               row._userModifiedBaseAmount = preserved._userModifiedBaseAmount
-              console.log(`Restored user-modified amount for row ${index}: ${row.amount}`)
             }
           }
         })
@@ -2428,13 +2302,10 @@ async function setDeductionBreakevenFromAPI() {
       await nextTick()
       donation.doc = { ...donation.doc }
       
-      console.log('Deduction breakeven table rebuilt successfully via backend API')
     } else {
-      console.error('Backend API failed to set deduction breakeven:', result.message)
       // toast.error(result.message || 'Failed to set deduction breakeven')
     }
   } catch (error) {
-    console.error('Error calling backend set deduction breakeven API:', error)
     // toast.error('Error setting deduction breakeven')
   } finally {
     // Reset the flag after a delay to allow the update to complete
@@ -2446,41 +2317,34 @@ async function setDeductionBreakevenFromAPI() {
 
 // FIX: Correct contribution_type watcher (same as backend)
 watch(() => donation.doc.contribution_type, async (newContributionType, oldContributionType) => {
-  console.log('Contribution type changed from', oldContributionType, 'to:', newContributionType)
   
   if (newContributionType === 'Pledge') {
     // Clear deduction_breakeven table when contribution type is Pledge (same as backend)
     if (donation.doc.deduction_breakeven && donation.doc.deduction_breakeven.length > 0) {
       donation.doc.deduction_breakeven = []
-      console.log('Cleared deduction_breakeven table due to contribution_type being Pledge')
     }
   } else if (newContributionType === 'Donation' && oldContributionType === 'Pledge') {
     // Populate deduction breakeven when switching from Pledge to Donation (same as backend)
-    console.log('Switched from Pledge to Donation, populating deduction breakeven...')
     await setDeductionBreakevenFromAPI()
   }
 })
 
 // FIX: Correct donation_type watcher (same as backend)
 watch(() => donation.doc.donation_type, (newType, oldType) => {
-  console.log('Donation type changed from', oldType, 'to:', newType)
   
   if (newType === 'In Kind Donation') {
     // Clear deduction_breakeven table when donation type is In Kind Donation (same as backend)
     if (donation.doc.deduction_breakeven && donation.doc.deduction_breakeven.length > 0) {
       donation.doc.deduction_breakeven = []
-      console.log('Cleared deduction_breakeven table due to donation_type being In Kind Donation')
     }
   } else if (newType === 'Cash' && oldType === 'In Kind Donation') {
     // Populate deduction breakeven when switching from In Kind to Cash (same as backend)
-    console.log('Switched from In Kind to Cash, populating deduction breakeven...')
     setDeductionBreakevenFromAPI()
   }
 })
 
 // FIX: Enhanced createNewDonation function with correct submission logic
 async function createNewDonation() {
-  console.log("Creating new donation...")
   
   try {
     // First validate the form
@@ -2527,7 +2391,6 @@ async function createNewDonation() {
     if (preparedDoc.payment_detail && Array.isArray(preparedDoc.payment_detail)) {
       preparedDoc.payment_detail.forEach((row, index) => {
         if (!row.equity_account || !row.receivable_account) {
-          console.error(`Missing account fields in row ${index}:`, row)
           hasMissingAccounts = true
         }
       })
@@ -2552,7 +2415,6 @@ async function createNewDonation() {
       })
       
       if (result && result.name) {
-        console.log('Donation created successfully:', result)
         toast.success('Donation created successfully!')
         
         // Close the modal
@@ -2572,14 +2434,12 @@ async function createNewDonation() {
         throw new Error('Donation creation failed - no name returned')
       }
     } catch (err) {
-      console.error('Error creating donation:', err)
       error.value = err.message || 'Failed to create donation'
       toast.error('Failed to create donation')
     } finally {
       isDonationCreating.value = false
     }
   } catch (err) {
-    console.error('Unexpected error in createNewDonation:', err)
     error.value = 'An unexpected error occurred'
     toast.error('An unexpected error occurred')
     isDonationCreating.value = false
@@ -2602,7 +2462,6 @@ function preserveUserModificationsBeforeSubmission() {
           // Mark these as user modifications
           _isUserModified: true
         }
-        console.log(`Preserved user modification for row ${index}:`, userModifications[index])
       }
     })
   }
@@ -2624,13 +2483,6 @@ function restoreUserModificationsAfterPreparation(preparedDoc, userModifications
         row.amount = userMod.amount
         row.base_amount = userMod.base_amount
         
-        console.log(`Restored user modification for row ${index}:`, {
-          percentage: row.percentage,
-          min_percent: row.min_percent,
-          max_percent: row.max_percent,
-          amount: row.amount,
-          base_amount: row.base_amount
-        })
       }
     })
   }
@@ -2659,8 +2511,11 @@ function validateDonationForm() {
     errors.push('Donor Identity is required')
   }
   
-  if (!donation.doc.contribution_type || donation.doc.contribution_type.trim() === '') {
-    errors.push('Contribution Type is required')
+  // Contribution Type is not required for In Kind Donation
+  if (donation.doc.donation_type !== 'In Kind Donation') {
+    if (!donation.doc.contribution_type || donation.doc.contribution_type.trim() === '') {
+      errors.push('Contribution Type is required')
+    }
   }
   
   if (!donation.doc.posting_date) {
@@ -2671,14 +2526,18 @@ function validateDonationForm() {
     errors.push('Currency is required')
   }
   
-  if (!donation.doc.donation_cost_center || donation.doc.donation_cost_center.trim() === '') {
-    errors.push('Donation Cost Center is required')
+  // Donation Cost Center is not required for In Kind Donation
+  if (donation.doc.donation_type !== 'In Kind Donation') {
+    if (!donation.doc.donation_cost_center || donation.doc.donation_cost_center.trim() === '') {
+      errors.push('Donation Cost Center is required')
+    }
   }
 
   // Payment detail validation
-  if ( !donation.doc.payment_detail || !Array.isArray(donation.doc.payment_detail) || donation.doc.payment_detail.length === 0) {
+  // Not required for In Kind Donation
+  if (donation.doc.donation_type !== 'In Kind Donation' && (!donation.doc.payment_detail || !Array.isArray(donation.doc.payment_detail) || donation.doc.payment_detail.length === 0)) {
     errors.push('At least one payment detail is required')
-  } else {
+  } else if (donation.doc.donation_type !== 'In Kind Donation') {
     donation.doc.payment_detail.forEach((row, index) => {
       const rowNum = index + 1
       
@@ -2756,8 +2615,6 @@ function validateAndShowErrors() {
     // Show the first error as a toast
     toast.error(errors[0])
     
-    // Log all errors for debugging
-    console.error('Validation errors:', errors)
     
     // Set error message for display
     error.value = errors[0]
@@ -2823,7 +2680,6 @@ async function validateDeductionBreakevenBeforeSubmission() {
             }
           }
         } catch (error) {
-          console.error('Error validating min/max percentage:', error)
           // Don't block submission if API call fails, just log the error
         }
       }
@@ -2859,36 +2715,30 @@ async function prepareDonationForSubmission() {
       if (row.percentage !== undefined) {
         row._originalPercentage = row.percentage
         row._userModifiedPercentage = true
-        console.log(`Marking percentage as user-modified for submission: ${row.percentage}`)
       }
       
       if (row.min_percent !== undefined) {
         row._originalMinPercent = row.min_percent
         row._userModifiedMinPercent = true
-        console.log(`Marking min_percent as user-modified for submission: ${row.min_percent}`)
       }
       
       if (row.max_percent !== undefined) {
         row._originalMaxPercent = row.max_percent
         row._userModifiedMaxPercent = true
-        console.log(`Marking max_percent as user-modified for submission: ${row.max_percent}`)
       }
       
       if (row.amount !== undefined) {
         row._originalAmount = row.amount
         row._userModifiedAmount = true
-        console.log(`Marking amount as user-modified for submission: ${row.amount}`)
       }
       
       if (row.base_amount !== undefined) {
         row._originalBaseAmount = row.base_amount
         row._userModifiedBaseAmount = true
-        console.log(`Marking base_amount as user-modified for submission: ${row.base_amount}`)
       }
     })
   }
   
-  console.log('Prepared donation document for submission with user modifications preserved:', doc)
   return doc
 }
 
@@ -2918,22 +2768,16 @@ async function applyDonorFilteringToForm() {
   // Force FieldLayout to re-render to apply new filters
   nextTick(() => {
     // This will trigger the computed filteredTabs to update with new donor filters
-    console.log('FieldLayout re-rendered for new donor identity:', donation.doc.donor_identity)
   })
 }
 
 // ADD: Function to handle tab change in FieldLayout
 function handleTabChange(tabName) {
-  console.log('Tab changed to:', tabName)
-  // This function is primarily for logging, as the FieldLayout's tab-change event
-  // will trigger the FieldLayout to re-fetch its data and dependencies.
-  // We don't need to do anything here directly for donor/currency filtering
-  // as the FieldLayout's get_query and depends_on will handle it.
+
 }
 
 // ADD: Function to handle adding a new deduction row
 function handleAddDeductionRow() {
-  console.log('Adding new deduction row')
   const newRow = {
     random_id: generateRandomId(donation.doc.deduction_breakeven.length + 1),
     fund_class_id: '',
@@ -2951,14 +2795,11 @@ function handleAddDeductionRow() {
 
 // ADD: Function to handle fund class selection in FieldLayout
 function handleFundClassSelected(event) {
-  console.log('Fund Class selected in FieldLayout:', event)
   const { row, fundClassId, success } = event
   
   if (success && fundClassId && row) {
-    console.log('Processing Fund Class selection for row:', row, 'with fundClassId:', fundClassId)
     // Force a reactive update of the payment_detail table
     if (donation.doc.payment_detail) {
-      console.log('Forcing reactive update of payment_detail')
       donation.doc.payment_detail = [...donation.doc.payment_detail]
     }
   }
@@ -3068,7 +2909,6 @@ function showFieldValidationError(fieldName, value, rowIndex = null) {
 
 // NEW: Function to populate fund class fields for Pledge contribution type
 async function populateFundClassFieldsForPledge(row) {
-  console.log('Populating fund class fields for Pledge contribution type:', row.fund_class_id)
   
   try {
     // Call the same backend API that set_deduction_breakeven uses, but only for fund class field population
@@ -3095,16 +2935,12 @@ async function populateFundClassFieldsForPledge(row) {
       fieldsToUpdate.forEach(field => {
         if (updatedRow[field] !== undefined) {
           row[field] = updatedRow[field]
-          console.log(`Updated ${field} for Pledge: ${row[field]}`)
         }
       })
       
-      console.log('Fund class fields populated successfully for Pledge')
     } else {
-      console.error('Failed to populate fund class fields for Pledge:', result.message)
     }
   } catch (error) {
-    console.error('Error populating fund class fields for Pledge:', error)
   }
 }
 
@@ -3157,16 +2993,6 @@ function updateCalculationFields() {
   donation.doc.total_deduction = totalDeduction.value
   donation.doc.net_amount = netAmount.value
   
-  console.log('Calculation fields updated:', {
-    base_total_donation: donation.doc.base_total_donation,
-    base_total_deduction: donation.doc.base_total_deduction,
-    base_net_amount: donation.doc.base_net_amount,
-    base_outstanding_amount: donation.doc.base_outstanding_amount,
-    outstanding_amount: donation.doc.outstanding_amount,
-    total_donation: donation.doc.total_donation,
-    total_deduction: donation.doc.total_deduction,
-    net_amount: donation.doc.net_amount
-  })
 }
 
 // ADD: Watcher to update calculations when payment_detail changes
@@ -3189,7 +3015,6 @@ watch(() => donation.doc.contribution_type, () => {
 
 // ADD: Function to handle donor selection for items table
 async function handleItemsDonorSelection(donorId, row) {
-  console.log('Handling donor selection for items:', { donorId, row })
   
   if (!donorId) {
     clearItemsDonorFields(row)
@@ -3200,21 +3025,16 @@ async function handleItemsDonorSelection(donorId, row) {
     const donorDetails = await fetchDonorDetails(donorId)
     if (donorDetails) {
       updateItemsDonorFields(row, donorDetails)
-      console.log('Items donor fields updated successfully')
     } else {
-      console.log('No donor details received for items')
       toast.error('Could not fetch donor details')
     }
   } catch (error) {
-    console.error('Error in items donor handling:', error)
     toast.error('Error loading donor details')
   }
 }
 
 // ADD: Function to update donor fields in items table
 function updateItemsDonorFields(row, donorDetails) {
-  console.log('Updating items row with donor details:', donorDetails)
-  console.log('Items row before update:', { ...row })
   
   // Map donor fields to items fields based on fetch_from configuration
   const fieldMappings = {
@@ -3228,22 +3048,18 @@ function updateItemsDonorFields(row, donorDetails) {
     if (donorDetails[donorField] !== undefined) {
       const oldValue = row[rowField]
       row[rowField] = donorDetails[donorField] || ''
-      console.log(`Updated items ${rowField}: ${oldValue} -> ${row[rowField]}`)
     }
   })
   
-  console.log('Items row after donor update:', { ...row })
   
   // Force reactive update - CRITICAL for Vue to detect changes
   if (donation.doc.items) {
-    console.log('Forcing reactive update of items after donor update')
     donation.doc.items = [...donation.doc.items]
   }
 }
 
 // ADD: Function to clear donor fields in items table
 function clearItemsDonorFields(row) {
-  console.log('Clearing donor fields for items row')
   
   const fieldsToClear = [
     'donor_name',
@@ -3255,12 +3071,10 @@ function clearItemsDonorFields(row) {
     row[field] = ''
   })
   
-  console.log('Items donor fields cleared')
 }
 
 // ADD: Function to handle fund class selection for items table
 async function handleItemsFundClassSelection(fundClassId, row) {
-  console.log('Handling fund class selection for items:', { fundClassId, row })
   
   if (!fundClassId) {
     clearItemsFundClassFields(row)
@@ -3271,21 +3085,16 @@ async function handleItemsFundClassSelection(fundClassId, row) {
     const fundClassDetails = await fetchFundClassDetails(fundClassId)
     if (fundClassDetails) {
       updateItemsFundClassFields(row, fundClassDetails)
-      console.log('Items fund class fields updated successfully')
     } else {
-      console.log('No fund class details received for items')
       toast.error('Could not fetch fund class details')
     }
   } catch (error) {
-    console.error('Error in items fund class handling:', error)
     toast.error('Error loading fund class details')
   }
 }
 
 // ADD: Function to update fund class fields in items table
 function updateItemsFundClassFields(row, fundClassDetails) {
-  console.log('Updating items row with fund class details:', fundClassDetails)
-  console.log('Items row before fund class update:', { ...row })
   
   // Map fund class fields to items fields based on fetch_from configuration
   const fieldMappings = {
@@ -3299,22 +3108,18 @@ function updateItemsFundClassFields(row, fundClassDetails) {
     if (fundClassDetails[fundClassField] !== undefined) {
       const oldValue = row[rowField]
       row[rowField] = fundClassDetails[fundClassField] || ''
-      console.log(`Updated items ${rowField}: ${oldValue} -> ${row[rowField]}`)
     }
   })
   
-  console.log('Items row after fund class update:', { ...row })
   
   // Force reactive update - CRITICAL for Vue to detect changes
   if (donation.doc.items) {
-    console.log('Forcing reactive update of items after fund class update')
     donation.doc.items = [...donation.doc.items]
   }
 }
 
 // ADD: Function to clear fund class fields in items table
 function clearItemsFundClassFields(row) {
-  console.log('Clearing fund class fields for items row')
   
   const fieldsToClear = [
     'service_area',
@@ -3326,7 +3131,6 @@ function clearItemsFundClassFields(row) {
     row[field] = ''
   })
   
-  console.log('Items fund class fields cleared')
 }
 
 // ADD: Function to validate percentage against min/max limits
@@ -3395,19 +3199,16 @@ function calculateDeductionAmount(row) {
   
   // Validate inputs
   if (isNaN(percentage) || isNaN(donationAmount)) {
-    console.log('Cannot calculate amount: invalid percentage or donation amount')
     return null
   }
   
   if (donationAmount <= 0) {
-    console.log('Cannot calculate amount: donation amount must be greater than 0')
     return null
   }
   
   // Calculate amount: (percentage / 100) * donation_amount
   const calculatedAmount = (percentage / 100) * donationAmount
   
-  console.log(`Calculating amount: (${percentage}% / 100) * ${donationAmount} = ${calculatedAmount}`)
   
   return calculatedAmount
 }
@@ -3424,13 +3225,7 @@ function storeOriginalDeductionValues() {
           row._originalMaxPercent = row.max_percent
           row._originalAmount = row.amount
           row._originalBaseAmount = row.base_amount
-          console.log(`Stored original values for deduction row ${index}:`, {
-            percentage: row._originalPercentage,
-            min_percent: row._originalMinPercent,
-            max_percent: row._originalMaxPercent,
-            amount: row._originalAmount,
-            base_amount: row._originalBaseAmount
-          })
+          
         }
       }
     })
@@ -3442,11 +3237,9 @@ const originalTriggerOnRowRemove = donation.triggerOnRowRemove
 
 // Create custom triggerOnRowRemove that handles payment_detail to deduction_breakeven sync
 const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
-  console.log('Custom triggerOnRowRemove called in DonationModal:', { selectedRows, remainingRows })
   
   // Check if this is a payment_detail table deletion
   if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
-    console.log('Payment detail table deletion detected in DonationModal')
     
     // Get the random_ids of deleted payment detail rows
     const deletedRandomIds = new Set()
@@ -3455,7 +3248,6 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
       const deletedRow = donation.doc.payment_detail.find(row => row.name === rowName)
       if (deletedRow && deletedRow.random_id) {
         deletedRandomIds.add(deletedRow.random_id)
-        console.log(`Payment detail row with random_id ${deletedRow.random_id} was deleted`)
       }
     })
     
@@ -3467,14 +3259,12 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
       donation.doc.deduction_breakeven = donation.doc.deduction_breakeven.filter(deductionRow => {
         const shouldKeep = !deletedRandomIds.has(deductionRow.random_id)
         if (!shouldKeep) {
-          console.log(`Deleting deduction_breakeven row with random_id ${deductionRow.random_id}`)
         }
         return shouldKeep
       })
       
       const deletedDeductionCount = originalDeductionLength - donation.doc.deduction_breakeven.length
       if (deletedDeductionCount > 0) {
-        console.log(`Deleted ${deletedDeductionCount} corresponding deduction_breakeven rows`)
         toast.success(`Deleted ${deletedDeductionCount} corresponding deduction breakeven row(s)`)
       }
     }

@@ -805,9 +805,25 @@ async function updateDonor(fieldname, value, callback) {
   })
 }
 
-
-
-
+// Real-time branch_abbreviation update when branch changes
+watch(() => donorDocument.doc?.branch, async (newBranch, oldBranch) => {
+  if (newBranch && newBranch !== oldBranch) {
+    try {
+      const res = await call('frappe.client.get_value', {
+        doctype: 'Branch',
+        filters: { name: newBranch },
+        fieldname: 'branch_abbreviation',
+      });
+      if (res && res.message && res.message.branch_abbreviation) {
+        donorDocument.doc.branch_abbreviation = res.message.branch_abbreviation;
+      } else {
+        donorDocument.doc.branch_abbreviation = '';
+      }
+    } catch (e) {
+      donorDocument.doc.branch_abbreviation = '';
+    }
+  }
+}, { immediate: true });
 
 
 
@@ -1238,4 +1254,25 @@ function interceptSave() {
   }
 }
 
+
+watch(
+  () => donorDocument.doc.branch,
+  async (newBranch) => {
+    if (!newBranch) {
+      donorDocument.doc.branch_abbreviation = ''
+      return
+    }
+    try {
+      const res = await call('frappe.client.get_value', {
+        doctype: 'Cost Center',
+        fieldname: 'custom_abbreviation',
+        filters: { name: newBranch }
+      })
+      const abbr = res?.message?.custom_abbreviation || res?.custom_abbreviation || ''
+      donorDocument.doc.branch_abbreviation = abbr
+    } catch (e) {
+      donorDocument.doc.branch_abbreviation = ''
+    }
+  }
+);
 </script>

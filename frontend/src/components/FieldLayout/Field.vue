@@ -343,15 +343,11 @@ if (!isGridRow) {
 const field = computed(() => {
   let field = props.field
   
-  // Debug: Log the readOnly state
-  console.log('🔒 Field readOnly state:', readOnly, 'for field:', field.fieldname)
-  
   // Apply global read-only state from FieldLayout
   // Handle both ref and non-ref cases
   const isReadOnly = readOnly?.value !== undefined ? readOnly.value : readOnly
   if (isReadOnly) {
     field = { ...field, read_only: true }
-    console.log('🔒 Applied read-only to field:', field.fieldname)
   }
 
   if (field.fieldtype == 'Select' && typeof field.options === 'string') {
@@ -510,39 +506,27 @@ const getDescription = (field) => {
 const emit = defineEmits(['field-change'])
 
 function fieldChange(value, df) {
-  console.log('🔧 Field.vue fieldChange called:', { 
-    fieldname: df.fieldname, 
-    value, 
-    isGridRow,
-    parentFieldname: inject('parentFieldname')
-  })
   
   // CRITICAL FIX: Always update the data first
   data.value[df.fieldname] = value
   
   // Emit field change to parent component
   const onFieldChange = inject('onFieldChange', null)
-  console.log(' onFieldChange function available:', !!onFieldChange)
   
   if (onFieldChange) {
-    console.log('🔧 Calling onFieldChange with:', { fieldname: df.fieldname, value })
     onFieldChange(df.fieldname, value)
   } else {
-    console.log('❌ onFieldChange function not available, emitting directly')
     // Fallback: emit directly to parent
     emit('field-change', df.fieldname, value)
   }
   
   if (isGridRow) {
-    console.log('🔧 Calling triggerOnChange for grid row')
     triggerOnChange(df.fieldname, value, data.value)
   } else {
     // Add fallback for when triggerOnChange is not available
     if (triggerOnChange) {
-      console.log('🔧 Calling triggerOnChange for non-grid row')
       triggerOnChange(df.fieldname, value)
     } else {
-      console.log('❌ triggerOnChange not available, using fallback')
       // Fallback: directly update the data and force reactivity
       
       // Force a reactive update by triggering Vue's reactivity system

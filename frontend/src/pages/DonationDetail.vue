@@ -372,16 +372,13 @@ function handleModalClose(idx) {
   modalStack.value.splice(idx, 1)
 }
 
-// Breadcrumbs
 const breadcrumbs = computed(() => [
   { label: __('Donations'), route: { name: 'Donations' } },
   { label: document.doc?.name || props.donationId, route: { name: 'DonationDetail', params: { donationId: props.donationId } } }
 ])
 
-// Get donor name from payment detail rows
 const donorName = computed(() => {
   if (document.doc?.payment_detail && document.doc.payment_detail.length > 0) {
-    // Get the first payment detail row that has a donor name
     const firstRowWithDonor = document.doc.payment_detail.find(row => row.donor_name)
     if (firstRowWithDonor) {
       return firstRowWithDonor.donor_name
@@ -390,7 +387,6 @@ const donorName = computed(() => {
   return null
 })
 
-// Title for display
 const title = computed(() => {
   if (donorName.value) {
     return donorName.value
@@ -401,7 +397,6 @@ const title = computed(() => {
   return __('Donation')
 })
 
-// Donation status options
 const donationStatusOptions = computed(() => {
   return [
     { label: __('Draft'), value: 'Draft', color: 'text-gray-500' },
@@ -412,13 +407,11 @@ const donationStatusOptions = computed(() => {
   ]
 })
 
-// Get donation status styling
 function getDonationStatus(status) {
   const statusOption = donationStatusOptions.value.find(option => option.value === status)
   return statusOption || { color: 'text-gray-500' }
 }
 
-// Tabs configuration
 const tabs = computed(() => {
   let tabOptions = [
     {
@@ -484,7 +477,6 @@ watch(tabs, (value) => {
   }
 })
 
-// Side panel sections
 const sections = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
   cache: ['sidePanelSections', 'Donation'],
@@ -497,16 +489,16 @@ const originalTriggerOnChange = triggerOnChange
 
 // Create a custom triggerOnChange that preserves user modifications
 const customTriggerOnChange = async (fieldname, value, row) => {
-  console.log('Custom triggerOnChange called:', { fieldname, value, row })
+  // console.log('Custom triggerOnChange called:', { fieldname, value, row })
   
   // CRITICAL: If this is a percentage change in deduction_breakeven, handle it specially
   if (fieldname === 'percentage' && row && document.doc.deduction_breakeven) {
-    console.log('Percentage change in deduction_breakeven detected - using special handling')
+    // console.log('Percentage change in deduction_breakeven detected - using special handling')
     
     // Find the row in the deduction_breakeven table
     const deductionRow = document.doc.deduction_breakeven.find(r => r.random_id === row.random_id)
     if (deductionRow) {
-      console.log('Found deduction row, updating percentage:', value)
+      // console.log('Found deduction row, updating percentage:', value)
       
       // Update the percentage
       deductionRow.percentage = value
@@ -518,13 +510,13 @@ const customTriggerOnChange = async (fieldname, value, row) => {
       if (calculatedAmount !== null) {
         deductionRow.amount = calculatedAmount
         deductionRow.base_amount = calculatedAmount
-        console.log(`Updated amount: ${calculatedAmount}`)
+        // console.log(`Updated amount: ${calculatedAmount}`)
       }
       
       // Force reactive update without calling backend API
       document.doc = { ...document.doc }
       
-      console.log('Percentage updated successfully without backend API call')
+      // console.log('Percentage updated successfully without backend API call')
       return // Don't call the original triggerOnChange
     }
   }
@@ -542,7 +534,7 @@ async function updateField(name, value, callback) {
   
   // CRITICAL: If updating deduction_breakeven table, don't reload
   if (name === 'deduction_breakeven') {
-    console.log('Updating deduction_breakeven table - skipping reload to preserve user modifications')
+    // console.log('Updating deduction_breakeven table - skipping reload to preserve user modifications')
     
     // Update the document directly without calling backend API
     document.doc.deduction_breakeven = value
@@ -664,8 +656,12 @@ async function validateDonationForm() {
     errors.push('Donor Identity is required')
   }
   
-  if (!document.doc.contribution_type || document.doc.contribution_type.trim() === '') {
-    errors.push('Contribution Type is required')
+
+  // Contribution Type is not required for In Kind Donation
+  if (document.doc.donation_type !== 'In Kind Donation') {
+    if (!document.doc.contribution_type || document.doc.contribution_type.trim() === '') {
+      errors.push('Contribution Type is required')
+    }
   }
   
   if (!document.doc.posting_date) {
@@ -675,12 +671,13 @@ async function validateDonationForm() {
   if (!document.doc.currency || document.doc.currency.trim() === '') {
     errors.push('Currency is required')
   }
-  
+  if (document.doc.donation_type !== 'In Kind Donation') { 
   if (!document.doc.donation_cost_center || document.doc.donation_cost_center.trim() === '') {
     errors.push('Donation Cost Center is required')
-  }
+  }}
 
   // Payment detail validation
+  if (document.doc.donation_type !== 'In Kind Donation') {
   if (!document.doc.payment_detail || !Array.isArray(document.doc.payment_detail) || document.doc.payment_detail.length === 0) {
     errors.push('At least one payment detail is required')
   } else {
@@ -733,7 +730,7 @@ async function validateDonationForm() {
         }
       }
     })
-  }
+    }}
 
   // Deduction breakeven validation
   if (document.doc.deduction_breakeven && Array.isArray(document.doc.deduction_breakeven)) {
@@ -842,8 +839,7 @@ async function validateDeductionBreakevenPercentages() {
             }
           }
         } catch (error) {
-          console.error('Error validating min/max percentage:', error)
-          // Don't block submission if API call fails, just log the error
+          
         }
       }
     }
@@ -863,9 +859,6 @@ async function validateAndShowErrors() {
   if (errors.length > 0) {
     // Show the first error as a toast
     toast.error(errors[0])
-    
-    // Log all errors for debugging
-    console.error('Validation errors:', errors)
     
     return false
   }
@@ -894,7 +887,6 @@ async function saveChanges(data) {
     },
     onError: (err) => {
       toast.error(__('Error saving donation'))
-      console.error('Save error:', err)
     },
   })
 }
@@ -919,7 +911,6 @@ function preserveUserModificationsBeforeSave() {
           _userModifiedMaxPercent: row._userModifiedMaxPercent,
           _lastMaxPercent: row._lastMaxPercent
         }
-        console.log(`Preserved user modification for deduction row ${index}:`, userModifications[`deduction_breakeven_${index}`])
       }
     })
   }
@@ -933,7 +924,6 @@ function preserveUserModificationsBeforeSave() {
 // BULLETPROOF FIX: Function to restore user modifications after save
 function restoreUserModificationsAfterSave(preservedUserModifications) {
   if (!document.doc || !document.doc.deduction_breakeven) {
-    console.log('Document not ready for restoration')
     return
   }
   
@@ -947,17 +937,15 @@ function restoreUserModificationsAfterSave(preservedUserModifications) {
         sessionStorage.removeItem('preservedUserModifications') // Clean up
       }
     } catch (error) {
-      console.error('Error parsing stored modifications:', error)
       return
     }
   }
   
   if (!modifications || Object.keys(modifications).length === 0) {
-    console.log('No user modifications to restore')
     return
   }
   
-  console.log('Restoring user modifications after save:', modifications)
+  // console.log('Restoring user modifications after save:', modifications)
   
   // Restore deduction breakeven modifications
   if (document.doc.deduction_breakeven && Array.isArray(document.doc.deduction_breakeven)) {
@@ -971,7 +959,7 @@ function restoreUserModificationsAfterSave(preservedUserModifications) {
           row.percentage = preserved.percentage
           row._lastPercentage = preserved._lastPercentage
           row._userModifiedPercentage = preserved._userModifiedPercentage
-          console.log(`Restored percentage for row ${index}: ${row.percentage}`)
+          // console.log(`Restored percentage for row ${index}: ${row.percentage}`)
         }
         
         // Restore user-modified min_percent
@@ -979,7 +967,7 @@ function restoreUserModificationsAfterSave(preservedUserModifications) {
           row.min_percent = preserved.min_percent
           row._lastMinPercent = preserved._lastMinPercent
           row._userModifiedMinPercent = preserved._userModifiedMinPercent
-          console.log(`Restored min_percent for row ${index}: ${row.min_percent}`)
+          // console.log(`Restored min_percent for row ${index}: ${row.min_percent}`)
         }
         
         // Restore user-modified max_percent
@@ -987,7 +975,7 @@ function restoreUserModificationsAfterSave(preservedUserModifications) {
           row.max_percent = preserved.max_percent
           row._lastMaxPercent = preserved._lastMaxPercent
           row._userModifiedMaxPercent = preserved._userModifiedMaxPercent
-          console.log(`Restored max_percent for row ${index}: ${row.max_percent}`)
+          // console.log(`Restored max_percent for row ${index}: ${row.max_percent}`)
         }
         
         // Restore calculated amount based on preserved percentage
@@ -996,7 +984,7 @@ function restoreUserModificationsAfterSave(preservedUserModifications) {
           if (calculatedAmount !== null) {
             row.amount = calculatedAmount
             row.base_amount = calculatedAmount
-            console.log(`Restored calculated amount for row ${index}: ${calculatedAmount}`)
+            // console.log(`Restored calculated amount for row ${index}: ${calculatedAmount}`)
           }
         }
       }
@@ -1005,7 +993,7 @@ function restoreUserModificationsAfterSave(preservedUserModifications) {
     // Force reactive update to show restored values
     document.doc = { ...document.doc }
     
-    console.log('User modifications restored successfully after save')
+    // console.log('User modifications restored successfully after save')
   }
 }
 
@@ -1016,19 +1004,19 @@ function calculateDeductionAmount(row) {
   
   // Validate inputs
   if (isNaN(percentage) || isNaN(donationAmount)) {
-    console.log('Cannot calculate amount: invalid percentage or donation amount')
+    // console.log('Cannot calculate amount: invalid percentage or donation amount')
     return null
   }
   
   if (donationAmount <= 0) {
-    console.log('Cannot calculate amount: donation amount must be greater than 0')
+    // console.log('Cannot calculate amount: donation amount must be greater than 0')
     return null
   }
   
   // Calculate amount: (percentage / 100) * donation_amount
   const calculatedAmount = (percentage / 100) * donationAmount
   
-  console.log(`Calculating amount: (${percentage}% / 100) * ${donationAmount} = ${calculatedAmount}`)
+  // console.log(`Calculating amount: (${percentage}% / 100) * ${donationAmount} = ${calculatedAmount}`)
   
   return calculatedAmount
 }
@@ -1041,7 +1029,7 @@ function handleCopyToClipboard(text) {
 
 // Open email box
 function openEmailBox() {
-  console.log('Opening email box for:', document.data.email)
+  // console.log('Opening email box for:', document.data.email)
 }
 
 function printDonation() {
@@ -1054,7 +1042,7 @@ function printDonation() {
     }
     openPrintModal()
   } catch (e) {
-    console.error('Error opening print view:', e)
+    // console.error('Error opening print view:', e)
   }
 }
 
@@ -1089,7 +1077,7 @@ async function fetchPrintFormats() {
       selectedPrintFormat.value = printFormats.value[0].name
     }
   } catch (e) {
-    console.error('Error fetching print formats:', e)
+    // console.error('Error fetching print formats:', e)
     toast.error(__('Failed to load print formats'))
   } finally {
     loadingFormats.value = false
@@ -1121,7 +1109,7 @@ function openPrintView(format) {
     const url = `/printview?${params.toString()}`
     window.open(url, '_blank')
   } catch (e) {
-    console.error('Error opening print view:', e)
+    // console.error('Error opening print view:', e)
   }
 }
 
@@ -1145,7 +1133,7 @@ function openDonationPDF() {
     const url = `/api/method/frappe.utils.print_format.download_pdf?${params.toString()}`
     window.open(url, '_blank')
   } catch (e) {
-    console.error('Error opening PDF:', e)
+    // console.error('Error opening PDF:', e)
   }
 }
 
@@ -1192,19 +1180,18 @@ onMounted(() => {
 // ADD: Method to refresh deduction breakeven using the minimal backend method
 async function refreshDeductionBreakeven() {
   if (!document.doc?.name) {
-    console.log('No document name available')
     return
   }
   
   try {
-    console.log('Refreshing deduction breakeven for donation:', document.doc.name)
+    
     
     // Call the minimal backend method
     const result = await call('akf_accounts.akf_accounts.doctype.donation.donation.refresh_deduction_breakeven', {
       name: document.doc.name
     })
     
-    console.log('Backend method result:', result)
+    
     
     if (result.status === 'success') {
       toast.success('Deduction breakeven table refreshed successfully')
@@ -1214,7 +1201,6 @@ async function refreshDeductionBreakeven() {
     }
     
   } catch (error) {
-    console.error('Error refreshing deduction breakeven:', error)
     // toast.error('Failed to refresh deduction breakeven table')
   }
 }
@@ -1233,12 +1219,7 @@ function detectAndPreserveUserModifications() {
         row._originalAmount = row.amount
         row._originalBaseAmount = row.base_amount
         
-        console.log(`CRITICAL: Preserved current values as user modifications for row ${index}:`, {
-          percentage: row.percentage,
-          min_percent: row.min_percent,
-          max_percent: row.max_percent,
-          amount: row.amount
-        })
+        
       }
     })
   }
@@ -1260,13 +1241,13 @@ onMounted(async () => {
     
     // CRITICAL: For existing donations, NEVER call any backend APIs
     if (document.doc?.name && document.doc.name !== '') {
-      console.log('CRITICAL: Existing donation detected - skipping all auto-refresh APIs')
+      
       return
     }
     
     // Only auto-refresh for new donations
     if (shouldPopulateDeductionBreakeven()) {
-      console.log('Auto-refreshing deduction breakeven for new donation...')
+    
       
       setTimeout(() => {
         refreshDeductionBreakeven()
@@ -1279,13 +1260,11 @@ onMounted(async () => {
 watch(() => document.doc, (newDoc, oldDoc) => {
   // CRITICAL: For existing donations, NEVER call any backend APIs
   if (document.doc?.name && document.doc.name !== '') {
-    console.log('CRITICAL: Existing donation detected - skipping document change auto-refresh')
     return
   }
   
   // Only auto-refresh for new donations
   if (shouldPopulateDeductionBreakeven()) {
-    console.log('Auto-refreshing deduction breakeven for new donation on document change...')
     
     setTimeout(() => {
       refreshDeductionBreakeven()
@@ -1319,7 +1298,6 @@ async function enrichOnceAfterLoad() {
   if (didEnrichOnce || !document.doc) return
   didEnrichOnce = true
   
-  // Set flag to prevent save state changes during enrichment
   isUpdatingFromAPI = true
   
   try {
@@ -1356,7 +1334,7 @@ async function enrichOnceAfterLoad() {
     }
   } catch (e) {
     // Fail-safe: do not break page
-    console.error('Enrichment error:', e)
+    // console.error('Enrichment error:', e)
   } finally {
     // After enrichment, sync originalDoc to current doc so UI does not show Not Saved
     try {
@@ -1369,7 +1347,7 @@ async function enrichOnceAfterLoad() {
         }
       }
     } catch (syncErr) {
-      console.warn('Failed to sync originalDoc after enrichment:', syncErr)
+      // console.warn('Failed to sync originalDoc after enrichment:', syncErr)
     }
     // Reset flag after enrichment is complete
     isUpdatingFromAPI = false
@@ -1392,7 +1370,7 @@ onMounted(async () => {
         }
       }
     } catch (e) {
-      console.warn('Stabilization sync failed:', e)
+      // console.warn('Stabilization sync failed:', e)
     }
   }, 1500)
 })
@@ -1448,7 +1426,7 @@ watch(() => document.doc?.payment_detail, async (newPaymentDetail, oldPaymentDet
         
         // EXACT backend trigger: donor_id change
         if (row.donor_id && row.donor_id !== row._lastDonorId) {
-          console.log(`Donor ID changed in row ${index}:`, row.donor_id)
+          // console.log(`Donor ID changed in row ${index}:`, row.donor_id)
           row._lastDonorId = row.donor_id
           row.donor = row.donor_id
           await handleDonorSelectionDirect(row.donor_id, row)
@@ -1457,7 +1435,7 @@ watch(() => document.doc?.payment_detail, async (newPaymentDetail, oldPaymentDet
         
         // EXACT backend trigger: fund_class_id change
         if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
-          console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
+          // console.log(`Fund Class ID changed in row ${index}:`, row.fund_class_id)
           row._lastFundClassId = row.fund_class_id
           row.fund_class = row.fund_class_id
           
@@ -1473,7 +1451,7 @@ watch(() => document.doc?.payment_detail, async (newPaymentDetail, oldPaymentDet
         
         // EXACT backend trigger: donation_amount change
         if (row.donation_amount !== row._lastDonationAmount) {
-          console.log(`Donation amount changed in row ${index}:`, row.donation_amount)
+          // console.log(`Donation amount changed in row ${index}:`, row.donation_amount)
           row._lastDonationAmount = row.donation_amount
           shouldTriggerSetDeductionBreakeven = true
           hasChanges = true
@@ -1481,12 +1459,12 @@ watch(() => document.doc?.payment_detail, async (newPaymentDetail, oldPaymentDet
         
         // EXACT backend trigger: intention_id change
         if (row.intention_id !== row._lastIntentionId) {
-          console.log(`Intention ID changed in row ${index}:`, row.intention_id)
+          // console.log(`Intention ID changed in row ${index}:`, row.intention_id)
           row._lastIntentionId = row.intention_id
           
           // CRITICAL FIX: Handle Zakat intention by clearing only corresponding deduction breakeven rows
           if (row.intention_id === 'Zakat') {
-            console.log(`Intention changed to Zakat for payment detail row ${index} with random_id ${row.random_id}`)
+            // console.log(`Intention changed to Zakat for payment detail row ${index} with random_id ${row.random_id}`)
             
             // Clear only deduction breakeven rows that correspond to this specific payment detail row
             if (document.doc.deduction_breakeven && Array.isArray(document.doc.deduction_breakeven)) {
@@ -1496,14 +1474,14 @@ watch(() => document.doc?.payment_detail, async (newPaymentDetail, oldPaymentDet
               document.doc.deduction_breakeven = document.doc.deduction_breakeven.filter(deductionRow => {
                 const shouldKeep = deductionRow.random_id !== row.random_id
                 if (!shouldKeep) {
-                  console.log(`Removing deduction breakeven row with random_id ${deductionRow.random_id} due to Zakat intention`)
+                  // console.log(`Removing deduction breakeven row with random_id ${deductionRow.random_id} due to Zakat intention`)
                 }
                 return shouldKeep
               })
               
               const removedCount = originalLength - document.doc.deduction_breakeven.length
               if (removedCount > 0) {
-                console.log(`Removed ${removedCount} deduction breakeven row(s) for Zakat intention`)
+                // console.log(`Removed ${removedCount} deduction breakeven row(s) for Zakat intention`)
                 toast.success(`Cleared ${removedCount} deduction breakeven row(s) for Zakat intention`)
               }
             }
@@ -1518,7 +1496,7 @@ watch(() => document.doc?.payment_detail, async (newPaymentDetail, oldPaymentDet
         
         // EXACT backend trigger: mode of payment - handle account_paid_to auto-fill
         if (row.mode_of_payment && row.mode_of_payment !== row._lastMOPId) {
-          console.log('MODE OF PAYMENT CHANGED IN DONATION DETAIL', row.mode_of_payment)
+          // console.log('MODE OF PAYMENT CHANGED IN DONATION DETAIL', row.mode_of_payment)
           row._lastMOPId = row.mode_of_payment
           
           try {
@@ -1530,10 +1508,10 @@ watch(() => document.doc?.payment_detail, async (newPaymentDetail, oldPaymentDet
             })
             
             if (result && result.success && result.account) {
-              console.log('Account fetched successfully:', result.account)
+              // console.log('Account fetched successfully:', result.account)
               row.account_paid_to = result.account
             } else {
-              console.log('No account found')
+              // console.log('No account found')
               row.account_paid_to = ''
               
               if (result && result.message) {
@@ -1543,7 +1521,7 @@ watch(() => document.doc?.payment_detail, async (newPaymentDetail, oldPaymentDet
               }
             }
           } catch (error) {
-            console.error('Error fetching payment mode account:', error)
+            // console.error('Error fetching payment mode account:', error)
             row.account_paid_to = ''
             toast.error(`Error loading account for mode of payment: ${error.message}`)
           }
@@ -1558,10 +1536,10 @@ watch(() => document.doc?.payment_detail, async (newPaymentDetail, oldPaymentDet
         const hasZakatIntention = newPaymentDetail.some(row => row.intention_id === 'Zakat')
         
         if (!hasZakatIntention) {
-          console.log('Triggering set_deduction_breakeven due to payment detail changes...')
+          // console.log('Triggering set_deduction_breakeven due to payment detail changes...')
           await setDeductionBreakevenFromAPI()
         } else {
-          console.log('Skipping set_deduction_breakeven due to Zakat intention - will handle row-specific clearing instead')
+          // console.log('Skipping set_deduction_breakeven due to Zakat intention - will handle row-specific clearing instead')
         }
       }
       
@@ -1611,7 +1589,7 @@ watch(() => document.doc?.deduction_breakeven, async (newDeductionBreakeven, old
       newDeductionBreakeven.forEach((row, index) => {
         // EXACT backend trigger: percentage change
         if (row.percentage !== row._lastPercentage) {
-          console.log(`Percentage changed in deduction row ${index}:`, row.percentage)
+          // console.log(`Percentage changed in deduction row ${index}:`, row.percentage)
           
           // ADD: Validate percentage against min/max limits
           const validationResult = validatePercentageLimits(row, index)
@@ -1627,7 +1605,7 @@ watch(() => document.doc?.deduction_breakeven, async (newDeductionBreakeven, old
           if (calculatedAmount !== null) {
             row.amount = calculatedAmount
             row.base_amount = calculatedAmount
-            console.log(`Updated amount for row ${index}: ${calculatedAmount}`)
+            // console.log(`Updated amount for row ${index}: ${calculatedAmount}`)
           }
           
           row._lastPercentage = row.percentage
@@ -1639,14 +1617,14 @@ watch(() => document.doc?.deduction_breakeven, async (newDeductionBreakeven, old
         
         // ADD: Track min_percent and max_percent changes (but don't trigger backend API)
         if (row.min_percent !== row._lastMinPercent) {
-          console.log(`Min percent changed in deduction row ${index}:`, row.min_percent)
+          // console.log(`Min percent changed in deduction row ${index}:`, row.min_percent)
           row._lastMinPercent = row.min_percent
           row._userModifiedMinPercent = true
           hasChanges = true
         }
         
         if (row.max_percent !== row._lastMaxPercent) {
-          console.log(`Max percent changed in deduction row ${index}:`, row.max_percent)
+          // console.log(`Max percent changed in deduction row ${index}:`, row.max_percent)
           row._lastMaxPercent = row.max_percent
           row._userModifiedMaxPercent = true
           hasChanges = true
@@ -1654,7 +1632,7 @@ watch(() => document.doc?.deduction_breakeven, async (newDeductionBreakeven, old
         
         // ADD: Track donation_amount changes to recalculate amount
         if (row.donation_amount !== row._lastDonationAmount) {
-          console.log(`Donation amount changed in deduction row ${index}:`, row.donation_amount)
+          // console.log(`Donation amount changed in deduction row ${index}:`, row.donation_amount)
           row._lastDonationAmount = row.donation_amount
           
           // Recalculate amount based on current percentage
@@ -1662,7 +1640,7 @@ watch(() => document.doc?.deduction_breakeven, async (newDeductionBreakeven, old
           if (calculatedAmount !== null) {
             row.amount = calculatedAmount
             row.base_amount = calculatedAmount
-            console.log(`Recalculated amount for row ${index}: ${calculatedAmount}`)
+            // console.log(`Recalculated amount for row ${index}: ${calculatedAmount}`)
           }
           
           hasChanges = true
@@ -1671,7 +1649,7 @@ watch(() => document.doc?.deduction_breakeven, async (newDeductionBreakeven, old
       
       // CRITICAL: Allow backend API calls for all cases (restore existing functionality)
       if (shouldTriggerSetDeductionBreakeven) {
-        console.log('Triggering set_deduction_breakeven due to deduction_breakeven changes...')
+        // console.log('Triggering set_deduction_breakeven due to deduction_breakeven changes...')
         await setDeductionBreakevenFromAPI()
       }
       
@@ -1707,21 +1685,21 @@ function isPreservingUserModifications() {
 
 // EXACT BACKEND TRIGGER LOGIC - Contribution Type Changes
 watch(() => document.doc?.contribution_type, async (newContributionType, oldContributionType) => {
-  console.log('Contribution type changed from', oldContributionType, 'to:', newContributionType)
+  // console.log('Contribution type changed from', oldContributionType, 'to:', newContributionType)
   
   if (newContributionType === 'Pledge') {
     // Clear deduction_breakeven table when contribution type is Pledge (same as backend)
     if (document.doc.deduction_breakeven && document.doc.deduction_breakeven.length > 0) {
       isUpdatingFromAPI = true
       document.doc.deduction_breakeven = []
-      console.log('Cleared deduction_breakeven table due to contribution_type being Pledge')
+      // console.log('Cleared deduction_breakeven table due to contribution_type being Pledge')
       setTimeout(() => {
         isUpdatingFromAPI = false
       }, 100)
     }
   } else if (newContributionType === 'Donation' && oldContributionType === 'Pledge') {
     // Populate deduction breakeven when switching from Pledge to Donation (same as backend)
-    console.log('Switched from Pledge to Donation, populating deduction breakeven...')
+    // console.log('Switched from Pledge to Donation, populating deduction breakeven...')
     await setDeductionBreakevenFromAPI()
   }
 })
@@ -1730,7 +1708,7 @@ watch(() => document.doc?.contribution_type, async (newContributionType, oldCont
 
 // Direct donor handling (same as DonationModal)
 async function handleDonorSelectionDirect(donorId, row) {
-  console.log('Handling donor selection directly:', { donorId, row })
+  // console.log('Handling donor selection directly:', { donorId, row })
   
   if (!donorId) {
     clearDonorFields(row)
@@ -1741,20 +1719,20 @@ async function handleDonorSelectionDirect(donorId, row) {
     const donorDetails = await fetchDonorDetails(donorId)
     if (donorDetails) {
       updateDonorFields(row, donorDetails)
-      console.log('Donor fields updated successfully')
+      // console.log('Donor fields updated successfully')
     } else {
-      console.log('No donor details received')
+      // console.log('No donor details received')
       toast.error('Could not fetch donor details')
     }
   } catch (error) {
-    console.error('Error in direct donor handling:', error)
+    // console.error('Error in direct donor handling:', error)
     toast.error('Error loading donor details')
   }
 }
 
 // Fetch donor details
 async function fetchDonorDetails(donorId) {
-  console.log('Fetching donor details for:', donorId)
+  // console.log('Fetching donor details for:', donorId)
   
   try {
     const result = await call('frappe.client.get', {
@@ -1762,10 +1740,10 @@ async function fetchDonorDetails(donorId) {
       name: donorId
     })
     
-    console.log('Donor details received:', result)
+    // console.log('Donor details received:', result)
     return result
   } catch (error) {
-    console.error('Error fetching donor details:', error)
+    // console.error('Error fetching donor details:', error)
     toast.error('Error loading donor details')
     return null
   }
@@ -1773,8 +1751,8 @@ async function fetchDonorDetails(donorId) {
 
 // Update donor fields
 function updateDonorFields(row, donorDetails) {
-  console.log('Updating row with donor details:', donorDetails)
-  console.log('Row before update:', { ...row })
+  // console.log('Updating row with donor details:', donorDetails)
+  // console.log('Row before update:', { ...row })
   
   // Map donor fields to payment detail fields - INCLUDING ALL CARE-OF DETAILS
   const fieldMappings = {
@@ -1802,11 +1780,11 @@ function updateDonorFields(row, donorDetails) {
     if (donorDetails[donorField] !== undefined) {
       const oldValue = row[rowField]
       row[rowField] = donorDetails[donorField] || ''
-      console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
+      // console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
     }
   })
   
-  console.log('Row after donor update:', { ...row })
+  // console.log('Row after donor update:', { ...row })
   
   // FIXED: Don't force reactive update here to prevent loops
   // The watcher will handle the reactive update if needed
@@ -1814,7 +1792,7 @@ function updateDonorFields(row, donorDetails) {
 
 // Clear donor fields
 function clearDonorFields(row) {
-  console.log('Clearing donor fields for row')
+  
   
   const donorFields = [
     'donor_name', 'donor_type', 'contact_no', 'email', 'city', 'address', 'cnic',
@@ -1833,7 +1811,7 @@ function clearDonorFields(row) {
 
 // Fund Class handling for Pledge (without deduction breakeven)
 async function populateFundClassFieldsForPledge(row) {
-  console.log('Populating fund class fields for Pledge contribution type')
+  // console.log('Populating fund class fields for Pledge contribution type')
   
   if (!row.fund_class_id) {
     clearFundClassFields(row)
@@ -1844,20 +1822,20 @@ async function populateFundClassFieldsForPledge(row) {
     const fundClassDetails = await fetchFundClassDetails(row.fund_class_id)
     if (fundClassDetails) {
       updateFundClassFields(row, fundClassDetails)
-      console.log('Fund Class fields updated successfully for Pledge')
+      // console.log('Fund Class fields updated successfully for Pledge')
     } else {
-      console.log('No Fund Class details received')
+      // console.log('No Fund Class details received')
       toast.error('Could not fetch Fund Class details')
     }
   } catch (error) {
-    console.error('Error in Fund Class handling for Pledge:', error)
+    // console.error('Error in Fund Class handling for Pledge:', error)
     toast.error('Error loading Fund Class details')
   }
 }
 
 // Fetch Fund Class details
 async function fetchFundClassDetails(fundClassId) {
-  console.log('Fetching Fund Class details for:', fundClassId)
+  // console.log('Fetching Fund Class details for:', fundClassId)
   
   try {
     const result = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
@@ -1865,10 +1843,10 @@ async function fetchFundClassDetails(fundClassId) {
       company: document.doc.company || 'Alkhidmat Foundation Pakistan'
     })
     
-    console.log('Fund Class details received:', result)
+    // console.log('Fund Class details received:', result)
     return result
   } catch (error) {
-    console.error('Error fetching Fund Class details:', error)
+    // console.error('Error fetching Fund Class details:', error)
     toast.error('Error loading Fund Class details')
     return null
   }
@@ -1876,8 +1854,8 @@ async function fetchFundClassDetails(fundClassId) {
 
 // Update Fund Class fields
 function updateFundClassFields(row, fundClassDetails) {
-  console.log('Updating row with Fund Class details:', fundClassDetails)
-  console.log('Row before update:', { ...row })
+  // console.log('Updating row with Fund Class details:', fundClassDetails)
+  // console.log('Row before update:', { ...row })
   
   // Map Fund Class fields to payment detail fields
   const fieldMappings = {
@@ -1894,12 +1872,12 @@ function updateFundClassFields(row, fundClassDetails) {
     if (fundClassDetails[fundClassField] !== undefined) {
       const oldValue = row[rowField]
       row[rowField] = fundClassDetails[fundClassField] || ''
-      console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
+      // console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`)
       
       // CRITICAL: Ensure the field is properly set in the row
       if (fundClassDetails[fundClassField]) {
         row[rowField] = fundClassDetails[fundClassField]
-        console.log(`Set ${rowField} to: ${row[rowField]}`)
+        // console.log(`Set ${rowField} to: ${row[rowField]}`)
       }
     }
   })
@@ -1907,32 +1885,26 @@ function updateFundClassFields(row, fundClassDetails) {
   // CRITICAL: Ensure equity_account and receivable_account are set
   if (fundClassDetails.equity_account) {
     row.equity_account = fundClassDetails.equity_account
-    console.log('Set equity_account to:', row.equity_account)
+    // console.log('Set equity_account to:', row.equity_account)
   }
   
   if (fundClassDetails.receivable_account) {
     row.receivable_account = fundClassDetails.receivable_account
-    console.log('Set receivable_account to:', row.receivable_account)
+    // console.log('Set receivable_account to:', row.receivable_account)
   }
   
-  console.log('Row after Fund Class update:', { ...row })
+  // console.log('Row after Fund Class update:', { ...row })
   
   // FIXED: Don't force reactive update here to prevent loops
   // The watcher will handle the reactive update if needed
   
   // CRITICAL: Log the final state to verify fields are set
-  console.log('Final row state after Fund Class update:', {
-    equity_account: row.equity_account,
-    receivable_account: row.receivable_account,
-    service_area: row.pay_service_area,
-    subservice_area: row.pay_subservice_area,
-    product: row.pay_product
-  })
+  
 }
 
 // Clear Fund Class fields
 function clearFundClassFields(row) {
-  console.log('Clearing Fund Class fields for row')
+  
   
   const fundClassFields = [
     'pay_service_area', 'pay_subservice_area', 'pay_product',
@@ -1955,7 +1927,7 @@ function shouldPopulateDeductionBreakeven() {
   if (document.doc?.name && document.doc.name !== '') {
     // For existing donations, only populate if deduction breakeven is completely empty
     if (document.doc?.deduction_breakeven && document.doc.deduction_breakeven.length > 0) {
-      console.log('Skipping auto-populate for existing donation - deduction breakeven already has data')
+      
       return false
     }
   }
@@ -1968,7 +1940,7 @@ function shouldPopulateDeductionBreakeven() {
     (!document.doc?.deduction_breakeven || document.doc?.deduction_breakeven.length === 0)
   )
   
-  console.log('Should populate deduction breakeven:', shouldPopulate)
+  
   return shouldPopulate
 }
 
@@ -1984,11 +1956,11 @@ async function populateDeductionBreakevenFrontend() {
   }
   
   try {
-    console.log('Populating deduction breakeven table using frontend logic...')
+    // console.log('Populating deduction breakeven table using frontend logic...')
     
     // Check if deduction breakeven already has data
     if (document.doc.deduction_breakeven && document.doc.deduction_breakeven.length > 0) {
-      console.log('Deduction breakeven already has data, skipping population')
+      // console.log('Deduction breakeven already has data, skipping population')
       return
     }
     
@@ -1997,7 +1969,7 @@ async function populateDeductionBreakevenFrontend() {
     // Process each payment detail row
     for (const paymentRow of document.doc.payment_detail) {
       if (paymentRow.fund_class_id && paymentRow.donation_amount) {
-        console.log('Processing payment row:', paymentRow)
+        // console.log('Processing payment row:', paymentRow)
         
         // Fetch deduction details from the database directly
         const deductionDetails = await call('frappe.client.get_list', {
@@ -2052,7 +2024,7 @@ async function populateDeductionBreakevenFrontend() {
     }
     
     if (deductionBreakevenRows.length > 0) {
-      console.log('Created deduction breakeven rows:', deductionBreakevenRows)
+      
       
       // Update the document with the new deduction breakeven data
       document.doc.deduction_breakeven = deductionBreakevenRows
@@ -2062,23 +2034,31 @@ async function populateDeductionBreakevenFrontend() {
       
       // toast.success(`Successfully populated ${deductionBreakevenRows.length} deduction breakeven rows`)
     } else {
-      console.log('No deduction breakeven rows to create')
       toast.info('No deduction details found for the selected fund classes')
     }
     
   } catch (error) {
-    console.error('Error populating deduction breakeven:', error)
+    // console.error('Error populating deduction breakeven:', error)
     toast.error('Failed to populate deduction breakeven table')
   }
 }
 
 // ADD: Use API-based solution instead of frontend-only solution
+// Debounced scheduler for API calls to prevent rapid repeat triggers
+let _populateDBDebounceTimer = null
+function schedulePopulateDeductionBreakeven() {
+  if (_populateDBDebounceTimer) clearTimeout(_populateDBDebounceTimer)
+  _populateDBDebounceTimer = setTimeout(() => {
+    populateDeductionBreakevenFromAPI()
+  }, 400)
+}
+
 onMounted(async () => {
   await nextTick()
   
   if (shouldPopulateDeductionBreakeven()) {
     setTimeout(() => {
-      populateDeductionBreakevenFromAPI()  // Changed from populateDeductionBreakevenFrontend()
+      schedulePopulateDeductionBreakeven()
     }, 2000)
   }
 })
@@ -2086,22 +2066,28 @@ onMounted(async () => {
 watch(() => document.doc, (newDoc) => {
   if (shouldPopulateDeductionBreakeven()) {
     setTimeout(() => {
-      populateDeductionBreakevenFromAPI()  // Changed from populateDeductionBreakevenFrontend()
-    }, 1000)
+      schedulePopulateDeductionBreakeven()
+    }, 800)
   }
 }, { immediate: false, deep: true })
 
 // NEW: Enhanced deduction breakeven functionality using API
 async function populateDeductionBreakevenFromAPI() {
-  console.log("Populating deduction breakeven using API on DonationDetail page...")
-  
+  // Single-flight and rate limiting guard
+  if (populateDeductionBreakevenFromAPI._inFlight) return
+  const nowTs = Date.now()
+  const minGapMs = 1000
+  if (populateDeductionBreakevenFromAPI._lastRun && (nowTs - populateDeductionBreakevenFromAPI._lastRun) < minGapMs) return
+  populateDeductionBreakevenFromAPI._inFlight = true
+  populateDeductionBreakevenFromAPI._lastRun = nowTs
+
   if (!document.doc.payment_detail || document.doc.payment_detail.length === 0) {
-    console.log("No payment details to process")
+    populateDeductionBreakevenFromAPI._inFlight = false
     return
   }
   
   if (document.doc.contribution_type === "Pledge") {
-    console.log("Skipping deduction breakeven for Pledge contribution type")
+    populateDeductionBreakevenFromAPI._inFlight = false
     return
   }
   
@@ -2114,7 +2100,7 @@ async function populateDeductionBreakevenFromAPI() {
   })
   
   if (zakatRowIds.size > 0) {
-    console.log("Clearing deduction breakeven rows for Zakat payment detail rows:", Array.from(zakatRowIds))
+    
     
     if (document.doc.deduction_breakeven && Array.isArray(document.doc.deduction_breakeven)) {
       const originalLength = document.doc.deduction_breakeven.length
@@ -2122,15 +2108,12 @@ async function populateDeductionBreakevenFromAPI() {
       // Filter out deduction breakeven rows that correspond to Zakat payment detail rows
       document.doc.deduction_breakeven = document.doc.deduction_breakeven.filter(deductionRow => {
         const shouldKeep = !zakatRowIds.has(deductionRow.random_id)
-        if (!shouldKeep) {
-          console.log(`Removing deduction breakeven row with random_id ${deductionRow.random_id} due to Zakat intention`)
-        }
+        
         return shouldKeep
       })
       
       const removedCount = originalLength - document.doc.deduction_breakeven.length
       if (removedCount > 0) {
-        console.log(`Removed ${removedCount} deduction breakeven rows for Zakat intention`)
         toast.success(`Cleared ${removedCount} deduction breakeven row(s) for Zakat intention`)
       }
     }
@@ -2138,7 +2121,7 @@ async function populateDeductionBreakevenFromAPI() {
     // Don't proceed with API call if all payment detail rows are Zakat
     const nonZakatRows = document.doc.payment_detail.filter(row => row.intention_id !== 'Zakat')
     if (nonZakatRows.length === 0) {
-      console.log("All payment detail rows have Zakat intention, skipping API call")
+      populateDeductionBreakevenFromAPI._inFlight = false
       return
     }
   }
@@ -2157,7 +2140,6 @@ async function populateDeductionBreakevenFromAPI() {
     })
     
     if (result.success) {
-      console.log("API populated deduction breakeven successfully:", result)
       
       // Update the document with the results
       document.doc.deduction_breakeven = result.deduction_breakeven
@@ -2170,29 +2152,30 @@ async function populateDeductionBreakevenFromAPI() {
       if (result.deduction_breakeven && result.deduction_breakeven.length > 0) {
         // toast.success(`Successfully populated ${result.deduction_breakeven.length} deduction breakeven rows`)
       } else {
-        console.log('No deduction breakeven rows to populate')
       }
     } else {
-      console.error("API failed to populate deduction breakeven:", result.message)
+      // console.error("API failed to populate deduction breakeven:", result.message)
       toast.error(result.message || "Failed to populate deduction breakeven")
     }
   } catch (error) {
-    console.error("Error calling deduction breakeven API:", error)
+    // console.error("Error calling deduction breakeven API:", error)
     toast.error("Error populating deduction breakeven")
+  } finally {
+    setTimeout(() => { populateDeductionBreakevenFromAPI._inFlight = false }, 300)
   }
 }
 
 // NEW: Update deduction breakeven when payment details change
 async function updateDeductionBreakevenFromAPI() {
-  console.log('Updating deduction breakeven using API on DonationDetail page...')
+  // Updating deduction breakeven via API
   
   if (!document.doc.payment_detail || document.doc.payment_detail.length === 0) {
-    console.log('No payment details to update')
+    // console.log('No payment details to update')
     return
   }
   
   if (!document.doc.deduction_breakeven || document.doc.deduction_breakeven.length === 0) {
-    console.log('No existing deduction breakeven to update')
+    // console.log('No existing deduction breakeven to update')
     return
   }
   
@@ -2210,7 +2193,6 @@ async function updateDeductionBreakevenFromAPI() {
     })
     
     if (result.success) {
-      console.log('API updated deduction breakeven successfully:', result)  
       
       // Update the document with the results
       document.doc.deduction_breakeven = result.deduction_breakeven
@@ -2219,26 +2201,26 @@ async function updateDeductionBreakevenFromAPI() {
       // Force reactive update
       document.doc = { ...document.doc }
     } else {
-      console.error('API failed to update deduction breakeven:', result.message)
+      // console.error('API failed to update deduction breakeven:', result.message)
       toast.error(result.message || 'Failed to update deduction breakeven')
     }
   } catch (error) {
-    console.error('Error calling update deduction breakeven API:', error)
+    // console.error('Error calling update deduction breakeven API:', error)
     toast.error('Error updating deduction breakeven')
   }
 }
 
 // CRITICAL FIX: Enhanced set deduction breakeven when payment details change
 async function setDeductionBreakevenFromAPI() {
-  console.log('Setting deduction breakeven using backend API...')
+  // console.log('Setting deduction breakeven using backend API...')
   
   if (!document.doc.payment_detail || document.doc.payment_detail.length === 0) {
-    console.log('No payment details to process')
+    // console.log('No payment details to process')
     return
   }
   
   if (document.doc.contribution_type === "Pledge") {
-    console.log("Skipping deduction breakeven for Pledge contribution type")
+    // console.log("Skipping deduction breakeven for Pledge contribution type")
     return
   }
   
@@ -2251,7 +2233,7 @@ async function setDeductionBreakevenFromAPI() {
   })
   
   if (zakatRowIds.size > 0) {
-    console.log('Clearing deduction breakeven rows for Zakat payment detail rows:', Array.from(zakatRowIds))
+    // console.log('Clearing deduction breakeven rows for Zakat payment detail rows:', Array.from(zakatRowIds))
     
     if (document.doc.deduction_breakeven && Array.isArray(document.doc.deduction_breakeven)) {
       const originalLength = document.doc.deduction_breakeven.length
@@ -2260,14 +2242,13 @@ async function setDeductionBreakevenFromAPI() {
       document.doc.deduction_breakeven = document.doc.deduction_breakeven.filter(deductionRow => {
         const shouldKeep = !zakatRowIds.has(deductionRow.random_id)
         if (!shouldKeep) {
-          console.log(`Removing deduction breakeven row with random_id ${deductionRow.random_id} due to Zakat intention`)
+          // console.log(`Removing deduction breakeven row with random_id ${deductionRow.random_id} due to Zakat intention`)
         }
         return shouldKeep
       })
       
       const removedCount = originalLength - document.doc.deduction_breakeven.length
       if (removedCount > 0) {
-        console.log(`Removed ${removedCount} deduction breakeven rows for Zakat intention`)
         toast.success(`Cleared ${removedCount} deduction breakeven row(s) for Zakat intention`)
       }
     }
@@ -2275,14 +2256,13 @@ async function setDeductionBreakevenFromAPI() {
     // Don't proceed with API call if all payment detail rows are Zakat
     const nonZakatRows = document.doc.payment_detail.filter(row => row.intention_id !== 'Zakat')
     if (nonZakatRows.length === 0) {
-      console.log('All payment detail rows have Zakat intention, skipping API call')
       return
     }
   }
   
   // CRITICAL FIX: Prevent infinite loops by checking if we're already processing
   if (isUpdatingFromAPI) {
-    console.log('Already updating from API, skipping to prevent infinite loop')
+    // console.log('Already updating from API, skipping to prevent infinite loop')
     return
   }
   
@@ -2302,7 +2282,7 @@ async function setDeductionBreakevenFromAPI() {
             amount: row.amount,
             base_amount: row.base_amount
           }
-          console.log(`Preserving user-modified values for row ${index}:`, preservedUserModifications[index])
+          // console.log(`Preserving user-modified values for row ${index}:`, preservedUserModifications[index])
         }
       })
     }
@@ -2320,7 +2300,7 @@ async function setDeductionBreakevenFromAPI() {
     })
     
     if (result.success) {
-      console.log('Backend API set deduction breakeven successfully:', result)
+      // console.log('Backend API set deduction breakeven successfully:', result)
       
       // Update the document with the results (rebuilds entire table like backend)
       document.doc.deduction_breakeven = result.deduction_breakeven
@@ -2355,12 +2335,12 @@ async function setDeductionBreakevenFromAPI() {
               row.base_amount = calculatedAmount
             }
             
-            console.log(`Restored user-modified values for row ${index}:`, {
-              percentage: row.percentage,
-              min_percent: row.min_percent,
-              max_percent: row.max_percent,
-              amount: row.amount
-            })
+            // console.log(`Restored user-modified values for row ${index}:`, {
+            //   percentage: row.percentage,
+            //   min_percent: row.min_percent,
+            //   max_percent: row.max_percent,
+            //   amount: row.amount
+            // })
           }
         })
       }
@@ -2373,16 +2353,15 @@ async function setDeductionBreakevenFromAPI() {
       if (result.deduction_breakeven && result.deduction_breakeven.length > 0) {
         // toast.success(`Successfully populated ${result.deduction_breakeven.length} deduction breakeven rows`)
       } else {
-        console.log('No deduction breakeven rows to populate')
       }
       
-      console.log('Deduction breakeven table rebuilt successfully via backend API')
+      // console.log('Deduction breakeven table rebuilt successfully via backend API')
     } else {
-      console.error('Backend API failed to set deduction breakeven:', result.message)
+      // console.error('Backend API failed to set deduction breakeven:', result.message)
       // toast.error(result.message || 'Failed to set deduction breakeven')
     }
   } catch (error) {
-    console.error('Error calling backend set deduction breakeven API:', error)
+    // console.error('Error calling backend set deduction breakeven API:', error)
     toast.error('Error setting deduction breakeven')
   } finally {
     // Reset the flag after a delay to allow the update to complete
@@ -2393,29 +2372,29 @@ async function setDeductionBreakevenFromAPI() {
 }
 
 // ADD: Function to store original backend values when deduction breakeven is first populated
-function storeOriginalDeductionValues() {
-  if (document.doc.deduction_breakeven && Array.isArray(document.doc.deduction_breakeven)) {
-    document.doc.deduction_breakeven.forEach((row, index) => {
-      if (row) {
-        // Store original values when first populated from backend
-        if (row._originalPercentage === undefined) {
-          row._originalPercentage = row.percentage
-          row._originalMinPercent = row.min_percent
-          row._originalMaxPercent = row.max_percent
-          row._originalAmount = row.amount
-          row._originalBaseAmount = row.base_amount
-          console.log(`Stored original values for deduction row ${index}:`, {
-            percentage: row._originalPercentage,
-            min_percent: row._originalMinPercent,
-            max_percent: row._originalMaxPercent,
-            amount: row._originalAmount,
-            base_amount: row._originalBaseAmount
-          })
-        }
-      }
-    })
-  }
-}
+// function storeOriginalDeductionValues() {
+//   if (document.doc.deduction_breakeven && Array.isArray(document.doc.deduction_breakeven)) {
+//     document.doc.deduction_breakeven.forEach((row, index) => {
+//       if (row) {
+//         // Store original values when first populated from backend
+//         if (row._originalPercentage === undefined) {
+//           row._originalPercentage = row.percentage
+//           row._originalMinPercent = row.min_percent
+//           row._originalMaxPercent = row.max_percent
+//           row._originalAmount = row.amount
+//           row._originalBaseAmount = row.base_amount
+//           console.log(`Stored original values for deduction row ${index}:`, {
+//             percentage: row._originalPercentage,
+//             min_percent: row._originalMinPercent,
+//             max_percent: row._originalMaxPercent,
+//             amount: row._originalAmount,
+//             base_amount: row._originalBaseAmount
+//           })
+//         }
+//       }
+//     })
+//   }
+// }
 
 let populateDeductionTimeout = null
 let updateDeductionTimeout = null
@@ -2425,10 +2404,9 @@ function debouncedPopulateDeductionBreakeven() {
   if (populateDeductionTimeout) {
     clearTimeout(populateDeductionTimeout)
   }
-  
   populateDeductionTimeout = setTimeout(async () => {
-    debouncedPopulateDeductionBreakeven()
-  }, 500) 
+    await populateDeductionBreakevenFromAPI()
+  }, 500)
 }
 
 function debouncedUpdateDeductionBreakeven() {
@@ -2622,7 +2600,7 @@ function preserveUserModificationsBeforeReload() {
           _userModifiedMaxPercent: row._userModifiedMaxPercent,
           _lastMaxPercent: row._lastMaxPercent
         }
-        console.log(`Preserved user modification for deduction row ${index}:`, userModifications[`deduction_breakeven_${index}`])
+        // console.log(`Preserved user modification for deduction row ${index}:`, userModifications[`deduction_breakeven_${index}`])
       }
     })
   }
@@ -2636,7 +2614,7 @@ function preserveUserModificationsBeforeReload() {
 // ADD: Function to restore user modifications after reload
 function restoreUserModificationsAfterReload(preservedUserModifications) {
   if (!document.doc || !document.doc.deduction_breakeven) {
-    console.log('Document not ready for restoration')
+    // console.log('Document not ready for restoration')
     return
   }
   
@@ -2650,17 +2628,17 @@ function restoreUserModificationsAfterReload(preservedUserModifications) {
         sessionStorage.removeItem('preservedUserModifications') // Clean up
       }
     } catch (error) {
-      console.error('Error parsing stored modifications:', error)
+      // console.error('Error parsing stored modifications:', error)
       return
     }
   }
   
   if (!modifications || Object.keys(modifications).length === 0) {
-    console.log('No user modifications to restore')
+    // console.log('No user modifications to restore')
     return
   }
   
-  console.log('Restoring user modifications:', modifications)
+  // console.log('Restoring user modifications:', modifications)
   
   // Restore deduction breakeven modifications
   if (document.doc.deduction_breakeven && Array.isArray(document.doc.deduction_breakeven)) {
@@ -2674,7 +2652,7 @@ function restoreUserModificationsAfterReload(preservedUserModifications) {
           row.percentage = preserved.percentage
           row._lastPercentage = preserved._lastPercentage
           row._userModifiedPercentage = preserved._userModifiedPercentage
-          console.log(`Restored percentage for row ${index}: ${row.percentage}`)
+          // console.log(`Restored percentage for row ${index}: ${row.percentage}`)
         }
         
         // Restore user-modified min_percent
@@ -2682,7 +2660,7 @@ function restoreUserModificationsAfterReload(preservedUserModifications) {
           row.min_percent = preserved.min_percent
           row._lastMinPercent = preserved._lastMinPercent
           row._userModifiedMinPercent = preserved._userModifiedMinPercent
-          console.log(`Restored min_percent for row ${index}: ${row.min_percent}`)
+          // console.log(`Restored min_percent for row ${index}: ${row.min_percent}`)
         }
         
         // Restore user-modified max_percent
@@ -2690,7 +2668,7 @@ function restoreUserModificationsAfterReload(preservedUserModifications) {
           row.max_percent = preserved.max_percent
           row._lastMaxPercent = preserved._lastMaxPercent
           row._userModifiedMaxPercent = preserved._userModifiedMaxPercent
-          console.log(`Restored max_percent for row ${index}: ${row.max_percent}`)
+          // console.log(`Restored max_percent for row ${index}: ${row.max_percent}`)
         }
         
         // Restore calculated amount based on preserved percentage
@@ -2699,7 +2677,7 @@ function restoreUserModificationsAfterReload(preservedUserModifications) {
           if (calculatedAmount !== null) {
             row.amount = calculatedAmount
             row.base_amount = calculatedAmount
-            console.log(`Restored calculated amount for row ${index}: ${calculatedAmount}`)
+            // console.log(`Restored calculated amount for row ${index}: ${calculatedAmount}`)
           }
         }
       }
@@ -2708,7 +2686,7 @@ function restoreUserModificationsAfterReload(preservedUserModifications) {
     // Force reactive update to show restored values
     document.doc = { ...document.doc }
     
-    console.log('User modifications restored successfully')
+    // console.log('User modifications restored successfully')
   }
 }
 
@@ -2716,7 +2694,7 @@ function restoreUserModificationsAfterReload(preservedUserModifications) {
 watch(() => document.doc, (newDoc, oldDoc) => {
   // Check if this is a reload (newDoc exists but oldDoc was null/undefined)
   if (newDoc && (!oldDoc || oldDoc.name !== newDoc.name)) {
-    console.log('Document reloaded, checking for user modifications to restore...')
+    // console.log('Document reloaded, checking for user modifications to restore...')
     
     // Restore user modifications after a short delay to ensure document is fully loaded
     setTimeout(() => {
@@ -2733,11 +2711,11 @@ const originalTriggerOnRowRemove = document.triggerOnRowRemove
 
 // Create custom triggerOnRowRemove that handles payment_detail to deduction_breakeven sync
 const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
-  console.log('Custom triggerOnRowRemove called:', { selectedRows, remainingRows })
+  // console.log('Custom triggerOnRowRemove called:', { selectedRows, remainingRows })
   
   // Check if this is a payment_detail table deletion
   if (document.doc.payment_detail && Array.isArray(document.doc.payment_detail)) {
-    console.log('Payment detail table deletion detected')
+    // console.log('Payment detail table deletion detected')
     
     // Get the random_ids of deleted payment detail rows
     const deletedRandomIds = new Set()
@@ -2746,7 +2724,7 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
       const deletedRow = document.doc.payment_detail.find(row => row.name === rowName)
       if (deletedRow && deletedRow.random_id) {
         deletedRandomIds.add(deletedRow.random_id)
-        console.log(`Payment detail row with random_id ${deletedRow.random_id} was deleted`)
+        // console.log(`Payment detail row with random_id ${deletedRow.random_id} was deleted`)
       }
     })
     
@@ -2758,14 +2736,14 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
       document.doc.deduction_breakeven = document.doc.deduction_breakeven.filter(deductionRow => {
         const shouldKeep = !deletedRandomIds.has(deductionRow.random_id)
         if (!shouldKeep) {
-          console.log(`Deleting deduction_breakeven row with random_id ${deductionRow.random_id}`)
+          // console.log(`Deleting deduction_breakeven row with random_id ${deductionRow.random_id}`)
         }
         return shouldKeep
       })
       
       const deletedDeductionCount = originalDeductionLength - document.doc.deduction_breakeven.length
       if (deletedDeductionCount > 0) {
-        console.log(`Deleted ${deletedDeductionCount} corresponding deduction_breakeven rows`)
+        // console.log(`Deleted ${deletedDeductionCount} corresponding deduction_breakeven rows`)
         toast.success(`Deleted ${deletedDeductionCount} corresponding deduction breakeven row(s)`)
       }
     }
@@ -2833,7 +2811,7 @@ async function createReturnCreditNote() {
 // Add function to handle donation submission
 async function submitDonation() {
   try {
-    console.log('Submitting donation:', document.doc.name)
+    // console.log('Submitting donation:', document.doc.name)
     
     // Basic validation before submission
     if (!document.doc.company) {
@@ -2851,13 +2829,13 @@ async function submitDonation() {
       return
     }
     
-    if (!document.doc.payment_detail || document.doc.payment_detail.length === 0) {
+    if (!document.doc.donation_type === "In Kind Donation" && (!document.doc.payment_detail || document.doc.payment_detail.length === 0)) {
       toast.error('At least one payment detail is required before submitting')
       return
     }
     
     // Refresh the document to get the latest version before submission
-    console.log('Refreshing document before submission...')
+    // console.log('Refreshing document before submission...')
     await document.reload()
     
     // Try using the document's submit method first, fallback to frappe.client.submit
@@ -2865,23 +2843,23 @@ async function submitDonation() {
     try {
       // Use the document's submit method if available
       if (document.submit) {
-        console.log('Using document.submit method...')
+        // console.log('Using document.submit method...')
         result = await document.submit()
       } else {
         // Fallback to frappe.client.submit
-        console.log('Using frappe.client.submit method...')
+        // console.log('Using frappe.client.submit method...')
         result = await call('frappe.client.submit', {
           doc: document.doc
         })
       }
     } catch (submitError) {
-      console.log('Document submit method failed, trying frappe.client.submit...')
+      // console.log('Document submit method failed, trying frappe.client.submit...')
       result = await call('frappe.client.submit', {
         doc: document.doc
       })
     }
     
-    console.log('Donation submission result:', result)
+    // console.log('Donation submission result:', result)
     
     if (result) {
       // Reload the document to get updated status
@@ -2891,7 +2869,7 @@ async function submitDonation() {
       toast.error('Failed to submit donation')
     }
   } catch (error) {
-    console.error('Error submitting donation:', error)
+    // console.error('Error submitting donation:', error)
     
     // Handle specific timestamp mismatch error
     if (error.message && error.message.includes('TimestampMismatchError')) {

@@ -1,5 +1,5 @@
 <template>
-  <Dialog v-model="show" :options="{ size: '4xl' }">
+  <Dialog v-model="show" :options="{ size: '4xl' }" :disableOutsideClickToClose="true" :disableEscToClose="true" :persistent="true">
     <template #body>
       <div class="bg-surface-modal px-4 pb-6 pt-5 sm:px-6">
         <div class="mb-5 flex items-center justify-between">
@@ -152,6 +152,40 @@ const filteredTabs = computed(() => {
               enhancedField.read_only = 1 // Make read-only when visible (like backend)
               enhancedField.fetch_from = `donor.${field.fieldname}` // Add fetch_from
               console.log('GridRowModal: Configured donor dependent field:', field.fieldname)
+            }
+          }
+          // NEW: In payment_detail row modal, control visibility for donor/fund class details
+          if (props.parentFieldname === 'payment_detail') {
+            const donorFields = [
+              'donor_name', 'donor_type', 'donor_desk', 'donor_desk_id',
+              'contact_no', 'email', 'city', 'address', 'cnic',
+              'co_name', 'co_contact_no', 'co_email', 'co_address',
+              'relationship_with_donor', 'area', 'co_city', 'co_country', 'co_designation'
+            ]
+            // Hide donor detail fields if empty
+            if (donorFields.includes(field.fieldname)) {
+              const val = props.data ? props.data[field.fieldname] : undefined
+              if (val === undefined || val === null || val === '') {
+                enhancedField.hidden = true
+              }
+            }
+            // Fund class detail fields should appear once a fund class is selected; make them read-only
+            if (['pay_service_area', 'pay_subservice_area', 'pay_product', 'equity_account', 'receivable_account', 'cost_center'].includes(field.fieldname)) {
+              enhancedField.depends_on = 'fund_class_id'
+              enhancedField.read_only = 1
+              enhancedField.hidden = false
+              // Provide fetch_from so FieldLayout auto-populates when fund_class_id is set
+              const fetchMap = {
+                pay_service_area: 'fund_class_id.service_area',
+                pay_subservice_area: 'fund_class_id.subservice_area',
+                pay_product: 'fund_class_id.product',
+                equity_account: 'fund_class_id.equity_account',
+                receivable_account: 'fund_class_id.receivable_account',
+                cost_center: 'fund_class_id.cost_center'
+              }
+              if (fetchMap[field.fieldname]) {
+                enhancedField.fetch_from = fetchMap[field.fieldname]
+              }
             }
           }
           
@@ -375,6 +409,46 @@ async function handleFieldChange(fieldname, value) {
     } catch (error) {
       console.error('❌ Error fetching fund class details:', error)
       toast.error('Error loading fund class details')
+    }
+  }
+
+  // Restore: When fund class is selected in payment_detail modal, also populate equity and receivable accounts
+  if (fieldname === 'fund_class_id' && value && props.parentFieldname === 'payment_detail') {
+    try {
+      const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
+        fund_class_id: value,
+        company: 'Alkhidmat Foundation'
+      })
+      if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
+        setTimeout(() => {
+          if (fundClassDetails.equity_account) {
+            emit('field-change', 'equity_account', fundClassDetails.equity_account)
+          }
+          if (fundClassDetails.receivable_account) {
+            emit('field-change', 'receivable_account', fundClassDetails.receivable_account)
+          }
+          if (fundClassDetails.cost_center) {
+            emit('field-change', 'cost_center', fundClassDetails.cost_center)
+          }
+          if (fundClassDetails.service_area) {
+            emit('field-change', 'pay_service_area', fundClassDetails.service_area)
+            emit('field-change', 'service_area', fundClassDetails.service_area)
+            if (props.data) props.data.pay_service_area = fundClassDetails.service_area
+          }
+          if (fundClassDetails.subservice_area) {
+            emit('field-change', 'pay_subservice_area', fundClassDetails.subservice_area)
+            emit('field-change', 'subservice_area', fundClassDetails.subservice_area)
+            if (props.data) props.data.pay_subservice_area = fundClassDetails.subservice_area
+          }
+          if (fundClassDetails.product) {
+            emit('field-change', 'pay_product', fundClassDetails.product)
+            emit('field-change', 'product', fundClassDetails.product)
+            if (props.data) props.data.pay_product = fundClassDetails.product
+          }
+        }, 100)
+      }
+    } catch (e) {
+      console.error('Error restoring fund class account fetch:', e)
     }
   }
   
