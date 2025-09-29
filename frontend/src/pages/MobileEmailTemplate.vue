@@ -173,12 +173,38 @@ const detailTabs = createResource({
   cache: ['Detail', 'Email Template'],
   params: { doctype: 'Email Template', type: 'Detail' },
   auto: true,
+  transform: (_tabs) => {
+    if (!_tabs || !Array.isArray(_tabs)) return []
+    _tabs.forEach((tab) => {
+      tab.sections?.forEach((section) => {
+        section.columns?.forEach((column) => {
+          if (Array.isArray(column.fields)) {
+            column.fields = column.fields.filter(
+              (f) => !['response', 'response_html'].includes(f.fieldname),
+            )
+            column.fields.forEach((f) => {
+              if (f.fieldname === 'reference_doctype') {
+                f.fieldtype = 'Link'
+                f.options = 'DocType'
+                f.get_query = () => ({ doctype: 'DocType', filters: { name: ['in', ['CRM Lead', 'Donor', 'Contact']] } })
+                f.link_filters = JSON.stringify({ name: ['in', ['CRM Lead', 'Donor', 'Contact']] })
+              }
+            })
+          }
+        })
+      })
+    })
+    return _tabs
+  },
 })
 
 function handleFieldChange(fieldname, value) {
   if (fieldname === 'use_html') {
     const normalized = value === 1 || value === true || value === '1'
     updateField('use_html', normalized ? 1 : 0)
+    if (normalized && !doc.value.response_html && doc.value.response) {
+      updateField('response_html', doc.value.response)
+    }
   } else {
     updateField(fieldname, value)
   }

@@ -4,13 +4,8 @@
       <h3
         class="flex items-center gap-2 text-2xl font-semibold leading-6 text-ink-gray-9"
       >
-        <div>{{ __('Edit Quick Entry Layout') }}</div>
-        <Badge
-          v-if="dirty"
-          :label="__('Not Saved')"
-          variant="subtle"
-          theme="orange"
-        />
+        <div>{{ __("Edit Quick Entry Layout") }}</div>
+        <Badge v-if="dirty" :label="__('Not Saved')" variant="subtle" theme="orange" />
       </h3>
     </template>
     <template #body-content>
@@ -44,152 +39,150 @@
   </Dialog>
 </template>
 <script setup>
-import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
-import FieldLayoutEditor from '@/components/FieldLayoutEditor.vue'
-import { useDebounceFn } from '@vueuse/core'
-import { capture } from '@/telemetry'
-import { Dialog, Badge, Switch, call, createResource } from 'frappe-ui'
-import { ref, watch, onMounted, nextTick } from 'vue'
+import FieldLayout from "@/components/FieldLayout/FieldLayout.vue";
+import FieldLayoutEditor from "@/components/FieldLayoutEditor.vue";
+import { useDebounceFn } from "@vueuse/core";
+import { capture } from "@/telemetry";
+import { Dialog, Badge, Switch, call, createResource } from "frappe-ui";
+import { ref, watch, onMounted, nextTick } from "vue";
 
 const props = defineProps({
   doctype: {
     type: String,
-    default: 'CRM Lead',
+    default: "CRM Lead",
   },
   onlyRequired: {
     type: Boolean,
     default: false,
   },
-})
+});
 
-
-
-const show = defineModel()
-const _doctype = ref(props.doctype)
-const loading = ref(false)
-const dirty = ref(false)
-const preview = ref(false)
+const show = defineModel();
+const _doctype = ref(props.doctype);
+const loading = ref(false);
+const dirty = ref(false);
+const preview = ref(false);
 
 function getParams() {
-  let type = props.onlyRequired ? 'Required Fields' : 'Quick Entry'
-  return { doctype: _doctype.value, type }
+  let type = props.onlyRequired ? "Required Fields" : "Quick Entry";
+  return { doctype: _doctype.value, type };
 }
 
 const tabs = createResource({
-  url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
+  url: "crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout",
   // FIX: Use unique cache key for QuickEntryModal
-  cache: ['QuickEntryModal', props.doctype, 'layout-editor'], 
+  cache: ["QuickEntryModal", props.doctype, "layout-editor"],
   params: getParams(),
   auto: true,
   // Remove the transform function that references undefined variables
   onSuccess(data) {
     // Handle success without referencing undefined variables
-    console.log('Layout loaded successfully:', data)
-  }
-})
+    // console.log('Layout loaded successfully:', data)
+  },
+});
 
 watch(
   () => tabs?.data,
   () => {
-    dirty.value =
-      JSON.stringify(tabs?.data) !== JSON.stringify(tabs?.originalData)
+    dirty.value = JSON.stringify(tabs?.data) !== JSON.stringify(tabs?.originalData);
   },
-  { deep: true },
-)
+  { deep: true }
+);
 
-onMounted(() => useDebounceFn(reload, 100)())
+onMounted(() => useDebounceFn(reload, 100)());
 
 function reload() {
   nextTick(() => {
-    tabs.params = getParams()
-    tabs.reload()
-  })
+    tabs.params = getParams();
+    tabs.reload();
+  });
 }
 
 function saveChanges() {
-  let _tabs = JSON.parse(JSON.stringify(tabs.data))
+  let _tabs = JSON.parse(JSON.stringify(tabs.data));
   _tabs.forEach((tab) => {
-    if (!tab.sections) return
+    if (!tab.sections) return;
     tab.sections.forEach((section) => {
       section.columns.forEach((column) => {
-        if (!column.fields) return
-        column.fields = column.fields.map((field) => field.fieldname)
-      })
-    })
-  })
-  loading.value = true
-  let type = props.onlyRequired ? 'Required Fields' : 'Quick Entry'
-  
-  call(
-    'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.save_fields_layout',
-    {
-      doctype: _doctype.value,
-      type: type,
-      layout: JSON.stringify(_tabs),
-    },
-  ).then(() => {
-    loading.value = false
-    show.value = false
-    
+        if (!column.fields) return;
+        column.fields = column.fields.map((field) => field.fieldname);
+      });
+    });
+  });
+  loading.value = true;
+  let type = props.onlyRequired ? "Required Fields" : "Quick Entry";
+
+  call("crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.save_fields_layout", {
+    doctype: _doctype.value,
+    type: type,
+    layout: JSON.stringify(_tabs),
+  }).then(() => {
+    loading.value = false;
+    show.value = false;
+
     // FIX: Clear ALL related caches before dispatching events
-    clearAllRelatedCaches()
-    
+    clearAllRelatedCaches();
+
     // FIX: Emit global event to notify other components about layout update
-    window.dispatchEvent(new CustomEvent('layout-updated', {
-      detail: {
-        doctype: _doctype.value,
-        type: type,
-        timestamp: Date.now()
-      }
-    }))
-    
+    window.dispatchEvent(
+      new CustomEvent("layout-updated", {
+        detail: {
+          doctype: _doctype.value,
+          type: type,
+          timestamp: Date.now(),
+        },
+      })
+    );
+
     // FIX: Emit specific event for Quick Entry layout updates
-    window.dispatchEvent(new CustomEvent('quick-entry-layout-saved', {
-      detail: {
-        doctype: _doctype.value,
-        type: type,
-        timestamp: Date.now()
-      }
-    }))
-    
-    capture('quick_entry_layout_builder', { doctype: _doctype.value })
-  })
+    window.dispatchEvent(
+      new CustomEvent("quick-entry-layout-saved", {
+        detail: {
+          doctype: _doctype.value,
+          type: type,
+          timestamp: Date.now(),
+        },
+      })
+    );
+
+    capture("quick_entry_layout_builder", { doctype: _doctype.value });
+  });
 }
 
 // NEW: Function to clear all related caches
 function clearAllRelatedCaches() {
   // Clear the current component's cache
   if (tabs.cache) {
-    tabs.cache.clear()
+    tabs.cache.clear();
   }
-  
+
   // Clear any other related caches that might exist
   const cacheKeys = [
-    ['QuickEntryModal', props.doctype, 'layout-editor'],
-    ['DonationModal', props.doctype, 'quick-entry'],
-    ['FieldLayout', props.doctype, 'quick-entry'],
-    ['FieldLayout', props.doctype, 'required-fields']
-  ]
-  
-  cacheKeys.forEach(cacheKey => {
+    ["QuickEntryModal", props.doctype, "layout-editor"],
+    ["DonationModal", props.doctype, "quick-entry"],
+    ["FieldLayout", props.doctype, "quick-entry"],
+    ["FieldLayout", props.doctype, "required-fields"],
+  ];
+
+  cacheKeys.forEach((cacheKey) => {
     try {
       // Try to clear cache if it exists
-      const cache = createResource.cache.get(cacheKey)
+      const cache = createResource.cache.get(cacheKey);
       if (cache) {
-        cache.clear()
-        console.log('Cleared cache for:', cacheKey)
+        cache.clear();
+        console.log("Cleared cache for:", cacheKey);
       }
     } catch (error) {
-      console.log('Cache not found for:', cacheKey)
+      console.log("Cache not found for:", cacheKey);
     }
-  })
-  
+  });
+
   // Force clear all caches for this doctype
   try {
-    createResource.cache.clear()
-    console.log('Cleared all caches')
+    createResource.cache.clear();
+    console.log("Cleared all caches");
   } catch (error) {
-    console.log('Could not clear all caches')
+    console.log("Could not clear all caches");
   }
 }
 </script>

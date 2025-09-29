@@ -43,37 +43,27 @@
             
             <!-- Content editor area controlled by use_html -->
             <div class="mt-3" v-if="fieldLayout && fieldLayout.length > 0">
-              <template v-if="emailTemplate.use_html">
-                <FormControl
-                  size="md"
-                  type="textarea"
-                  :label="__(' Response ')"
-                  :required="true"
-                  ref="content_html"
-                  :rows="10"
-                  v-model="emailTemplate.response_html"
-                  :placeholder="__(
-                    '<p>Dear {{ lead_name }},</p>\n\n<p>This is a reminder for the payment of {{ grand_total }}.</p>\n\n<p>Thanks,</p>\n<p>Frappé</p>'
-                  )"
+              <div class="mb-2 text-base text-ink-gray-7">{{ __('Response') }}</div>
+              <div class="p-2">
+                <TextEditor
+                  v-if="useHtml"
+                  editor-class="prose-sm min-h-[16rem] border rounded-b-lg border-t-0 p-2"
+                  :content="emailTemplate.response_html || ''"
+                  placeholder="Type something..."
+                  @change="(val) => (emailTemplate.response_html = val)"
+                  :bubbleMenu="true"
+                  :fixed-menu="true"
                 />
-              </template>
-              <template v-else>
-                <div class="mb-1.5 text-base text-ink-gray-5">
-                  {{ __(' Response ') }}
-                  <span class="text-ink-red-3">*</span>
-                </div>
-                <div class="p-2">
-                  <TextEditor
-                    ref="content_rich"
-                    editor-class="prose-sm min-h-[4rem] border rounded-b-lg border-t-0 p-2"
-                    :content="emailTemplate.response || ''"
-                    placeholder="Type something..."
-                    @change="(val) => (emailTemplate.response = val)"
-                    :bubbleMenu="true"
-                    :fixed-menu="true"
-                  />
-                </div>
-              </template>
+                <TextEditor
+                  v-else
+                  editor-class="prose-sm min-h-[16rem] border rounded-b-lg border-t-0 p-2"
+                  :content="emailTemplate.response || ''"
+                  placeholder="Type something..."
+                  @change="(val) => (emailTemplate.response = val)"
+                  :bubbleMenu="true"
+                  :fixed-menu="true"
+                />
+              </div>
             </div>
             
             <!-- Fallback message if no CRM layout is available -->
@@ -151,6 +141,12 @@ const emailTemplate = ref({
   response_html: '',
   response: '',
   enabled: false,
+})
+
+// Computed property for use_html similar to EmailTemplate.vue
+const useHtml = computed(() => {
+  const v = emailTemplate.value?.use_html
+  return v === 1 || v === true || v === '1'
 })
 
 // Fetch CRM field layout for Email Template
@@ -309,7 +305,13 @@ const updateEmailTemplate = createResource({
 
 // Handle field changes from FieldLayout
 function handleFieldChange(fieldname, value) {
-  if (emailTemplate.value) {
+  if (fieldname === 'use_html') {
+    const normalized = value === 1 || value === true || value === '1'
+    emailTemplate.value[fieldname] = normalized ? 1 : 0
+    if (normalized && !emailTemplate.value.response_html && emailTemplate.value.response) {
+      emailTemplate.value.response_html = emailTemplate.value.response
+    }
+  } else {
     emailTemplate.value[fieldname] = value
   }
 }
@@ -384,12 +386,12 @@ async function createEmailTemplateFn() {
     return
   }
   // Require the correct field based on Use HTML
-  if (!emailTemplate.value.use_html && !emailTemplate.value.response) {
+  if (!useHtml.value && !emailTemplate.value.response) {
     errorMessage.value = __('Response is required')
     isCreating.value = false
     return
   }
-  if (emailTemplate.value.use_html && !emailTemplate.value.response_html) {
+  if (useHtml.value && !emailTemplate.value.response_html) {
     errorMessage.value = __('Response (HTML) is required')
     isCreating.value = false
     return
@@ -456,13 +458,13 @@ async function updateEmailTemplateFn() {
     isCreating.value = false
     return
   }
-  if (!emailTemplate.value.use_html && !emailTemplate.value.response) {
-    errorMessage.value = __(' Response  is required')
+  if (!useHtml.value && !emailTemplate.value.response) {
+    errorMessage.value = __('Response is required')
     isCreating.value = false
     return
   }
-  if (emailTemplate.value.use_html && !emailTemplate.value.response_html) {
-    errorMessage.value = __(' Response  is required')
+  if (useHtml.value && !emailTemplate.value.response_html) {
+    errorMessage.value = __('Response (HTML) is required')
     isCreating.value = false
     return
   }
@@ -473,7 +475,7 @@ async function updateEmailTemplateFn() {
     { fieldname: 'enabled', value: emailTemplate.value.enabled ? 1 : 0 },
   ]
 
-  if (!emailTemplate.value.use_html) {
+  if (!useHtml.value) {
     updates.push({ fieldname: 'response', value: emailTemplate.value.response })
   } else {
     updates.push({ fieldname: 'response_html', value: emailTemplate.value.response_html })

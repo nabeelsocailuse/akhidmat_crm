@@ -403,4 +403,14 @@ watch(
     }
   }
 );
+
+// Watcher to clear donor_desk when department changes (matches DonorModal)
+watch(
+  () => donorDocument.doc.department,
+  (newDept, oldDept) => {
+    if (newDept !== oldDept) {
+      donorDocument.doc.donor_desk = '';
+    }
+  }
+);
 </script>

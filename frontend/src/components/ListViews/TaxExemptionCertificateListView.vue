@@ -109,6 +109,15 @@
       </ListRowItem>
     </ListRows>
   </ListView>
+  <ListBulkActions
+    v-model:list="list"
+    doctype="Tax Exemption Certificate"
+    :options="{
+      hideEdit: false,
+      hideDelete: false,
+      hideAssign: false,
+    }"
+  />
 </template>
 
 <script setup>
@@ -123,11 +132,14 @@ import {
 } from 'frappe-ui'
 import AppStyling from '@/components/AppStyling.vue'
 import ListRows from '@/components/ListViews/ListRows.vue'
+import ListBulkActions from '@/components/ListBulkActions.vue'
 import MultipleAvatar from '@/components/MultipleAvatar.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import HeartIcon from '@/components/Icons/HeartIcon.vue'
 
 const route = useRoute()
+
+const list = defineModel('list')
 
 const props = defineProps({
   columns: { type: Array, required: true },

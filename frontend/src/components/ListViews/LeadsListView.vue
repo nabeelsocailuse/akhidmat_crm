@@ -139,6 +139,15 @@
     }"
     @loadMore="emit('loadMore')"
   />
+  <ListBulkActions
+    v-model:list="list"
+    doctype="CRM Lead"
+    :options="{
+      hideEdit: false,
+      hideDelete: false,
+      hideAssign: false,
+    }"
+  />
 </template>
 
 <script setup>
@@ -210,6 +219,8 @@ const props = defineProps({
     default: false,
   },
 })
+
+const list = defineModel('list')
 
 const emit = defineEmits([
   'selectionsChanged',

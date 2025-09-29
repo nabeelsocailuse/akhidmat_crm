@@ -428,6 +428,37 @@ const field = computed(() => {
     field.hidden = false
   }
 
+  // Custom visibility rule for Donation returns: hide Return Against unless status is 'Return' and is_return is enabled
+  if (doctype === 'Donation') {
+    const fieldnameLower = (field.fieldname || '').toLowerCase()
+    const isReturnAgainstField = ['return_against'].includes(fieldnameLower)
+    if (isReturnAgainstField) {
+      const isReturnChecked = data.value?.is_return === 1 || data.value?.is_return === true || data.value?.is_return === '1'
+      const shouldShow =  isReturnChecked
+      if (!shouldShow) {
+        field.hidden = true
+      }
+    }
+
+    // Enforce read-only for posting_date and posting_time based on edit_posting_date_time
+    const allowEditDateTime = data.value?.edit_posting_date_time === 1 || data.value?.edit_posting_date_time === true || data.value?.edit_posting_date_time === '1'
+    if (fieldnameLower === 'posting_date') {
+      field.fieldtype = 'Date'
+      field.read_only = !allowEditDateTime
+    }
+    if (fieldnameLower === 'posting_time') {
+      field.fieldtype = 'Time'
+      field.read_only = !allowEditDateTime
+    }
+    if (fieldnameLower === 'edit_posting_date_time') {
+      field.fieldtype = 'Check'
+      if (typeof data.value?.edit_posting_date_time === 'undefined') {
+        // Initialize default to unchecked
+        if (data.value) data.value.edit_posting_date_time = 0
+      }
+    }
+  }
+
   // Configure warehouse field with filters for donation form
   if (field.fieldname === 'warehouse' 
     && field.fieldtype === 'Link' 

@@ -133,7 +133,7 @@
                         : row[field.options]
                     "
                     :filters="field.filters"
-                    :disabled="!gridSettings.editable_grid"
+                    :disabled="!canEditField(field)"
                     @change="(v) => fieldChange(v, field, row)"
                     :onCreate="
                       (value, close) => field.create(v, field, row, close)
@@ -145,7 +145,7 @@
                     :value="getUser(row[field.fieldname]).full_name"
                     :doctype="field.options"
                     :filters="field.filters"
-                    :disabled="!gridSettings.editable_grid"
+                    :disabled="!canEditField(field)"
                     @change="(v) => fieldChange(v, field, row)"
                     :placeholder="field.placeholder"
                     :hideMe="true"
@@ -204,7 +204,7 @@
                     variant="outline"
                     :formatter="(date) => getFormat(date, '', true)"
                     input-class="border-none text-sm text-ink-gray-8"
-                    :disabled="!gridSettings.editable_grid"
+                    :disabled="!canEditField(field)"
                     @change="(v) => fieldChange(v, field, row)"
                   />
                   <DateTimePicker
@@ -214,7 +214,7 @@
                     variant="outline"
                     :formatter="(date) => getFormat(date, '', true, true)"
                     input-class="border-none text-sm text-ink-gray-8"
-                    :disabled="!gridSettings.editable_grid"
+                    :disabled="!canEditField(field)"
                     @change="(v) => fieldChange(v, field, row)"
                   />
                   <FormControl
@@ -227,7 +227,7 @@
                     type="textarea"
                     variant="outline"
                     :value="row[field.fieldname]"
-                    :disabled="!gridSettings.editable_grid"
+                    :disabled="!canEditField(field)"
                     @change="fieldChange($event.target.value, field, row)"
                   />
                   <FormControl
@@ -237,14 +237,14 @@
                     variant="outline"
                     v-model="row[field.fieldname]"
                     :options="field.options"
-                    :disabled="!gridSettings.editable_grid"
+                    :disabled="!canEditField(field)"
                     @change="(e) => fieldChange(e.target.value, field, row)"
                   />
                   <Password
                     v-else-if="field.fieldtype === 'Password'"
                     variant="outline"
                     :value="row[field.fieldname]"
-                    :disabled="Boolean(field.read_only) || !gridSettings.editable_grid"
+                    :disabled="Boolean(field.read_only) || !canEditField(field)"
                     @change="fieldChange($event.target.value, field, row)"
                   />
                   <FormattedInput
@@ -263,7 +263,7 @@
                     variant="outline"
                     :value="getFloatWithPrecision(field.fieldname, row)"
                     :formattedValue="(row[field.fieldname] || '0') + '%'"
-                    :disabled="Boolean(field.read_only) || !gridSettings.editable_grid"
+                    :disabled="Boolean(field.read_only) || !canEditField(field)"
                     @change="fieldChange(flt($event.target.value), field, row)"
                   />
                   <FormattedInput
@@ -273,7 +273,7 @@
                     variant="outline"
                     :value="getFloatWithPrecision(field.fieldname, row)"
                     :formattedValue="row[field.fieldname]"
-                    :disabled="Boolean(field.read_only) || !gridSettings.editable_grid"
+                    :disabled="Boolean(field.read_only) || !canEditField(field)"
                     @change="fieldChange(flt($event.target.value), field, row)"
                   />
                   <FormattedInput
@@ -285,7 +285,7 @@
                     :formattedValue="
                       getFormattedCurrency(field.fieldname, row, parentDoc)
                     "
-                    :disabled="Boolean(field.read_only) || !gridSettings.editable_grid"
+                    :disabled="Boolean(field.read_only) || !canEditField(field)"
                     @change="fieldChange(flt($event.target.value), field, row)"
                   />
                   <FormControl
@@ -295,7 +295,7 @@
                     variant="outline"
                     v-model="row[field.fieldname]"
                     :options="field.options"
-                    :disabled="!gridSettings.editable_grid"
+                    :disabled="!canEditField(field)"
                     @change="fieldChange($event.target.value, field, row)"
                   />
                   <Grid
@@ -356,7 +356,7 @@
         theme="red"
         @click="deleteRows"
       />
-      <Button v-if="gridSettings.editable_grid" :label="__('Add Row')" @click="addRow" />
+      <Button v-if="canAddRows" :label="__('Add Row')" @click="addRow" />
     </div>
     <GridRowFieldsModal
       v-if="showGridRowFieldsModal"
@@ -465,6 +465,30 @@ const gridSettings = computed(() => {
   if (props.readOnly) return { ...settings, editable_grid: false }
   return settings
 })
+
+// Disallow adding new payment_detail rows on Donation returns
+const isDonationReturn = computed(() => {
+  if (props.parentDoctype !== 'Donation' || props.parentFieldname !== 'payment_detail') return false
+  const doc = parentDoc.value || {}
+  const isReturnFlag = doc.is_return === 1 || doc.is_return === true || doc.is_return === '1'
+  const hasReturnAgainst = !!doc.return_against
+  const statusText = (doc.status || '').toString().toLowerCase()
+  const isReturnStatus = statusText === 'return' || statusText === 'credit note issued'
+  return isReturnFlag || hasReturnAgainst || isReturnStatus
+})
+
+const canAddRows = computed(() => {
+  return gridSettings.value.editable_grid && !isDonationReturn.value
+})
+
+function canEditField(field) {
+  if (!gridSettings.value.editable_grid) return false
+  // During Donation Return, only donation_amount is editable in payment_detail
+  if (props.parentDoctype === 'Donation' && props.parentFieldname === 'payment_detail' && isDonationReturn.value) {
+    return field?.fieldname === 'donation_amount'
+  }
+  return true
+}
 
 const fields = computed(() => {
   const gridViewSettings = getGridViewSettings(props.parentDoctype)
