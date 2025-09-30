@@ -1527,6 +1527,8 @@ function mapFundClass(row, fc) {
   });
 }
 
+let didEnrichOnce = false;
+
 async function enrichOnceAfterLoad() {
   if (didEnrichOnce || !document.doc) return;
   didEnrichOnce = true;
@@ -1634,23 +1636,6 @@ onMounted(async () => {
     }
   }, 1500);
 });
-
-// Immediately sync baseline when document loads to avoid "Not Saved" flash after creation
-watch(
-  () => document.doc,
-  (docVal) => {
-    try {
-      if (docVal) {
-        const snapshot = JSON.parse(JSON.stringify(docVal));
-        document.originalDoc = snapshot;
-        if (typeof document.isDirty !== 'undefined') {
-          document.isDirty = false;
-        }
-      }
-    } catch (_) {}
-  },
-  { immediate: true, deep: false }
-)
 
 watch(
   () => document.doc?.name,
@@ -2767,7 +2752,7 @@ async function setDeductionBreakevenFromAPI() {
             // Restore user-modified percentage
             row.percentage = preserved.percentage;
             row._lastPercentage = preserved.percentage;
-            row._userModifiedPercentage = true;
+            row._userModifiedPercentage = preserved._userModifiedPercentage;
 
             // Restore user-modified min/max percent if they were modified
             if (preserved.min_percent !== undefined) {
@@ -3215,7 +3200,7 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
     ) {
       const originalDeductionLength = document.doc.deduction_breakeven.length;
 
-      // Filter out deduction_breakeven rows that match the deleted payment_detail random_ids
+      // Filter out deduction breakeven rows that match the deleted payment_detail random_ids
       document.doc.deduction_breakeven = document.doc.deduction_breakeven.filter(
         (deductionRow) => {
           const shouldKeep = !deletedRandomIds.has(deductionRow.random_id);
@@ -3266,6 +3251,7 @@ const createDropdownOptions = computed(() => {
 async function createReturnCreditNote() {
   try {
     if (!document.doc || !document.doc.name) return;
+
     // Check if returns already cover all donors
     const totalReturned = await call(
       "akf_accounts.akf_accounts.doctype.donation.donation.get_total_donors_return",
@@ -3273,6 +3259,7 @@ async function createReturnCreditNote() {
         return_against: document.doc.name,
       }
     );
+
     if (totalReturned === document.doc.total_donors) {
       toast.info(__("All donors already returned for this document"));
       return;
@@ -3283,11 +3270,13 @@ async function createReturnCreditNote() {
       "akf_accounts.akf_accounts.doctype.donation.donation.make_donation_return",
       {
         source_name: document.doc.name,
-      }
+      },
+      { silent: true }
     );
 
     // Insert new Donation as draft and navigate
-    const created = await call("frappe.client.insert", { doc: mapped });
+    const created = await call("frappe.client.insert", { doc: mapped }, { silent: true });
+
     if (created && created.name) {
       toast.success(__("Return / Credit Note created"));
       router.push({ name: "DonationDetail", params: { donationId: created.name } });
@@ -3295,15 +3284,81 @@ async function createReturnCreditNote() {
       toast.error(__("Failed to create Return / Credit Note"));
     }
   } catch (e) {
-    toast.error(e?.message || __("Failed to create Return / Credit Note"));
+    // Normalize Frappe server error messages (including _server_messages JSON) into human-readable text
+    const htmlToText = (input) => {
+      if (!input) return "";
+      let str = String(input);
+      str = str.replace(/<br\s*\/?\s*>/gi, "\n");
+      str = str.replace(/<[^>]+>/g, "");
+      str = str
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+      str = str
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .join("\n");
+      return str;
+    };
+
+    const extractFrappeServerMessage = (err) => {
+      // Frappe often returns _server_messages as a JSON-encoded list of dicts/strings
+      const tryParse = (val) => {
+        try {
+          return JSON.parse(val);
+        } catch {
+          return null;
+        }
+      };
+
+      // Prefer messages array provided by frappe-ui's call() helper
+      if (Array.isArray(err?.messages) && err.messages.length) {
+        let text = htmlToText(err.messages.join("\n"));
+        if (text) {
+          // If only row details are present (common for ValidationError), prefix human title
+          if (/^Row\s*#\d+/i.test(text) && !/Return entries already exist\./i.test(text)) {
+            text = `Return entries already exist.\n${text}`;
+          }
+          return text;
+        }
+      }
+
+      const server = err?._server_messages || err?.response?._server_messages || err?.exc?._server_messages;
+      if (server && typeof server === "string") {
+        const list = tryParse(server);
+        if (Array.isArray(list) && list.length > 0) {
+          // Items may be JSON strings
+          const first = typeof list[0] === "string" ? tryParse(list[0]) || list[0] : list[0];
+          if (first && typeof first === "object") {
+            const title = first.title ? String(first.title) : "";
+            const message = first.message ? String(first.message) : "";
+            const text = [title && htmlToText(title), htmlToText(message)]
+              .filter(Boolean)
+              .join("\n");
+            if (text) return text;
+          } else if (typeof first === "string") {
+            return htmlToText(first);
+          }
+        }
+      }
+
+      // Fallback to generic message fields
+      const raw = err?.message || err?.exc || err;
+      return htmlToText(raw);
+    };
+
+    const pretty = extractFrappeServerMessage(e) || __("Failed to create Return / Credit Note");
+    toast.error(pretty);
   }
 }
 
 // Add function to handle donation submission
 async function submitDonation() {
   try {
-    // console.log('Submitting donation:', document.doc.name)
-
     // Basic validation before submission
     if (!document.doc.company) {
       toast.error("Company is required before submitting");
@@ -3344,25 +3399,18 @@ async function submitDonation() {
     // Try using the document's submit method first, fallback to frappe.client.submit
     let result;
     try {
-      // Use the document's submit method if available
       if (document.submit) {
-        // console.log('Using document.submit method...')
         result = await document.submit();
       } else {
-        // Fallback to frappe.client.submit
-        // console.log('Using frappe.client.submit method...')
         result = await call("frappe.client.submit", {
           doc: document.doc,
         });
       }
     } catch (submitError) {
-      // console.log('Document submit method failed, trying frappe.client.submit...')
       result = await call("frappe.client.submit", {
         doc: document.doc,
       });
     }
-
-    // console.log('Donation submission result:', result)
 
     if (result) {
       toast.success("Donation submitted successfully");
@@ -3403,63 +3451,15 @@ const isReadOnly = computed(() => {
 });
 
 // Handle fund class selection (placeholder - main logic is in the watcher)
-function handleFundClassSelected(event) {
-  const { row, fundClassId, success } = event;
-
-  if (success && fundClassId && row) {
-    // Check if the fundClassId already exists in deduction_breakeven
-    const existingEntry = donation.doc.deduction_breakeven.find(
-      (entry) => entry.fund_class_id === fundClassId
-    );
-
-    if (!existingEntry) {
-      // Add new entry if it doesn't exist
-      const newRow = {
-        random_id: generateRandomId(donation.doc.deduction_breakeven.length + 1),
-        fund_class_id: fundClassId,
-        percentage: 0,
-        deduction_amount: 0,
-        currency: donation.doc.currency || "PKR",
-        to_currency: donation.doc.to_currency || donation.doc.currency,
-        posting_date: donation.doc.posting_date,
-        is_return: donation.doc.is_return || false,
-      };
-      donation.doc.deduction_breakeven.push(newRow);
-
-      // Force reactive update
-      donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven];
-
-      toast.success("Fund class added successfully to deduction breakeven.");
-    } else {
-      // Log and show warning for duplicate fund class
-      console.warn(`Duplicate fund class detected: ${fundClassId}`);
-      toast.warning("Duplicate fund class entry detected in deduction breakeven.");
-    }
-
-    // Ensure payment_detail table is updated reactively
-    if (donation.doc.payment_detail) {
-      donation.doc.payment_detail = [...donation.doc.payment_detail];
-    }
-  } else {
-    // Log error for invalid event data
-    console.error("Invalid event data or fundClassId:", {
-      event,
-      row,
-      fundClassId,
-      success,
-    });
-    toast.error("Failed to process fund class selection. Please try again.");
-  }
+async function handleFundClassSelected(data) {
+  // The main duplicate prevention logic is now in the payment_detail watcher
+  // This function is kept for compatibility but the real logic is elsewhere
 }
 
 // Handle adding deduction row manually
 function handleAddDeductionRow(data) {
-  // This can be used if there's a need to manually add deduction rows
-  // For now, we'll use the existing populateDeductionBreakevenFromAPI function
   schedulePopulateDeductionBreakeven();
 }
-
-// Modal create handler no longer needed
 </script>
 
 <style scoped></style>

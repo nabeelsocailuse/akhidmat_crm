@@ -238,7 +238,7 @@ const resetDonationData = () => {
   donation.doc = {
     doctype: "Donation",
     status: "Draft",
-    company: "Alkhidmat Foundation",
+    company: "Alkhidmat Foundation Pakistan",
     donor_identity: "Known",
     donation_type: "Cash", // Default to Cash
     currency: "PKR", // Default currency
@@ -514,9 +514,9 @@ const tabs = createResource({
               donation.doc.status = "Draft";
             }
 
-            if (field.fieldname === "company" && !donation.doc.company) {
-              donation.doc.company = "Alkhidmat Foundation";
-            }
+            // if (field.fieldname === "company" && !donation.doc.company) {
+            //   donation.doc.company = "Alkhidmat Foundation";
+            // }
 
             if (field.fieldname === "donor_identity" && !donation.doc.donor_identity) {
               donation.doc.donor_identity = "Known";
@@ -569,40 +569,72 @@ const tabs = createResource({
       });
     });
   },
-  onSuccess(data) {
-    // Ensure required fields are set
-    if (!donation.doc.status) {
-      donation.doc.status = "Draft";
-    }
+// Replace the existing onSuccess with this async version
+onSuccess: async (data) => {
+  // Ensure required fields are set
+  if (!donation.doc.status) {
+    donation.doc.status = 'Draft'
+  }
 
-    if (!donation.doc.company) {
-      donation.doc.company = "Alkhidmat Foundation";
-    }
+  if (!donation.doc.company) {
+    try {
+      const res = await call('frappe.client.get_value', {
+        doctype: 'Global Defaults',
+        fieldname: 'default_company',
+        filters: {} 
+      })
 
-    if (!donation.doc.donor_identity) {
-      donation.doc.donor_identity = "Known";
-    }
+      let companyName =
+        (res && res.default_company) ||
+        (res && res.message && (res.message.default_company || res.message.value)) ||
+        null
 
-    if (!donation.doc.donation_type) {
-      donation.doc.donation_type = "Cash"; // Default to 'Cash'
-    }
+      // Fallback: fetch full Global Defaults doc (reliable)
+      if (!companyName) { 
+        const g = await call('frappe.client.get', {
+          doctype: 'Global Defaults',
+          name: 'Global Defaults'
+        })
+        companyName = (g && (g.default_company || g.message?.default_company)) || null
+      }
 
-    // Ensure due_date, currency, and exchange_rate are set
-    if (!donation.doc.due_date) {
-      donation.doc.due_date = new Date().toISOString().slice(0, 10);
+      if (companyName) {
+        donation.doc.company = companyName
+        console.log('Set default company from Global Defaults:', companyName)
+      } else {
+        console.warn('Global Defaults.default_company not found; leaving company blank.')
+      }
+    } catch (err) {
+      console.error('Error fetching Global Defaults default_company:', err)
+      // don't crash — simply continue with other defaults
     }
+  }
 
-    if (!donation.doc.currency) {
-      donation.doc.currency = "PKR";
-    }
+  if (!donation.doc.donor_identity) {
+    donation.doc.donor_identity = 'Known'
+  }
 
-    if (!donation.doc.exchange_rate) {
-      donation.doc.exchange_rate = 1;
-    }
+  if (!donation.doc.donation_type) {
+    donation.doc.donation_type = 'Cash'  // Default to 'Cash'
+  }
 
-    // Initialize posting_date and posting_time
-    initializeDonation();
-  },
+  // Ensure due_date, currency, and exchange_rate are set
+  if (!donation.doc.due_date) {
+    donation.doc.due_date = new Date().toISOString().slice(0, 10)
+  }
+
+  if (!donation.doc.currency) {
+    donation.doc.currency = 'PKR'
+  }
+
+  if (!donation.doc.exchange_rate) {
+    donation.doc.exchange_rate = 1
+  }
+
+  // Initialize posting_date and posting_time
+  initializeDonation()
+}
+
 });
 
 const createDonation = createResource({
@@ -1479,7 +1511,7 @@ watch(
             row._lastMOPId = row.mode_of_payment;
 
             try {
-              const company = donation.doc?.company || "Alkhidmat Foundation";
+              const company = donation.doc?.company || "Alkhidmat Foundation Pakistan";
               console.log("Company:", company);
 
               const result = await call(
@@ -1556,7 +1588,7 @@ watch(
           row._lastMOPId2 = row.mode_of_payment;
 
           try {
-            const company = donation.doc?.company || "Alkhidmat Foundation";
+            const company = donation.doc?.company || "Alkhidmat Foundation Pakistan";
             console.log("Company:", company);
 
             const result = await call(
@@ -1751,7 +1783,7 @@ async function setDeductionBreakevenFromAPI() {
     // Use the exact backend set_deduction_breakeven API
     const result = await call("crm.fcrm.doctype.donation.api.set_deduction_breakeven", {
       payment_details: donation.doc.payment_detail,
-      company: donation.doc.company || "Alkhidmat Foundation",
+      company: donation.doc.company || "Alkhidmat Foundation Pakistan",
       contribution_type: donation.doc.contribution_type || "Donation",
       donation_cost_center: donation.doc.donation_cost_center,
       currency: donation.doc.currency,
@@ -2687,7 +2719,7 @@ async function populateFundClassFieldsForPledge(row) {
     // Call the same backend API that set_deduction_breakeven uses, but only for fund class field population
     const result = await call("crm.fcrm.doctype.donation.api.set_deduction_breakeven", {
       payment_details: [row], // Pass only the current row
-      company: donation.doc.company || "Alkhidmat Foundation",
+      company: donation.doc.company || "Alkhidmat Foundation Pakistan",
       contribution_type: "Pledge", // Explicitly set as Pledge
       donation_cost_center: donation.doc.donation_cost_center,
       currency: donation.doc.currency,
@@ -3020,7 +3052,7 @@ function getFieldFilters(field) {
     return {
       is_group: 0,
       is_rejected_warehouse: 0,
-      company: data.value?.company || "Alkhidmat Foundation",
+      company: data.value?.company || "Alkhidmat Foundation Pakistan",
     };
   }
 
