@@ -445,6 +445,10 @@ export function useDonorFieldValidation() {
           } else {
               inputElement.placeholder = '93-XXXXXXX'
             }
+
+            // Also enforce a hard max length at the input element level for mobile keyboards
+            const hardLimit = requiredDigits > 0 ? requiredDigits : 10
+            inputElement.setAttribute('maxlength', String(hardLimit + Math.max(0, (fullMask.match(/[^0-9]/g) || []).length)))
             
             // Handle existing value - remove 92 prefix if switching from Pakistan
             if (inputElement.value && inputElement.value.startsWith('92')) {
@@ -454,7 +458,13 @@ export function useDonorFieldValidation() {
             // Add input handler for Afghanistan - transform first 2 digits to 93 immediately
             inputElement._afghanistanHandler = (e) => {
               let value = e.target.value
-              const cleanValue = value.replace(/\D/g, '')
+              let cleanValue = value.replace(/\D/g, '')
+
+              // Enforce length on input for mobile (keydown may not fire on soft keyboards)
+              const limit = requiredDigits > 0 ? requiredDigits : 10
+              if (cleanValue.length > limit) {
+                cleanValue = cleanValue.slice(0, limit)
+              }
               
               // Transform first 2 digits to 93 immediately when user starts typing
               if (cleanValue.length >= 2 && !cleanValue.startsWith('93')) {
