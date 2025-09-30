@@ -654,13 +654,13 @@ const { user } = sessionStore();
 
 // UPDATE: Enhanced initialization to include donor filtering setup
 onMounted(() => {
-  console.log("DonationModal mounted");
-  console.log("DonationModal props defaults:", props.defaults);
-  console.log("Tabs resource:", tabs);
-  console.log("Show value:", show.value);
+  // console.log("DonationModal mounted");
+  // console.log("DonationModal props defaults:", props.defaults);
+  // console.log("Tabs resource:", tabs);
+  // console.log("Show value:", show.value);
 
   // Initialize the donation document with required fields
-  initializeDonationDocument();
+  // initializeDonationDocument();
 
   // Configure field queries for child tables
   configureFieldQueries();
@@ -861,15 +861,15 @@ function openCreateModal({ doctype, initialValue, onSuccess }) {
 
 // ADD: Function to update donor filtering in existing modals
 function updateDonorFilteringInModals() {
-  console.log("Updating donor filtering in existing modals");
-  console.log("Current donor_identity:", donation.doc.donor_identity);
+  // console.log("Updating donor filtering in existing modals");
+  // console.log("Current donor_identity:", donation.doc.donor_identity);
 
   modalStack.value.forEach((modal, index) => {
     if (modal.donorFiltering) {
       modal.donorFiltering.donor_identity = donation.doc.donor_identity;
       modal.donorFiltering.currency = donation.doc.currency;
       modal.donorFiltering.company = donation.doc.company;
-      console.log(`Updated modal ${index} donor filtering:`, modal.donorFiltering);
+      // console.log(`Updated modal ${index} donor filtering:`, modal.donorFiltering);
     }
   });
 }
@@ -878,12 +878,12 @@ function updateDonorFilteringInModals() {
 watch(
   () => donation.doc.donor_identity,
   (newDonorIdentity, oldDonorIdentity) => {
-    console.log("Donor Identity changed from", oldDonorIdentity, "to:", newDonorIdentity);
+    // console.log("Donor Identity changed from", oldDonorIdentity, "to:", newDonorIdentity);
 
     // Clear contribution_type when donor identity changes to force re-evaluation
     if (donation.doc.contribution_type) {
       donation.doc.contribution_type = "";
-      console.log("Cleared contribution_type due to donor identity change");
+      // console.log("Cleared contribution_type due to donor identity change");
     }
 
     // Update donor filtering in existing modals
@@ -2006,7 +2006,7 @@ watch(
 watch(
   () => donation.doc.donation_type,
   (newType, oldType) => {
-    console.log("Donation type changed from", oldType, "to:", newType);
+    // console.log("Donation type changed from", oldType, "to:", newType);
 
     if (newType === "In Kind Donation") {
       // Clear deduction_breakeven table when donation type is In Kind Donation (same as backend)

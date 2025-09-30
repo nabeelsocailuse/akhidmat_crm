@@ -494,11 +494,13 @@ const fields = computed(() => {
   const gridViewSettings = getGridViewSettings(props.parentDoctype)
   const gridFields = getFields()
   if (gridViewSettings.length) {
-    return gridViewSettings.map((gs) =>
-      getFieldObj(gridFields.find((f) => f.fieldname === gs.fieldname)),
-    )
+    return gridViewSettings
+      .map((gs) => getFieldObj(gridFields.find((f) => f.fieldname === gs.fieldname)))
+      .filter(Boolean)
   }
-  return (gridFields?.filter((f) => f.in_list_view).map((f) => getFieldObj(f)) || [])
+  return (
+    gridFields?.filter((f) => f.in_list_view).map((f) => getFieldObj(f)).filter(Boolean) || []
+  )
 })
 
 const allFields = computed(() => {
