@@ -65,6 +65,11 @@ const props = defineProps({
   readOnly: {
     type: Boolean,
     default: false
+  },
+  // NEW: When true and editing payment_detail in Donation Return, allow only donation_amount to be editable
+  returnAmountOnly: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -187,6 +192,11 @@ const filteredTabs = computed(() => {
                 enhancedField.fetch_from = fetchMap[field.fieldname]
               }
             }
+          }
+
+          // NEW: For Donation Return edit modal, make all fields read-only except donation_amount
+          if (props.returnAmountOnly && props.parentFieldname === 'payment_detail') {
+            enhancedField.read_only = enhancedField.fieldname === 'donation_amount' ? 0 : 1
           }
           
           return enhancedField

@@ -333,6 +333,7 @@
                 :parentFieldname="parentFieldname"
                 :donorFiltering="getDonorFilteringFromParent()"
                 :readOnly="!gridSettings.editable_grid"
+                :returnAmountOnly="parentDoctype === 'Donation' && parentFieldname === 'payment_detail' && isDonationReturn"
                 @field-change="(fieldname, value) => handleGridRowModalFieldChange(index, fieldname, value)"
               />
             </div>
@@ -1478,7 +1479,7 @@ async function handleFetchFromForItems(rowIndex, fieldname, value) {
   try {
     const row = data.value[rowIndex]
     if (fieldname === 'fund_class') {
-      const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', { fund_class_id: value, company: parentDoc.value?.company || 'Alkhidmat Foundation' })
+      const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', { fund_class_id: value, company: parentDoc.value?.company || 'Alkhidmat Foundation Pakistan' })
       if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
         if (fundClassDetails.service_area) row.service_area = fundClassDetails.service_area
         if (fundClassDetails.subservice_area) row.subservice_area = fundClassDetails.subservice_area

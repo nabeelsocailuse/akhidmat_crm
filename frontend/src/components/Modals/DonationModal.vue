@@ -2406,18 +2406,21 @@ function validateDonationForm() {
     errors.push("Currency is required");
   }
 
+  // Skip donation cost center validation for In Kind Donation
   if (
-    !donation.doc.donation_cost_center ||
-    donation.doc.donation_cost_center.trim() === ""
+    donation.doc.donation_type !== "In Kind Donation" &&
+    (!donation.doc.donation_cost_center ||
+    donation.doc.donation_cost_center.trim() === "")
   ) {
     errors.push("Donation Cost Center is required");
   }
 
-  // Payment detail validation
+  // Skip payment detail validation for In Kind Donation
   if (
-    !donation.doc.payment_detail ||
+    donation.doc.donation_type !== "In Kind Donation" &&
+    (!donation.doc.payment_detail ||
     !Array.isArray(donation.doc.payment_detail) ||
-    donation.doc.payment_detail.length === 0
+    donation.doc.payment_detail.length === 0)
   ) {
     errors.push("At least one payment detail is required");
   } else {
@@ -2507,24 +2510,24 @@ function validateDonationForm() {
 }
 
 // ENHANCED: Function to validate and show user-friendly error messages
-function validateAndShowErrors() {
-  const errors = validateDonationForm();
+// function validateAndShowErrors() {
+//   const errors = validateDonationForm();
 
-  if (errors.length > 0) {
-    // Show the first error as a toast
-    toast.error(errors[0]);
+//   if (errors.length > 0) {
+//     // Show the first error as a toast
+//     toast.error(errors[0]);
 
-    // Log all errors for debugging
-    console.error("Validation errors:", errors);
+//     // Log all errors for debugging
+//     console.error("Validation errors:", errors);
 
-    // Set error message for display
-    error.value = errors[0];
+//     // Set error message for display
+//     error.value = errors[0];
 
-    return false;
-  }
+//     return false;
+//   }
 
-  return true;
-}
+//   return true;
+// }
 
 // ENHANCED: Function to validate deduction percentages before submission with min/max validation
 async function validateDeductionBreakevenBeforeSubmission() {
@@ -2691,7 +2694,7 @@ async function applyDonorFilteringToForm() {
     console.log(
       "FieldLayout re-rendered for new donor identity:",
       donation.doc.donor_identity
-    );
+  );
   });
 }
 
@@ -2798,7 +2801,11 @@ function validateField(fieldName, value, rowIndex = null) {
     errors.push("Currency is required");
   }
 
-  if (fieldName === "donation_cost_center" && (!value || value.trim() === "")) {
+  if (
+    fieldName === "donation_cost_center" && 
+    donation.doc.donation_type !== "In Kind Donation" &&
+    (!value || value.trim() === "")
+  ) {
     errors.push("Donation Cost Center is required");
   }
 
