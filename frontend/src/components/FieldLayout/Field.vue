@@ -809,6 +809,21 @@ watch(() => data.value?.country, (newCountry, oldCountry) => {
     if (data.value) {
       data.value[field.value.fieldname] = ''
     }
+    
+    // Clear the input element to remove old formatting
+    const inputElement = findInputField(field.value.fieldname)
+    if (inputElement) {
+      inputElement.value = ''
+      // Remove any existing country prefixes
+      inputElement.parentNode?.querySelectorAll('.country-prefix, .pakistan-prefix')?.forEach(p => p.remove())
+      // Reset styling
+      inputElement.style.paddingLeft = ''
+      inputElement.style.position = ''
+      if (inputElement.parentNode) inputElement.parentNode.style.position = ''
+      inputElement.placeholder = ''
+      inputElement.removeAttribute('maxlength')
+    }
+    
     setTimeout(() => {
       applyPhoneMasksForCountry(newCountry, setFieldValue, [field.value.fieldname])
     }, 300)
@@ -822,6 +837,21 @@ watch(() => data.value?.orgs_country, (newCountry, oldCountry) => {
     if (data.value) {
       data.value[field.value.fieldname] = ''
     }
+    
+    // Clear the input element to remove old formatting
+    const inputElement = findInputField(field.value.fieldname)
+    if (inputElement) {
+      inputElement.value = ''
+      // Remove any existing country prefixes
+      inputElement.parentNode?.querySelectorAll('.country-prefix, .pakistan-prefix')?.forEach(p => p.remove())
+      // Reset styling
+      inputElement.style.paddingLeft = ''
+      inputElement.style.position = ''
+      if (inputElement.parentNode) inputElement.parentNode.style.position = ''
+      inputElement.placeholder = ''
+      inputElement.removeAttribute('maxlength')
+    }
+    
     setTimeout(() => {
       applyPhoneMasksForCountry(newCountry, setFieldValue, [field.value.fieldname])
     }, 300)

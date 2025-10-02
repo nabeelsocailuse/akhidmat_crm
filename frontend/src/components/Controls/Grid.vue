@@ -484,7 +484,7 @@ const canAddRows = computed(() => {
 function canEditField(field) {
   if (!gridSettings.value.editable_grid) return false
   // During Donation Return, only donation_amount is editable in payment_detail
-  if (props.parentDoctype === 'Donation' && props.parentFieldname === 'payment_detail' && isDonationReturn.value) {
+  if (props.parentDoctype === 'Donation' && props.parentFieldname === 'payment_detail' && isDonationReturn.value) { 
     return field?.fieldname === 'donation_amount'
   }
   return true

@@ -108,8 +108,16 @@
         </template>
       </ListRowItem>
     </ListRows>
+    <ListSelectBanner>
+      <template #actions="{ selections, unselectAll }">
+        <Dropdown :options="listBulkActionsRef.bulkActions(selections, unselectAll)">
+          <Button icon="more-horizontal" variant="ghost" />
+        </Dropdown>
+      </template>
+    </ListSelectBanner>
   </ListView>
   <ListBulkActions
+    ref="listBulkActionsRef"
     v-model:list="list"
     doctype="Tax Exemption Certificate"
     :options="{

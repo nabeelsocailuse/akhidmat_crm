@@ -402,22 +402,21 @@ async function createNewEmailCampaign() {
 
 watch(controlledShow, async (show) => {
   if (show) {
-    const currentUserId = user.value?.name || (frappe?.session?.user ?? '__user');
-    
-    // Ensure document.doc exists first
-    if (!document.doc) {
-      document.doc = {}
-    }
-    
+    const currentUserId = user.value?.name || frappe?.session?.user || '__user';
+
+    // Always reassign the whole object to trigger FieldLayout reactivity
     document.doc = {
       ...props.defaults,
+      ...(document.doc || {}),
       status: 'Scheduled',
-      sender: currentUserId, // <-- assign logged-in user
-    }
+      sender: currentUserId,
+    };
 
-    error.value = ''
+    error.value = '';
   }
-})
+});
+
+
 
 
 
@@ -451,4 +450,23 @@ watch(() => tabs.data, (newTabs) => {
 
 watch(() => document.doc, (newDoc) => {
 }, { deep: true })
-</script> 
+
+watch(controlledShow, (show) => {
+  if (show) {
+    const currentUserId = user.value?.name || (frappe?.session?.user ?? '__user');
+
+    // Ensure document.doc exists first
+    if (!document.doc) {
+      document.doc = {};
+    }
+
+    // Update sender field synchronously
+    document.doc.sender = currentUserId;
+
+    // Trigger reactivity for FieldLayout
+    document.doc = { ...document.doc };
+
+    error.value = '';
+  }
+});
+</script>

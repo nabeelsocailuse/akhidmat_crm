@@ -1,5 +1,6 @@
 <template>
   <ListView
+    :class="$attrs.class"
     :columns="columns"
     :rows="rows"
     :selections="selections"
@@ -128,6 +129,15 @@
         </template>
       </ListRowItem>
     </ListRows>
+    <ListSelectBanner>
+      <template #actions="{ selections, unselectAll }">
+        <Dropdown
+          :options="listBulkActionsRef.bulkActions(selections, unselectAll)"
+        >
+          <Button icon="more-horizontal" variant="ghost" />
+        </Dropdown>
+      </template>
+    </ListSelectBanner>
   </ListView>
   <ListFooter
     v-if="options.rowCount || options.totalCount"
@@ -140,6 +150,7 @@
     @loadMore="emit('loadMore')"
   />
   <ListBulkActions
+    ref="listBulkActionsRef"
     v-model:list="list"
     doctype="CRM Lead"
     :options="{
@@ -151,13 +162,13 @@
 </template>
 
 <script setup>
-import HeartIcon from '@/components/Icons/HeartIcon.vue'
-import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
-import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
-import MultipleAvatar from '@/components/MultipleAvatar.vue'
-import ListBulkActions from '@/components/ListBulkActions.vue'
-import ListRows from '@/components/ListViews/ListRows.vue'
-import AppStyling from '@/components/AppStyling.vue'
+import HeartIcon from '@/components/Icons/HeartIcon.vue';
+import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue';
+import PhoneIcon from '@/components/Icons/PhoneIcon.vue';
+import MultipleAvatar from '@/components/MultipleAvatar.vue';
+import ListBulkActions from '@/components/ListBulkActions.vue';
+import ListRows from '@/components/ListViews/ListRows.vue';
+import AppStyling from '@/components/AppStyling.vue';
 import {
   Avatar,
   ListView,
@@ -165,11 +176,11 @@ import {
   ListHeaderItem,
   ListRowItem,
   ListFooter,
+  ListSelectBanner,
+  Dropdown,
   Button,
-} from 'frappe-ui'
-import { useRoute } from 'vue-router'
-
-const route = useRoute()
+} from 'frappe-ui';
+import { ref, computed } from 'vue';
 
 const props = defineProps({
   columns: {
@@ -218,9 +229,7 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-})
-
-const list = defineModel('list')
+});
 
 const emit = defineEmits([
   'selectionsChanged',
@@ -229,7 +238,9 @@ const emit = defineEmits([
   'applyLikeFilter',
   'loadMore',
   'updatePageCount',
-])
+]);
 
-const pageLengthCount = defineModel()
+const pageLengthCount = defineModel();
+const list = defineModel('list');
+const listBulkActionsRef = ref(null);
 </script>

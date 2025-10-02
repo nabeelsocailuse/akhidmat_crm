@@ -39,7 +39,8 @@
             document.doc &&
             document.doc.docstatus === 1 &&
             !document.doc.is_return &&
-            (document.doc.status || '').toLowerCase() !== 'credit note issued'
+            (document.doc.status || '').toLowerCase() !== 'credit note issued' &&
+            document.doc.contribution_type !== 'Pledge'
           "
           :options="createDropdownOptions"
         >
@@ -280,7 +281,7 @@ import { getMeta } from "@/stores/meta";
 import { ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useActiveTabManager } from "@/composables/useActiveTabManager";
-import { createResource } from "frappe-ui";
+import { createResource } from "@/utils/resource";
 import { getSettings } from "@/stores/settings";
 import { sessionStore } from "@/stores/session";
 import { usersStore } from "@/stores/users";
@@ -304,7 +305,7 @@ import {
   Avatar,
   Tabs,
   Switch,
-  call,
+  call as frappeCall,
   usePageMeta,
   toast,
   FeatherIcon,
@@ -314,6 +315,7 @@ import {
   DateTimePicker,
   Checkbox,
 } from "frappe-ui";
+import { call } from "@/utils/api";
 import {
   ref as vueRef,
   reactive,
@@ -3235,8 +3237,8 @@ document.triggerOnRowRemove = customTriggerOnRowRemove;
 const createDropdownOptions = computed(() => {
   const options = [];
 
-  // Only show Return / Credit Note option if not already a return document
-  if (document.doc && !document.doc.is_return) {
+  // Only show Return / Credit Note option if not already a return document and not a pledge
+  if (document.doc && !document.doc.is_return && document.doc.contribution_type !== "Pledge") {
     options.push({
       label: "Return / Credit Note",
       onClick: createReturnCreditNote,
@@ -3284,75 +3286,8 @@ async function createReturnCreditNote() {
       toast.error(__("Failed to create Return / Credit Note"));
     }
   } catch (e) {
-    // Normalize Frappe server error messages (including _server_messages JSON) into human-readable text
-    const htmlToText = (input) => {
-      if (!input) return "";
-      let str = String(input);
-      str = str.replace(/<br\s*\/?\s*>/gi, "\n");
-      str = str.replace(/<[^>]+>/g, "");
-      str = str
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'");
-      str = str
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
-        .join("\n");
-      return str;
-    };
-
-    const extractFrappeServerMessage = (err) => {
-      // Frappe often returns _server_messages as a JSON-encoded list of dicts/strings
-      const tryParse = (val) => {
-        try {
-          return JSON.parse(val);
-        } catch {
-          return null;
-        }
-      };
-
-      // Prefer messages array provided by frappe-ui's call() helper
-      if (Array.isArray(err?.messages) && err.messages.length) {
-        let text = htmlToText(err.messages.join("\n"));
-        if (text) {
-          // If only row details are present (common for ValidationError), prefix human title
-          if (/^Row\s*#\d+/i.test(text) && !/Return entries already exist\./i.test(text)) {
-            text = `Return entries already exist.\n${text}`;
-          }
-          return text;
-        }
-      }
-
-      const server = err?._server_messages || err?.response?._server_messages || err?.exc?._server_messages;
-      if (server && typeof server === "string") {
-        const list = tryParse(server);
-        if (Array.isArray(list) && list.length > 0) {
-          // Items may be JSON strings
-          const first = typeof list[0] === "string" ? tryParse(list[0]) || list[0] : list[0];
-          if (first && typeof first === "object") {
-            const title = first.title ? String(first.title) : "";
-            const message = first.message ? String(first.message) : "";
-            const text = [title && htmlToText(title), htmlToText(message)]
-              .filter(Boolean)
-              .join("\n");
-            if (text) return text;
-          } else if (typeof first === "string") {
-            return htmlToText(first);
-          }
-        }
-      }
-
-      // Fallback to generic message fields
-      const raw = err?.message || err?.exc || err;
-      return htmlToText(raw);
-    };
-
-    const pretty = extractFrappeServerMessage(e) || __("Failed to create Return / Credit Note");
-    toast.error(pretty);
+    // Error handling is now done globally via errorHandler.js
+    toast.error(e.message || __("Failed to create Return / Credit Note"));
   }
 }
 
@@ -3424,7 +3359,7 @@ async function submitDonation() {
         }, 300);
       }
     } else {
-      toast.error("Failed to submit donation");
+      toast.error("Return entries already exist");
     }
   } catch (error) {
     // console.error('Error submitting donation:', error)
@@ -3437,7 +3372,7 @@ async function submitDonation() {
       // Optionally reload the document
       await document.reload();
     } else {
-      toast.error(`Failed to submit donation: ${error.message || error}`);
+      toast.error(`Return entries already exist.: ${error.message || error}`);
     }
   }
 }

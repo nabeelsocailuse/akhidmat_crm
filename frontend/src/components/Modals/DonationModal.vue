@@ -101,7 +101,9 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, computed, readonly } from "vue";
 import { useRouter } from "vue-router";
-import { createResource, call, Dialog, Button, ErrorMessage, toast } from "frappe-ui";
+import { Dialog, Button, ErrorMessage, toast } from "frappe-ui";
+import { createResource } from "@/utils/resource";
+import { call } from "@/utils/api";
 import FeatherIcon from "@/components/Icons/FeatherIcon.vue";
 import QuickEntryModal from "@/components/Modals/QuickEntryModal.vue";
 import FieldLayout from "@/components/FieldLayout/FieldLayout.vue";
@@ -197,11 +199,50 @@ const addPaymentDetailRow = () => {
     random_id: generateRandomId((donation.doc.payment_detail?.length || 0) + 1),
   };
 
+  // Inherit mode_of_payment and account_paid_to from main form for merchant donor identities
+  if (
+    donation.doc.donor_identity === "Merchant - Known" ||
+    donation.doc.donor_identity === "Merchant - Unknown"
+  ) {
+    if (donation.doc.mode_of_payment) {
+      newRow.mode_of_payment = donation.doc.mode_of_payment;
+      // Set tracking IDs to prevent duplicate API calls
+      newRow._lastMOPId = donation.doc.mode_of_payment;
+      newRow._lastMOPId2 = donation.doc.mode_of_payment;
+      console.log(`New row inheriting mode_of_payment: ${donation.doc.mode_of_payment}`);
+    }
+    
+    if (donation.doc.account_paid_to) {
+      newRow.account_paid_to = donation.doc.account_paid_to;
+      console.log(`New row inheriting account_paid_to: ${donation.doc.account_paid_to}`);
+    }
+  }
+
   // Add the new row to the payment_detail array
   if (!donation.doc.payment_detail) {
     donation.doc.payment_detail = [];
   }
   donation.doc.payment_detail.push(newRow);
+
+  // Auto-populate donor when donor identity is Unknown (or Merchant - Unknown)
+  const identity = donation.doc.donor_identity;
+  if (identity === "Unknown" || identity === "Merchant - Unknown") {
+    call("frappe.client.get_value", {
+      doctype: "Donor",
+      filters: { donor_identity: identity },
+      fieldname: "name",
+    }).then((r) => {
+      const donorId = r?.message?.name;
+      if (donorId) {
+        newRow.donor_id = donorId;
+        newRow.donor = donorId;
+        // Force reactive update so UI reflects donor_id immediately
+        if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
+          donation.doc.payment_detail = [...donation.doc.payment_detail];
+        }
+      }
+    });
+  }
 };
 
 // Initialize donation with default values including edit_posting_date_time
@@ -979,53 +1020,18 @@ function handleModalClose(idx) {
   }
 }
 
-// Enhanced error handling function
-function extractDonationErrorMessage(err) {
-  let errorMessage = "An error occurred while creating the donation.";
+// Error handling is now done globally via errorHandler.js
 
-  // Handle different error types
-  if (err?.exc_type === "MandatoryError") {
-    // Parse mandatory field errors
-    const missingFields = parseMandatoryError(err);
-    if (missingFields.length > 0) {
-      errorMessage = `Please fill in the following required fields:\n\n${missingFields
-        .map((field) => `• ${field}`)
-        .join("\n")}`;
-    } else {
-      errorMessage = "Please fill all required fields before submitting.";
-    }
-  } else if (err?.exc_type === "ValidationError") {
-    errorMessage = `Validation error: ${err.messages?.[0] || "Invalid data provided"}`;
-  } else if (err?.exc_type === "LinkError") {
-    errorMessage =
-      "Invalid reference in one of the fields. Please check your selections.";
-  } else if (err?.exc_type === "PermissionError") {
-    errorMessage = "You do not have permission to create donations.";
-  } else if (err?.exc_type === "DuplicateEntryError") {
-    errorMessage = "A donation with this information already exists.";
-  } else if (err?.message) {
-    // Try to parse custom error messages
-    errorMessage = parseCustomErrorMessage(err.message);
-  } else if (err?.exc) {
-    // Parse exception traceback
-    errorMessage = parseExceptionMessage(err.exc);
-  }
-
-  return errorMessage;
-}
-
-// Parse MandatoryError to extract field names
 function parseMandatoryError(err) {
   const missingFields = [];
 
   if (err.messages && Array.isArray(err.messages)) {
     err.messages.forEach((msg) => {
-      // Parse different formats of MandatoryError
       const patterns = [
-        /\[([^,]+),\s*([^\]]+)\]:\s*([^,\s]+)/, // [Donation, DONATION-2025-00007]: equity_account
-        /MandatoryError.*?:\s*([^,\n]+)/, // MandatoryError: equity_account
-        /Field\s+([^,\s]+)\s+is\s+mandatory/, // Field equity_account is mandatory
-        /([^,\s]+)\s+is\s+required/, // equity_account is required
+        /\[([^,]+),\s*([^\]]+)\]:\s*([^,\s]+)/, 
+        /MandatoryError.*?:\s*([^,\n]+)/, 
+        /Field\s+([^,\s]+)\s+is\s+mandatory/, 
+        /([^,\s]+)\s+is\s+required/, 
       ];
 
       for (const pattern of patterns) {
@@ -1625,7 +1631,7 @@ watch(
             );
             row.account_paid_to = "";
             toast.error(`Error loading account for mode of payment: ${error.message}`);
-          }
+          } 
         }
       }
     } finally {
@@ -2027,6 +2033,175 @@ watch(
   }
 );
 
+// Main form mode_of_payment to account_paid_to auto-fill watcher
+watch(
+  () => donation.doc.mode_of_payment,
+  async (newModeOfPayment, oldModeOfPayment) => {
+    // Only trigger for merchant donor identities
+    if (
+      donation.doc.donor_identity !== "Merchant - Known" &&
+      donation.doc.donor_identity !== "Merchant - Unknown"
+    ) {
+      return;
+    }
+
+    // Only trigger if mode_of_payment actually changed and has a value
+    if (!newModeOfPayment || newModeOfPayment === oldModeOfPayment) {
+      return;
+    }
+
+    console.log("🔥 MAIN FORM MODE OF PAYMENT CHANGED 🔥", newModeOfPayment);
+
+    try {
+      const company = donation.doc?.company || "Alkhidmat Foundation Pakistan";
+      console.log("Company:", company);
+
+      const result = await call(
+        "crm.fcrm.doctype.donation.api.get_payment_mode_account",
+        {
+          mode_of_payment: newModeOfPayment,
+          company: company,
+        }
+      );
+
+      console.log("🔥 MAIN FORM API RESULT 🔥", result);
+
+      if (result && result.success && result.account) {
+        console.log("✅ Main form account fetched successfully:", result.account);
+        donation.doc.account_paid_to = result.account;
+        
+        // Also update all child table rows with the same mode_of_payment and account_paid_to
+        if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
+          donation.doc.payment_detail.forEach((row, index) => {
+            row.mode_of_payment = newModeOfPayment;
+            row.account_paid_to = result.account;
+            // Reset the tracking IDs to prevent duplicate API calls
+            row._lastMOPId = newModeOfPayment;
+            row._lastMOPId2 = newModeOfPayment;
+            console.log(`Updated child table row ${index} with mode_of_payment: ${newModeOfPayment} and account_paid_to: ${result.account}`);
+          });
+          
+          // Force reactive update to ensure UI reflects changes
+          donation.doc.payment_detail = [...donation.doc.payment_detail];
+        }
+        
+        toast.success(`Account Paid To auto-filled: ${result.account} (Main form and child table updated)`);
+      } else {
+        console.log("❌ No account found for main form");
+        donation.doc.account_paid_to = "";
+
+        if (result && result.message) {
+          toast.warning(result.message);
+        } else {
+          toast.warning("No default account found for this mode of payment");
+        }
+      }
+    } catch (error) {
+      console.error("❌ Error fetching payment mode account for main form:", error);
+      donation.doc.account_paid_to = "";
+      toast.error(`Error loading account for mode of payment: ${error.message}`);
+    }
+  }
+);
+
+// Additional watcher to ensure all rows are updated when main form account_paid_to changes
+watch(
+  () => donation.doc.account_paid_to,
+  (newAccountPaidTo, oldAccountPaidTo) => {
+    // Only trigger for merchant donor identities
+    if (
+      donation.doc.donor_identity !== "Merchant - Known" &&
+      donation.doc.donor_identity !== "Merchant - Unknown"
+    ) {
+      return;
+    }
+
+    // Only trigger if account_paid_to actually changed and has a value
+    if (!newAccountPaidTo || newAccountPaidTo === oldAccountPaidTo) {
+      return;
+    }
+
+    console.log("🔥 MAIN FORM ACCOUNT_PAID_TO CHANGED 🔥", newAccountPaidTo);
+
+    // Update all child table rows with the same account_paid_to
+    if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
+      donation.doc.payment_detail.forEach((row, index) => {
+        row.account_paid_to = newAccountPaidTo;
+        console.log(`Updated child table row ${index} with account_paid_to: ${newAccountPaidTo}`);
+      });
+      
+      // Force reactive update to ensure UI reflects changes
+      donation.doc.payment_detail = [...donation.doc.payment_detail];
+    }
+  }
+);
+
+// Function to auto-populate a specific row with main form values
+function autoPopulateRowWithMainFormValues(row) {
+  // Only trigger for merchant donor identities
+  if (
+    donation.doc.donor_identity !== "Merchant - Known" &&
+    donation.doc.donor_identity !== "Merchant - Unknown"
+  ) {
+    return;
+  }
+
+  console.log("🔥 AUTO-POPULATING ROW WITH MAIN FORM VALUES 🔥", row);
+
+  let hasChanges = false;
+
+  // Auto-populate the row with main form values
+  if (donation.doc.mode_of_payment && !row.mode_of_payment) {
+    row.mode_of_payment = donation.doc.mode_of_payment;
+    // Set tracking IDs to prevent duplicate API calls
+    row._lastMOPId = donation.doc.mode_of_payment;
+    row._lastMOPId2 = donation.doc.mode_of_payment;
+    console.log(`Auto-populated row with mode_of_payment: ${donation.doc.mode_of_payment}`);
+    hasChanges = true;
+  }
+  
+  if (donation.doc.account_paid_to && !row.account_paid_to) {
+    row.account_paid_to = donation.doc.account_paid_to;
+    console.log(`Auto-populated row with account_paid_to: ${donation.doc.account_paid_to}`);
+    hasChanges = true;
+  }
+  
+  // Force reactive update to ensure UI reflects changes
+  if (hasChanges && donation.doc.payment_detail) {
+    donation.doc.payment_detail = [...donation.doc.payment_detail];
+    toast.success("Row auto-populated with main form values");
+  }
+}
+
+// Enhanced watcher for payment_detail that auto-populates rows when they become active
+watch(
+  () => donation.doc.payment_detail,
+  (newPaymentDetail, oldPaymentDetail) => {
+    // Only trigger for merchant donor identities
+    if (
+      donation.doc.donor_identity !== "Merchant - Known" &&
+      donation.doc.donor_identity !== "Merchant - Unknown"
+    ) {
+      return;
+    }
+
+    if (!newPaymentDetail || !Array.isArray(newPaymentDetail)) {
+      return;
+    }
+
+    // Auto-populate all rows that don't have mode_of_payment or account_paid_to
+    newPaymentDetail.forEach((row, index) => {
+      if (row && (!row.mode_of_payment || !row.account_paid_to)) {
+        // Use a small delay to ensure the row is fully rendered
+        setTimeout(() => {
+          autoPopulateRowWithMainFormValues(row);
+        }, 100);
+      }
+    });
+  },
+  { deep: true }
+);
+
 // FIX: Enhanced createNewDonation function with correct submission logic
 async function createNewDonation() {
   console.log("Creating new donation...");
@@ -2125,8 +2300,7 @@ async function createNewDonation() {
       }
     } catch (err) {
       console.error("Error creating donation:", err);
-      error.value = err.message || "Failed to create donation";
-      toast.error("Failed to create donation");
+      error.value = err.message;
     } finally {
       isDonationCreating.value = false;
     }

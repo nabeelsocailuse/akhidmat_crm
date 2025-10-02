@@ -200,6 +200,9 @@ export function useDonorFieldValidation() {
       let inputElement = findInputField(fieldName)
       
       if (inputElement) {
+        // Store the current value before cleanup
+        const currentValue = inputElement.value || ''
+        
         // Remove existing mask and event listeners
         if (inputElement._pakistanHandler) {
           inputElement.removeEventListener('input', inputElement._pakistanHandler)
@@ -238,17 +241,33 @@ export function useDonorFieldValidation() {
           inputElement._otherCountryPasteHandler = null
         }
         
+        // Remove any existing MutationObserver
+        if (inputElement._pakistanMutationObserver) {
+          inputElement._pakistanMutationObserver.disconnect()
+          inputElement._pakistanMutationObserver = null
+        }
+        
         // Remove existing country prefix with more thorough cleanup
         const existingPrefixes = inputElement.parentNode.querySelectorAll('.country-prefix, .pakistan-prefix')
         existingPrefixes.forEach(prefix => prefix.remove())
         
-        // Reset input styling
+        // Reset input styling and attributes
         inputElement.style.paddingLeft = ''
         inputElement.style.position = ''
+        inputElement.placeholder = ''
+        inputElement.removeAttribute('maxlength')
         
         // Also reset parent styling
         if (inputElement.parentNode) {
           inputElement.parentNode.style.position = ''
+        }
+        
+        // Clear the input value to remove any old formatting
+        inputElement.value = ''
+        
+        // Clear any stored field value to prevent old format from being restored
+        if (setFieldValue) {
+          setFieldValue(fieldName, '')
         }
         
         // Get country-specific mask
@@ -273,22 +292,34 @@ export function useDonorFieldValidation() {
             inputElement.parentNode.insertBefore(prefixElement, inputElement)
             
             // Handle existing value - show only part after 92
-            if (inputElement.value && inputElement.value.startsWith('92')) {
-              const after92 = inputElement.value.slice(2)
+            if (currentValue && currentValue.startsWith('92')) {
+              const after92 = currentValue.slice(2)
               const cleanValue = after92.replace(/\D/g, '')
               if (cleanValue.length >= 3) {
                 inputElement.value = `${cleanValue.slice(0, 3)}-${cleanValue.slice(3)}`
+                if (setFieldValue) {
+                  setFieldValue(fieldName, currentValue) // Keep the full 92 format in the data
+                }
               } else {
                 inputElement.value = cleanValue
+                if (setFieldValue) {
+                  setFieldValue(fieldName, currentValue) // Keep the full 92 format in the data
+                }
               }
-            } else if (inputElement.value && inputElement.value.trim() !== '') {
+            } else if (currentValue && currentValue.trim() !== '') {
               // If there's a value but it doesn't start with 92, preserve it
               // This prevents data loss when masking is reapplied
-              const cleanValue = inputElement.value.replace(/\D/g, '')
+              const cleanValue = currentValue.replace(/\D/g, '')
               if (cleanValue.length >= 3) {
                 inputElement.value = `${cleanValue.slice(0, 3)}-${cleanValue.slice(3)}`
+                if (setFieldValue) {
+                  setFieldValue(fieldName, `92${cleanValue}`) // Add 92 prefix for Pakistan
+                }
               } else {
                 inputElement.value = cleanValue
+                if (setFieldValue) {
+                  setFieldValue(fieldName, `92${cleanValue}`) // Add 92 prefix for Pakistan
+                }
               }
             }
             // Don't clear the field if it has no value - let user enter data
@@ -344,7 +375,7 @@ export function useDonorFieldValidation() {
             inputElement.addEventListener('input', inputElement._pakistanHandler)
             
             // Add a MutationObserver to prevent Vue from setting the input value to the stored value
-            const observer = new MutationObserver((mutations) => {
+            inputElement._pakistanMutationObserver = new MutationObserver((mutations) => {
               mutations.forEach((mutation) => {
                 if (mutation.type === 'attributes' && mutation.attributeName === 'value') {
                   const currentValue = inputElement.value
@@ -361,7 +392,7 @@ export function useDonorFieldValidation() {
               })
             })
             
-            observer.observe(inputElement, {
+            inputElement._pakistanMutationObserver.observe(inputElement, {
               attributes: true,
               attributeFilter: ['value']
             })
@@ -451,8 +482,49 @@ export function useDonorFieldValidation() {
             inputElement.setAttribute('maxlength', String(hardLimit + Math.max(0, (fullMask.match(/[^0-9]/g) || []).length)))
             
             // Handle existing value - remove 92 prefix if switching from Pakistan
-            if (inputElement.value && inputElement.value.startsWith('92')) {
-              inputElement.value = inputElement.value.slice(2)
+            if (currentValue && currentValue.startsWith('92')) {
+              const after92 = currentValue.slice(2)
+              const cleanValue = after92.replace(/\D/g, '')
+              if (cleanValue.length > 2) {
+                inputElement.value = `93-${cleanValue.slice(2)}`
+                if (setFieldValue) {
+                  setFieldValue(fieldName, `93${cleanValue}`) // Convert to Afghanistan format
+                }
+              } else {
+                inputElement.value = cleanValue
+                if (setFieldValue) {
+                  setFieldValue(fieldName, `93${cleanValue}`) // Convert to Afghanistan format
+                }
+              }
+            } else if (currentValue && currentValue.trim() !== '') {
+              // Handle existing value for Afghanistan
+              const cleanValue = currentValue.replace(/\D/g, '')
+              if (cleanValue.startsWith('93')) {
+                if (cleanValue.length > 2) {
+                  inputElement.value = `93-${cleanValue.slice(2)}`
+                  if (setFieldValue) {
+                    setFieldValue(fieldName, cleanValue)
+                  }
+                } else {
+                  inputElement.value = cleanValue
+                  if (setFieldValue) {
+                    setFieldValue(fieldName, cleanValue)
+                  }
+                }
+              } else {
+                // Convert to Afghanistan format
+                if (cleanValue.length > 2) {
+                  inputElement.value = `93-${cleanValue.slice(2)}`
+                  if (setFieldValue) {
+                    setFieldValue(fieldName, `93${cleanValue}`)
+                  }
+                } else {
+                  inputElement.value = cleanValue
+                  if (setFieldValue) {
+                    setFieldValue(fieldName, `93${cleanValue}`)
+                  }
+                }
+              }
             }
             
             // Add input handler for Afghanistan - transform first 2 digits to 93 immediately
@@ -579,8 +651,21 @@ export function useDonorFieldValidation() {
               inputElement.placeholder = 'Enter phone number'
             }
             
-            if (inputElement.value && inputElement.value.startsWith('92')) {
-              inputElement.value = inputElement.value.slice(2)
+            // Handle existing value - convert from Pakistan format if needed
+            if (currentValue && currentValue.startsWith('92')) {
+              const after92 = currentValue.slice(2)
+              const cleanValue = after92.replace(/\D/g, '')
+              inputElement.value = cleanValue
+              if (setFieldValue) {
+                setFieldValue(fieldName, cleanValue) // Store without country code for other countries
+              }
+            } else if (currentValue && currentValue.trim() !== '') {
+              // Handle existing value for other countries
+              const cleanValue = currentValue.replace(/\D/g, '')
+              inputElement.value = cleanValue
+              if (setFieldValue) {
+                setFieldValue(fieldName, cleanValue)
+              }
             }
             
             inputElement._otherCountryHandler = (e) => {
