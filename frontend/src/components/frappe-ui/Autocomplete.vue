@@ -70,7 +70,7 @@
               </button>
             </div>
             <ComboboxOptions
-              class="my-1 max-h-[12rem] overflow-y-auto p-1.5 pt-0"
+              class="my-1 max-h-[8rem] overflow-y-auto p-1.5 pt-0"
               static
             >
               <div
@@ -331,3 +331,16 @@ const inputClasses = computed(() => {
 
 defineExpose({ query })
 </script>
+
+<style scoped>
+/* Ensure autocomplete dropdown doesn't expand modal too much */
+:deep(.combobox-options) {
+  max-height: 8rem !important;
+  overflow-y: auto !important;
+}
+
+/* For items table specifically, make dropdown even more compact */
+.parent-fieldname-items :deep(.combobox-options) {
+  max-height: 6rem !important;
+}
+</style>

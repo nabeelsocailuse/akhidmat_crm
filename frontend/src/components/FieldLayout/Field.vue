@@ -35,6 +35,7 @@
       :donorFiltering="getDonorFilteringFromData()"
       :readOnly="Boolean(field.read_only)"
       @donor-selected="$emit('donor-selected', $event)"
+      @fund-class-selected="$emit('fund-class-selected', $event)"
     />
     
     <FormControl
@@ -492,9 +493,7 @@ const field = computed(() => {
 
 function isFieldVisible(field) {
   if (preview.value) return true
-  
-  // Special case: donor desk field should always be visible
-  if (field.fieldname === 'donor_desk') {
+    if (field.fieldname === 'donor_desk') {
     return true
   }
   
@@ -509,7 +508,6 @@ function isFieldVisible(field) {
 
 const getPlaceholder = (field) => {
   if (field.placeholder) {
-    // Handle computed placeholders
     if (typeof field.placeholder === 'function') {
       return __(field.placeholder())
     }
@@ -524,7 +522,6 @@ const getPlaceholder = (field) => {
 
 const getDescription = (field) => {
   if (field.description) {
-    // Handle computed descriptions
     if (typeof field.description === 'function') {
       return __(field.description())
     }
@@ -533,34 +530,24 @@ const getDescription = (field) => {
   return ''
 }
 
-// Add emit definition at the top
-const emit = defineEmits(['field-change'])
+const emit = defineEmits(['field-change', 'donor-selected', 'fund-class-selected'])
 
 function fieldChange(value, df) {
-  
-  // CRITICAL FIX: Always update the data first
-  data.value[df.fieldname] = value
-  
-  // Emit field change to parent component
-  const onFieldChange = inject('onFieldChange', null)
+    data.value[df.fieldname] = value
+    const onFieldChange = inject('onFieldChange', null)
   
   if (onFieldChange) {
     onFieldChange(df.fieldname, value)
   } else {
-    // Fallback: emit directly to parent
     emit('field-change', df.fieldname, value)
   }
   
   if (isGridRow) {
     triggerOnChange(df.fieldname, value, data.value)
   } else {
-    // Add fallback for when triggerOnChange is not available
     if (triggerOnChange) {
       triggerOnChange(df.fieldname, value)
     } else {
-      // Fallback: directly update the data and force reactivity
-      
-      // Force a reactive update by triggering Vue's reactivity system
       nextTick(() => {
         if (data.value && data.value[df.fieldname] !== value) {
           data.value[df.fieldname] = value
@@ -970,28 +957,21 @@ watch(() => data.value?.org_contact, async (newValue) => {
     }
   }
 })
-
-// Initialize masks when component mounts
 onMounted(() => {
   nextTick(() => {
-    // Apply CNIC mask for Lead fields
     if (field.value?.fieldname === 'custom_identification_value' && 
         data.value?.custom_identification_type) {
       setTimeout(() => {
         applyCnicMaskToInput('custom_identification_value', data.value.custom_identification_type, setFieldValue)
       }, 500)
     }
-    
-    // Apply CNIC mask for Donor fields
-    if (field.value?.fieldname === 'cnic' && 
+        if (field.value?.fieldname === 'cnic' && 
         data.value?.identification_type) {
       setTimeout(() => {
         applyCnicMaskToInput('cnic', data.value.identification_type, setFieldValue)
       }, 500)
     }
-    
-    // Apply phone mask for Lead and Donor fields
-    if ((field.value?.fieldname === 'mobile_no' || field.value?.fieldname === 'contact_no' ||
+        if ((field.value?.fieldname === 'mobile_no' || field.value?.fieldname === 'contact_no' ||
          field.value?.fieldname === 'co_contact_no' || field.value?.fieldname === 'company_contact_number' ||
          field.value?.fieldname === 'organization_contact_person' || field.value?.fieldname === 'representative_mobile' ||
          field.value?.fieldname === 'phone_no' || field.value?.fieldname === 'company_ownerceo_conatct') && 
@@ -1000,9 +980,7 @@ onMounted(() => {
         applyPhoneMasksForCountry(data.value.country, setFieldValue, [field.value.fieldname])
       }, 500)
     }
-    
-    // Apply phone mask for Donor organization fields
-    if ((field.value?.fieldname === 'org_representative_contact_number' || field.value?.fieldname === 'org_contact') && 
+        if ((field.value?.fieldname === 'org_representative_contact_number' || field.value?.fieldname === 'org_contact') && 
         data.value?.orgs_country) {
       setTimeout(() => {
         applyPhoneMasksForCountry(data.value.orgs_country, setFieldValue, [field.value.fieldname])
@@ -1016,27 +994,19 @@ onMounted(() => {
 :deep(.form-control.prefix select) {
   padding-left: 2rem;
 }
-
-/* Style for disabled options in select dropdowns */
 :deep(select option[disabled]) {
   color: #6b7280;
   font-style: italic;
   background-color: #f3f4f6;
 }
-
-/* Style for "No records found" message */
 :deep(select option[value=""][disabled]) {
   color: #9ca3af;
   font-style: italic;
   background-color: #f9fafb;
 }
-
-/* Ensure placeholder text is visible when no value is selected */
 :deep(select:invalid) {
   color: #6b7280;
 }
-
-/* Style for empty select fields */
 :deep(select:not([size]) option:first-child:empty) {
   display: none;
 }

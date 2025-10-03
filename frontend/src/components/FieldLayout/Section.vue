@@ -23,6 +23,10 @@
           :class="{ 'mt-6': section.label && !section.hideLabel }"
           :column="column"
           :data-name="column.name"
+          @donor-selected="$emit('donor-selected', $event)"
+          @fund-class-selected="$emit('fund-class-selected', $event)"
+          @add-deduction-row="$emit('add-deduction-row', $event)"
+          @open-create-modal="$emit('open-create-modal', $event)"
         />
       </template>
     </Section>
@@ -36,6 +40,8 @@ import { inject } from 'vue'
 const props = defineProps({
   section: Object,
 })
+
+const emit = defineEmits(['donor-selected', 'fund-class-selected', 'add-deduction-row', 'open-create-modal'])
 
 const hasTabs = inject('hasTabs')
 </script>

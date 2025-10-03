@@ -895,33 +895,38 @@ function syncDonationAmountFromPaymentDetail() {
    Field change handler
    ------------------------- */
 async function fieldChange(value, field, row) {
+  // Normalize value from Link/Autocomplete controls which may emit objects
+  const normalizedValue = (value && typeof value === 'object')
+    ? (value.value ?? value.name ?? '')
+    : value
+
   // Skip mode_of_payment handling here - parent handles it
   const isModeOfPaymentField = field?.fieldname === 'mode_of_payment'
   const isPaymentDetailTable = props.parentFieldname === 'payment_detail'
   if (isModeOfPaymentField && isPaymentDetailTable) {
-    triggerOnChange(field.fieldname, value, row)
+    triggerOnChange(field.fieldname, normalizedValue, row)
     return
   }
 
   // Payment detail donor_id -> fetch donor details
   if (field.fieldname === 'donor_id' && props.parentFieldname === 'payment_detail') {
-    row.donor_id = value
-    if (value) {
-      const donorDetails = await fetchDonorDetails(value)
+    row.donor_id = normalizedValue
+    if (normalizedValue) {
+      const donorDetails = await fetchDonorDetails(normalizedValue)
       if (donorDetails) updateDonorFields(row, donorDetails)
     } else {
       clearDonorFields(row)
     }
-    emit('donor-selected', { row, donorId: value, success: !!value })
+    emit('donor-selected', { row, donorId: normalizedValue, success: !!normalizedValue })
     forceReactiveUpdate()
-    triggerOnChange(field.fieldname, value, row)
+    triggerOnChange(field.fieldname, normalizedValue, row)
     return
   }
 
   // Deduction fund_class change
   if (field.fieldname === 'fund_class' && props.parentFieldname === 'deduction_breakeven') {
-    if (value) {
-      const deductionDetails = await fetchDeductionDetails(value)
+    if (normalizedValue) {
+      const deductionDetails = await fetchDeductionDetails(normalizedValue)
       if (deductionDetails && Object.keys(deductionDetails).length > 0) {
         updateDeductionFields(row, deductionDetails)
         calculateDeductionAmount(row)
@@ -935,16 +940,16 @@ async function fieldChange(value, field, row) {
       toast.info('Deduction fields cleared')
     }
     forceReactiveUpdate()
-    triggerOnChange(field.fieldname, value, row)
+    triggerOnChange(field.fieldname, normalizedValue, row)
     return
   }
 
   // Fund class id change in payment_detail -> load fund class details and potentially add deduction rows
   if (field.fieldname === 'fund_class_id' && props.parentFieldname === 'payment_detail') {
-    if (value) {
+    if (normalizedValue) {
       try {
         const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
-          fund_class_id: value,
+          fund_class_id: normalizedValue,
           company: parentDoc.value?.company || 'Alkhidmat Foundation Pakistan'
         })
 
@@ -952,7 +957,7 @@ async function fieldChange(value, field, row) {
           row.pay_service_area = fundClassDetails.service_area || ''
           row.pay_subservice_area = fundClassDetails.subservice_area || ''
           row.pay_product = fundClassDetails.product || ''
-          row.fund_class = fundClassDetails.fund_class_name || value
+          row.fund_class = fundClassDetails.fund_class_name || normalizedValue
           toast.success('Fund class details loaded successfully')
         } else {
           toast.warning('No fund class details found')
@@ -966,7 +971,7 @@ async function fieldChange(value, field, row) {
         await clearDeductionBreakevenTable()
         toast.info('Deduction breakeven table cleared (Zakat intention)')
       } else {
-        const deductionDetails = await fetchDeductionDetails(value)
+        const deductionDetails = await fetchDeductionDetails(normalizedValue)
         if (deductionDetails && Object.keys(deductionDetails).length > 0) {
           const isArray = Array.isArray(deductionDetails)
           const detailsArray = isArray ? deductionDetails : [deductionDetails]
@@ -974,7 +979,7 @@ async function fieldChange(value, field, row) {
           let failedRowsCount = 0
           for (const detail of detailsArray) {
             try {
-              const success = await addDeductionRowToParent(detail, value, row.random_id)
+              const success = await addDeductionRowToParent(detail, normalizedValue, row.random_id)
               if (success) addedRowsCount++
               else failedRowsCount++
             } catch {
@@ -988,7 +993,7 @@ async function fieldChange(value, field, row) {
           if (failedRowsCount > 0) toast.error(`Failed to add ${failedRowsCount} deduction rows`)
           if (addedRowsCount === 0 && failedRowsCount > 0) {
             emit('add-deduction-row', {
-              fundClassId: value,
+              fundClassId: normalizedValue,
               deductionDetails,
               sourceTable: 'payment_detail',
               sourceRow: row
@@ -1000,7 +1005,7 @@ async function fieldChange(value, field, row) {
       }
     }
     forceReactiveUpdate()
-    triggerOnChange(field.fieldname, value, row)
+    triggerOnChange(field.fieldname, normalizedValue, row)
     return
   }
 
@@ -1010,13 +1015,13 @@ async function fieldChange(value, field, row) {
     if (isProcessingIntentionChange) return
     isProcessingIntentionChange = true
     try {
-      row.intention_id = value
-      if (value === 'Zakat') {
+      row.intention_id = normalizedValue
+      if (normalizedValue === 'Zakat') {
         if (parentDoc.value && parentDoc.value.deduction_breakeven) {
           parentDoc.value.deduction_breakeven = []
           toast.info('Deduction breakeven table cleared (Zakat intention)')
         }
-      } else if (value && value !== 'Zakat') {
+      } else if (normalizedValue && normalizedValue !== 'Zakat') {
         if (parentDoc.value && parentDoc.value.deduction_breakeven && Array.isArray(parentDoc.value.deduction_breakeven) && parentDoc.value.deduction_breakeven.length === 0 && parentDoc.value.payment_detail && Array.isArray(parentDoc.value.payment_detail) && parentDoc.value.payment_detail.length > 0) {
           try {
             const result = await call('crm.fcrm.doctype.donation.api.set_deduction_breakeven', {
@@ -1040,7 +1045,7 @@ async function fieldChange(value, field, row) {
         }
       }
       forceReactiveUpdate()
-      triggerOnChange(field.fieldname, value, row)
+      triggerOnChange(field.fieldname, normalizedValue, row)
     } finally {
       setTimeout(() => { isProcessingIntentionChange = false }, 1000)
     }
@@ -1049,17 +1054,17 @@ async function fieldChange(value, field, row) {
 
   // donation_amount change in payment_detail -> sync to deduction_breakeven
   if (field.fieldname === 'donation_amount' && props.parentFieldname === 'payment_detail') {
-    row.donation_amount = value
+    row.donation_amount = normalizedValue
     if (parentDoc.value && parentDoc.value.deduction_breakeven) {
       const matchingDeductionRows = parentDoc.value.deduction_breakeven.filter(d => d.random_id === row.random_id)
       matchingDeductionRows.forEach((deductionRow) => {
-        deductionRow.donation_amount = value
+        deductionRow.donation_amount = normalizedValue
         calculateDeductionAmount(deductionRow)
       })
       parentDoc.value.deduction_breakeven = [...parentDoc.value.deduction_breakeven]
     }
     forceReactiveUpdate()
-    triggerOnChange(field.fieldname, value, row)
+    triggerOnChange(field.fieldname, normalizedValue, row)
     return
   }
 
@@ -1074,11 +1079,11 @@ async function fieldChange(value, field, row) {
 
   // items table auto-fetch handlers (fund_class, donor, project, item_code)
   if (props.parentFieldname === 'items') {
-    if (field.fieldname === 'fund_class' && value) {
+    if (field.fieldname === 'fund_class' && normalizedValue) {
       try {
         const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
-          fund_class_id: value,
-          company: parentDoc.value?.company || 'Alkhidmat Foundation'
+          fund_class_id: normalizedValue,
+          company: parentDoc.value?.company || 'Alkhidmat Foundation Pakistan'
         })
         if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
           if (fundClassDetails.service_area) row.service_area = fundClassDetails.service_area
@@ -1092,15 +1097,15 @@ async function fieldChange(value, field, row) {
       } catch {
         toast.error('Error loading fund class details')
       }
-      emit('fund-class-selected', { row, fundClassId: value, success: !!value })
+      emit('fund-class-selected', { row, fundClassId: normalizedValue, success: !!normalizedValue })
       forceReactiveUpdate()
-      triggerOnChange(field.fieldname, value, row)
+      triggerOnChange(field.fieldname, normalizedValue, row)
       return
     }
 
-    if (field.fieldname === 'donor' && value) {
+    if (field.fieldname === 'donor' && normalizedValue) {
       try {
-        const donorDetails = await call('frappe.client.get', { doctype: 'Donor', name: value })
+        const donorDetails = await call('frappe.client.get', { doctype: 'Donor', name: normalizedValue })
         if (donorDetails) {
           if (donorDetails.donor_name) row.donor_name = donorDetails.donor_name
           if (donorDetails.donor_type) row.donor_type = donorDetails.donor_type
@@ -1112,15 +1117,15 @@ async function fieldChange(value, field, row) {
       } catch {
         toast.error('Error loading donor details')
       }
-      emit('donor-selected', { row, donorId: value, success: !!value })
+      emit('donor-selected', { row, donorId: normalizedValue, success: !!normalizedValue })
       forceReactiveUpdate()
-      triggerOnChange(field.fieldname, value, row)
+      triggerOnChange(field.fieldname, normalizedValue, row)
       return
     }
 
-    if (field.fieldname === 'project' && value) {
+    if (field.fieldname === 'project' && normalizedValue) {
       try {
-        const projectDetails = await call('frappe.client.get', { doctype: 'Project', name: value })
+        const projectDetails = await call('frappe.client.get', { doctype: 'Project', name: normalizedValue })
         if (projectDetails) {
           if (projectDetails.cost_center) row.cost_center = projectDetails.cost_center
           if (projectDetails.custom_service_area) row.service_area = projectDetails.custom_service_area
@@ -1135,13 +1140,13 @@ async function fieldChange(value, field, row) {
         toast.error('Error loading project details')
       }
       forceReactiveUpdate()
-      triggerOnChange(field.fieldname, value, row)
+      triggerOnChange(field.fieldname, normalizedValue, row)
       return
     }
 
-    if (field.fieldname === 'item_code' && value) {
+    if (field.fieldname === 'item_code' && normalizedValue) {
       try {
-        const itemDetails = await call('frappe.client.get', { doctype: 'Item', name: value })
+        const itemDetails = await call('frappe.client.get', { doctype: 'Item', name: normalizedValue })
         if (itemDetails) {
           if (itemDetails.item_name) row.item_name = itemDetails.item_name
           if (itemDetails.valuation_rate) row.basic_rate = itemDetails.valuation_rate
@@ -1153,13 +1158,13 @@ async function fieldChange(value, field, row) {
         toast.error('Error loading item details')
       }
       forceReactiveUpdate()
-      triggerOnChange(field.fieldname, value, row)
+      triggerOnChange(field.fieldname, normalizedValue, row)
       return
     }
   }
 
   // default: propagate change
-  triggerOnChange(field.fieldname, value, row)
+  triggerOnChange(field.fieldname, normalizedValue, row)
 }
 
 /* -------------------------
@@ -1466,44 +1471,94 @@ function debouncedUpdateDeductionAmounts() {
    Grid row modal handling
    ------------------------- */
 function handleGridRowModalFieldChange(rowIndex, fieldname, value) {
+  console.log('🔥 Grid handleGridRowModalFieldChange called:', { rowIndex, fieldname, value, parentFieldname: props.parentFieldname })
+
+  // Normalize emitted Link/Autocomplete value objects
+  const normalizedValue = (value && typeof value === 'object')
+    ? (value.value ?? value.name ?? '')
+    : value
+
   if (rowIndex >= 0 && rowIndex < data.value.length) {
-    data.value[rowIndex][fieldname] = value
+    data.value[rowIndex][fieldname] = normalizedValue
     if (props.parentFieldname === 'items') {
-      if (fieldname === 'fund_class' && value) handleFetchFromForItems(rowIndex, 'fund_class', value)
-      if (fieldname === 'donor' && value) handleFetchFromForItems(rowIndex, 'donor', value)
+      console.log('🔥 Items table field change detected:', { fieldname, value: normalizedValue })
+      if (fieldname === 'fund_class' && normalizedValue) {
+        console.log('🔥 Triggering fund_class auto-fill')
+        handleFetchFromForItems(rowIndex, 'fund_class', normalizedValue)
+      }
+      if (fieldname === 'donor' && normalizedValue) {
+        console.log('🔥 Triggering donor auto-fill')
+        handleFetchFromForItems(rowIndex, 'donor', normalizedValue)
+      }
     }
   }
 }
 
 async function handleFetchFromForItems(rowIndex, fieldname, value) {
+  console.log('🔥 handleFetchFromForItems called:', { rowIndex, fieldname, value })
+  
   try {
     const row = data.value[rowIndex]
     if (fieldname === 'fund_class') {
+      console.log('🔥 Fetching fund class details for:', value)
       const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', { fund_class_id: value, company: parentDoc.value?.company || 'Alkhidmat Foundation Pakistan' })
+      console.log('🔥 Fund class details received:', fundClassDetails)
+      
       if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
-        if (fundClassDetails.service_area) row.service_area = fundClassDetails.service_area
-        if (fundClassDetails.subservice_area) row.subservice_area = fundClassDetails.subservice_area
-        if (fundClassDetails.product) row.product = fundClassDetails.product
-        if (fundClassDetails.cost_center) row.cost_center = fundClassDetails.cost_center
+        if (fundClassDetails.service_area) {
+          console.log('🔥 Setting service_area:', fundClassDetails.service_area)
+          row.service_area = fundClassDetails.service_area
+        }
+        if (fundClassDetails.subservice_area) {
+          console.log('🔥 Setting subservice_area:', fundClassDetails.subservice_area)
+          row.subservice_area = fundClassDetails.subservice_area
+        }
+        if (fundClassDetails.product) {
+          console.log('🔥 Setting product:', fundClassDetails.product)
+          row.product = fundClassDetails.product
+        }
+        if (fundClassDetails.cost_center) {
+          console.log('🔥 Setting cost_center:', fundClassDetails.cost_center)
+          row.cost_center = fundClassDetails.cost_center
+        }
         toast.success('Fund class details loaded successfully')
+        emit('fund-class-selected', { row, fundClassId: value, success: !!value })
       } else {
+        console.log('⚠️ No fund class details found')
         toast.warning('No fund class details found')
       }
     }
 
     if (fieldname === 'donor') {
+      console.log('🔥 Fetching donor details for:', value)
       const donorDetails = await call('frappe.client.get', { doctype: 'Donor', name: value })
+      console.log('🔥 Donor details received:', donorDetails)
+      
       if (donorDetails) {
-        if (donorDetails.donor_name) row.donor_name = donorDetails.donor_name
-        if (donorDetails.donor_type) row.donor_type = donorDetails.donor_type
-        if (donorDetails.donor_desk) row.donor_desk = donorDetails.donor_desk
+        if (donorDetails.donor_name) {
+          console.log('🔥 Setting donor_name:', donorDetails.donor_name)
+          row.donor_name = donorDetails.donor_name
+        }
+        if (donorDetails.donor_type) {
+          console.log('🔥 Setting donor_type:', donorDetails.donor_type)
+          row.donor_type = donorDetails.donor_type
+        }
+        if (donorDetails.donor_desk) {
+          console.log('🔥 Setting donor_desk:', donorDetails.donor_desk)
+          row.donor_desk = donorDetails.donor_desk
+        }
         toast.success('Donor details loaded successfully')
+        emit('donor-selected', { row, donorId: value, success: !!value })
       } else {
+        console.log('⚠️ No donor details found')
         toast.warning('No donor details found')
       }
     }
+    
+    console.log('🔥 Forcing reactive update')
     forceReactiveUpdate()
-  } catch {
+  } catch (error) {
+    console.error('❌ Error in handleFetchFromForItems:', error)
     toast.error(`Error loading ${fieldname} details`)
   }
 }

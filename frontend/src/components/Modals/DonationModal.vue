@@ -101,9 +101,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, computed, readonly } from "vue";
 import { useRouter } from "vue-router";
-import { Dialog, Button, ErrorMessage, toast } from "frappe-ui";
-import { createResource } from "@/utils/resource";
-import { call } from "@/utils/api";
+import { createResource, call, Dialog, Button, ErrorMessage, toast } from "frappe-ui";
 import FeatherIcon from "@/components/Icons/FeatherIcon.vue";
 import QuickEntryModal from "@/components/Modals/QuickEntryModal.vue";
 import FieldLayout from "@/components/FieldLayout/FieldLayout.vue";
@@ -173,77 +171,38 @@ const generateRandomId = (idx) => {
 };
 
 // Function to add a new payment detail row with proper random_id generation
-const addPaymentDetailRow = () => {
-  const newRow = {
-    donor_id: "",
-    donor_name: "",
-    cnic: "",
-    donor_type: "",
-    donor_desk_id: "",
-    donor_desk: "",
-    contact_no: "",
-    email: "",
-    address: "",
-    co_name: "",
-    co_contact_no: "",
-    co_email: "",
-    co_address: "",
-    relationship_with_donor: "",
-    area: "",
-    co_city: "",
-    co_country: "",
-    co_designation: "",
-    donor_currency: "",
-    donation_amount: 0,
-    currency: donation.doc.currency || "PKR",
-    random_id: generateRandomId((donation.doc.payment_detail?.length || 0) + 1),
-  };
+// const addPaymentDetailRow = () => {
+//   const newRow = {
+//     donor_id: "",
+//     donor_name: "",
+//     cnic: "",
+//     donor_type: "",
+//     donor_desk_id: "",
+//     donor_desk: "",
+//     contact_no: "",
+//     email: "",
+//     address: "",
+//     co_name: "",
+//     co_contact_no: "",
+//     co_email: "",
+//     co_address: "",
+//     relationship_with_donor: "",
+//     area: "",
+//     co_city: "",
+//     co_country: "",
+//     co_designation: "",
+//     donor_currency: "",
+//     donation_amount: 0,
+//     currency: donation.doc.currency || "PKR",
+//     random_id: generateRandomId((donation.doc.payment_detail?.length || 0) + 1),
+//   };
 
-  // Inherit mode_of_payment and account_paid_to from main form for merchant donor identities
-  if (
-    donation.doc.donor_identity === "Merchant - Known" ||
-    donation.doc.donor_identity === "Merchant - Unknown"
-  ) {
-    if (donation.doc.mode_of_payment) {
-      newRow.mode_of_payment = donation.doc.mode_of_payment;
-      // Set tracking IDs to prevent duplicate API calls
-      newRow._lastMOPId = donation.doc.mode_of_payment;
-      newRow._lastMOPId2 = donation.doc.mode_of_payment;
-      console.log(`New row inheriting mode_of_payment: ${donation.doc.mode_of_payment}`);
-    }
-    
-    if (donation.doc.account_paid_to) {
-      newRow.account_paid_to = donation.doc.account_paid_to;
-      console.log(`New row inheriting account_paid_to: ${donation.doc.account_paid_to}`);
-    }
-  }
-
-  // Add the new row to the payment_detail array
-  if (!donation.doc.payment_detail) {
-    donation.doc.payment_detail = [];
-  }
-  donation.doc.payment_detail.push(newRow);
-
-  // Auto-populate donor when donor identity is Unknown (or Merchant - Unknown)
-  const identity = donation.doc.donor_identity;
-  if (identity === "Unknown" || identity === "Merchant - Unknown") {
-    call("frappe.client.get_value", {
-      doctype: "Donor",
-      filters: { donor_identity: identity },
-      fieldname: "name",
-    }).then((r) => {
-      const donorId = r?.message?.name;
-      if (donorId) {
-        newRow.donor_id = donorId;
-        newRow.donor = donorId;
-        // Force reactive update so UI reflects donor_id immediately
-        if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
-          donation.doc.payment_detail = [...donation.doc.payment_detail];
-        }
-      }
-    });
-  }
-};
+//   // Add the new row to the payment_detail array
+//   if (!donation.doc.payment_detail) {
+//     donation.doc.payment_detail = [];
+//   }
+//   donation.doc.payment_detail.push(newRow);
+// };
 
 // Initialize donation with default values including edit_posting_date_time
 const initializeDonation = () => {
@@ -279,7 +238,7 @@ const resetDonationData = () => {
   donation.doc = {
     doctype: "Donation",
     status: "Draft",
-    company: "Alkhidmat Foundation Pakistan",
+    company: "Alkhidmat Foundation",
     donor_identity: "Known",
     donation_type: "Cash", // Default to Cash
     currency: "PKR", // Default currency
@@ -617,14 +576,18 @@ onSuccess: async (data) => {
     donation.doc.status = 'Draft'
   }
 
+  // Only fetch & set default company if it's not already populated
   if (!donation.doc.company) {
     try {
+      // Try the lightweight get_value first
       const res = await call('frappe.client.get_value', {
         doctype: 'Global Defaults',
         fieldname: 'default_company',
-        filters: {} 
+        filters: {} // explicit empty filters for safety
       })
 
+      // call() results can differ depending on how `call` wrapper is implemented;
+      // check common shapes and take first non-empty candidate
       let companyName =
         (res && res.default_company) ||
         (res && res.message && (res.message.default_company || res.message.value)) ||
@@ -695,13 +658,13 @@ const { user } = sessionStore();
 
 // UPDATE: Enhanced initialization to include donor filtering setup
 onMounted(() => {
-  // console.log("DonationModal mounted");
-  // console.log("DonationModal props defaults:", props.defaults);
-  // console.log("Tabs resource:", tabs);
-  // console.log("Show value:", show.value);
+  console.log("DonationModal mounted");
+  console.log("DonationModal props defaults:", props.defaults);
+  console.log("Tabs resource:", tabs);
+  console.log("Show value:", show.value);
 
   // Initialize the donation document with required fields
-  // initializeDonationDocument();
+  initializeDonationDocument();
 
   // Configure field queries for child tables
   configureFieldQueries();
@@ -760,12 +723,12 @@ watch(
   { immediate: true }
 );
 
-// Ensure main modal stays visible during sub-modal interactions
-const ensureMainModalVisible = () => {
-  if (modalStack.value.length > 0 && !show.value) {
-    show.value = true;
-  }
-};
+// // Ensure main modal stays visible during sub-modal interactions
+// const ensureMainModalVisible = () => {
+//   if (modalStack.value.length > 0 && !show.value) {
+//     show.value = true;
+//   }
+// };
 
 // Ensure parent modal stays visible when sub-modal becomes active
 const ensureParentModalVisible = (modalIdx) => {
@@ -902,15 +865,15 @@ function openCreateModal({ doctype, initialValue, onSuccess }) {
 
 // ADD: Function to update donor filtering in existing modals
 function updateDonorFilteringInModals() {
-  // console.log("Updating donor filtering in existing modals");
-  // console.log("Current donor_identity:", donation.doc.donor_identity);
+  console.log("Updating donor filtering in existing modals");
+  console.log("Current donor_identity:", donation.doc.donor_identity);
 
   modalStack.value.forEach((modal, index) => {
     if (modal.donorFiltering) {
       modal.donorFiltering.donor_identity = donation.doc.donor_identity;
       modal.donorFiltering.currency = donation.doc.currency;
       modal.donorFiltering.company = donation.doc.company;
-      // console.log(`Updated modal ${index} donor filtering:`, modal.donorFiltering);
+      console.log(`Updated modal ${index} donor filtering:`, modal.donorFiltering);
     }
   });
 }
@@ -919,12 +882,12 @@ function updateDonorFilteringInModals() {
 watch(
   () => donation.doc.donor_identity,
   (newDonorIdentity, oldDonorIdentity) => {
-    // console.log("Donor Identity changed from", oldDonorIdentity, "to:", newDonorIdentity);
+    console.log("Donor Identity changed from", oldDonorIdentity, "to:", newDonorIdentity);
 
     // Clear contribution_type when donor identity changes to force re-evaluation
     if (donation.doc.contribution_type) {
       donation.doc.contribution_type = "";
-      // console.log("Cleared contribution_type due to donor identity change");
+      console.log("Cleared contribution_type due to donor identity change");
     }
 
     // Update donor filtering in existing modals
@@ -1020,18 +983,53 @@ function handleModalClose(idx) {
   }
 }
 
-// Error handling is now done globally via errorHandler.js
+// Enhanced error handling function
+// function extractDonationErrorMessage(err) {
+//   let errorMessage = "An error occurred while creating the donation.";
 
+//   // Handle different error types
+//   if (err?.exc_type === "MandatoryError") {
+//     // Parse mandatory field errors
+//     const missingFields = parseMandatoryError(err);
+//     if (missingFields.length > 0) {
+//       errorMessage = `Please fill in the following required fields:\n\n${missingFields
+//         .map((field) => `• ${field}`)
+//         .join("\n")}`;
+//     } else {
+//       errorMessage = "Please fill all required fields before submitting.";
+//     }
+//   } else if (err?.exc_type === "ValidationError") {
+//     errorMessage = `Validation error: ${err.messages?.[0] || "Invalid data provided"}`;
+//   } else if (err?.exc_type === "LinkError") {
+//     errorMessage =
+//       "Invalid reference in one of the fields. Please check your selections.";
+//   } else if (err?.exc_type === "PermissionError") {
+//     errorMessage = "You do not have permission to create donations.";
+//   } else if (err?.exc_type === "DuplicateEntryError") {
+//     errorMessage = "A donation with this information already exists.";
+//   } else if (err?.message) {
+//     // Try to parse custom error messages
+//     errorMessage = parseCustomErrorMessage(err.message);
+//   } else if (err?.exc) {
+//     // Parse exception traceback
+//     errorMessage = parseExceptionMessage(err.exc);
+//   }
+
+//   return errorMessage;
+// }
+
+// Parse MandatoryError to extract field names
 function parseMandatoryError(err) {
   const missingFields = [];
 
   if (err.messages && Array.isArray(err.messages)) {
     err.messages.forEach((msg) => {
+      // Parse different formats of MandatoryError
       const patterns = [
-        /\[([^,]+),\s*([^\]]+)\]:\s*([^,\s]+)/, 
-        /MandatoryError.*?:\s*([^,\n]+)/, 
-        /Field\s+([^,\s]+)\s+is\s+mandatory/, 
-        /([^,\s]+)\s+is\s+required/, 
+        /\[([^,]+),\s*([^\]]+)\]:\s*([^,\s]+)/, // [Donation, DONATION-2025-00007]: equity_account
+        /MandatoryError.*?:\s*([^,\n]+)/, // MandatoryError: equity_account
+        /Field\s+([^,\s]+)\s+is\s+mandatory/, // Field equity_account is mandatory
+        /([^,\s]+)\s+is\s+required/, // equity_account is required
       ];
 
       for (const pattern of patterns) {
@@ -1441,6 +1439,8 @@ function clearDonorFields(row) {
 let isProcessingPaymentDetail = false;
 let isProcessingDeductionBreakeven = false;
 let isUpdatingFromAPI = false;
+// Guard for initial default population flows; ensure it's always defined
+let isInitializingWithDefaults = false;
 
 // Debouncing timeouts
 let paymentDetailTimeout = null;
@@ -1517,7 +1517,7 @@ watch(
             row._lastMOPId = row.mode_of_payment;
 
             try {
-              const company = donation.doc?.company || "Alkhidmat Foundation Pakistan";
+              const company = donation.doc?.company || "Alkhidmat Foundation";
               console.log("Company:", company);
 
               const result = await call(
@@ -1594,7 +1594,7 @@ watch(
           row._lastMOPId2 = row.mode_of_payment;
 
           try {
-            const company = donation.doc?.company || "Alkhidmat Foundation Pakistan";
+            const company = donation.doc?.company || "Alkhidmat Foundation";
             console.log("Company:", company);
 
             const result = await call(
@@ -1631,7 +1631,7 @@ watch(
             );
             row.account_paid_to = "";
             toast.error(`Error loading account for mode of payment: ${error.message}`);
-          } 
+          }
         }
       }
     } finally {
@@ -1789,7 +1789,7 @@ async function setDeductionBreakevenFromAPI() {
     // Use the exact backend set_deduction_breakeven API
     const result = await call("crm.fcrm.doctype.donation.api.set_deduction_breakeven", {
       payment_details: donation.doc.payment_detail,
-      company: donation.doc.company || "Alkhidmat Foundation Pakistan",
+      company: donation.doc.company || "Alkhidmat Foundation",
       contribution_type: donation.doc.contribution_type || "Donation",
       donation_cost_center: donation.doc.donation_cost_center,
       currency: donation.doc.currency,
@@ -2012,7 +2012,7 @@ watch(
 watch(
   () => donation.doc.donation_type,
   (newType, oldType) => {
-    // console.log("Donation type changed from", oldType, "to:", newType);
+    console.log("Donation type changed from", oldType, "to:", newType);
 
     if (newType === "In Kind Donation") {
       // Clear deduction_breakeven table when donation type is In Kind Donation (same as backend)
@@ -2031,175 +2031,6 @@ watch(
       setDeductionBreakevenFromAPI();
     }
   }
-);
-
-// Main form mode_of_payment to account_paid_to auto-fill watcher
-watch(
-  () => donation.doc.mode_of_payment,
-  async (newModeOfPayment, oldModeOfPayment) => {
-    // Only trigger for merchant donor identities
-    if (
-      donation.doc.donor_identity !== "Merchant - Known" &&
-      donation.doc.donor_identity !== "Merchant - Unknown"
-    ) {
-      return;
-    }
-
-    // Only trigger if mode_of_payment actually changed and has a value
-    if (!newModeOfPayment || newModeOfPayment === oldModeOfPayment) {
-      return;
-    }
-
-    console.log("🔥 MAIN FORM MODE OF PAYMENT CHANGED 🔥", newModeOfPayment);
-
-    try {
-      const company = donation.doc?.company || "Alkhidmat Foundation Pakistan";
-      console.log("Company:", company);
-
-      const result = await call(
-        "crm.fcrm.doctype.donation.api.get_payment_mode_account",
-        {
-          mode_of_payment: newModeOfPayment,
-          company: company,
-        }
-      );
-
-      console.log("🔥 MAIN FORM API RESULT 🔥", result);
-
-      if (result && result.success && result.account) {
-        console.log("✅ Main form account fetched successfully:", result.account);
-        donation.doc.account_paid_to = result.account;
-        
-        // Also update all child table rows with the same mode_of_payment and account_paid_to
-        if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
-          donation.doc.payment_detail.forEach((row, index) => {
-            row.mode_of_payment = newModeOfPayment;
-            row.account_paid_to = result.account;
-            // Reset the tracking IDs to prevent duplicate API calls
-            row._lastMOPId = newModeOfPayment;
-            row._lastMOPId2 = newModeOfPayment;
-            console.log(`Updated child table row ${index} with mode_of_payment: ${newModeOfPayment} and account_paid_to: ${result.account}`);
-          });
-          
-          // Force reactive update to ensure UI reflects changes
-          donation.doc.payment_detail = [...donation.doc.payment_detail];
-        }
-        
-        toast.success(`Account Paid To auto-filled: ${result.account} (Main form and child table updated)`);
-      } else {
-        console.log("❌ No account found for main form");
-        donation.doc.account_paid_to = "";
-
-        if (result && result.message) {
-          toast.warning(result.message);
-        } else {
-          toast.warning("No default account found for this mode of payment");
-        }
-      }
-    } catch (error) {
-      console.error("❌ Error fetching payment mode account for main form:", error);
-      donation.doc.account_paid_to = "";
-      toast.error(`Error loading account for mode of payment: ${error.message}`);
-    }
-  }
-);
-
-// Additional watcher to ensure all rows are updated when main form account_paid_to changes
-watch(
-  () => donation.doc.account_paid_to,
-  (newAccountPaidTo, oldAccountPaidTo) => {
-    // Only trigger for merchant donor identities
-    if (
-      donation.doc.donor_identity !== "Merchant - Known" &&
-      donation.doc.donor_identity !== "Merchant - Unknown"
-    ) {
-      return;
-    }
-
-    // Only trigger if account_paid_to actually changed and has a value
-    if (!newAccountPaidTo || newAccountPaidTo === oldAccountPaidTo) {
-      return;
-    }
-
-    console.log("🔥 MAIN FORM ACCOUNT_PAID_TO CHANGED 🔥", newAccountPaidTo);
-
-    // Update all child table rows with the same account_paid_to
-    if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
-      donation.doc.payment_detail.forEach((row, index) => {
-        row.account_paid_to = newAccountPaidTo;
-        console.log(`Updated child table row ${index} with account_paid_to: ${newAccountPaidTo}`);
-      });
-      
-      // Force reactive update to ensure UI reflects changes
-      donation.doc.payment_detail = [...donation.doc.payment_detail];
-    }
-  }
-);
-
-// Function to auto-populate a specific row with main form values
-function autoPopulateRowWithMainFormValues(row) {
-  // Only trigger for merchant donor identities
-  if (
-    donation.doc.donor_identity !== "Merchant - Known" &&
-    donation.doc.donor_identity !== "Merchant - Unknown"
-  ) {
-    return;
-  }
-
-  console.log("🔥 AUTO-POPULATING ROW WITH MAIN FORM VALUES 🔥", row);
-
-  let hasChanges = false;
-
-  // Auto-populate the row with main form values
-  if (donation.doc.mode_of_payment && !row.mode_of_payment) {
-    row.mode_of_payment = donation.doc.mode_of_payment;
-    // Set tracking IDs to prevent duplicate API calls
-    row._lastMOPId = donation.doc.mode_of_payment;
-    row._lastMOPId2 = donation.doc.mode_of_payment;
-    console.log(`Auto-populated row with mode_of_payment: ${donation.doc.mode_of_payment}`);
-    hasChanges = true;
-  }
-  
-  if (donation.doc.account_paid_to && !row.account_paid_to) {
-    row.account_paid_to = donation.doc.account_paid_to;
-    console.log(`Auto-populated row with account_paid_to: ${donation.doc.account_paid_to}`);
-    hasChanges = true;
-  }
-  
-  // Force reactive update to ensure UI reflects changes
-  if (hasChanges && donation.doc.payment_detail) {
-    donation.doc.payment_detail = [...donation.doc.payment_detail];
-    toast.success("Row auto-populated with main form values");
-  }
-}
-
-// Enhanced watcher for payment_detail that auto-populates rows when they become active
-watch(
-  () => donation.doc.payment_detail,
-  (newPaymentDetail, oldPaymentDetail) => {
-    // Only trigger for merchant donor identities
-    if (
-      donation.doc.donor_identity !== "Merchant - Known" &&
-      donation.doc.donor_identity !== "Merchant - Unknown"
-    ) {
-      return;
-    }
-
-    if (!newPaymentDetail || !Array.isArray(newPaymentDetail)) {
-      return;
-    }
-
-    // Auto-populate all rows that don't have mode_of_payment or account_paid_to
-    newPaymentDetail.forEach((row, index) => {
-      if (row && (!row.mode_of_payment || !row.account_paid_to)) {
-        // Use a small delay to ensure the row is fully rendered
-        setTimeout(() => {
-          autoPopulateRowWithMainFormValues(row);
-        }, 100);
-      }
-    });
-  },
-  { deep: true }
 );
 
 // FIX: Enhanced createNewDonation function with correct submission logic
@@ -2300,7 +2131,8 @@ async function createNewDonation() {
       }
     } catch (err) {
       console.error("Error creating donation:", err);
-      error.value = err.message;
+      error.value = err.message || "Failed to create donation";
+      toast.error("Failed to create donation");
     } finally {
       isDonationCreating.value = false;
     }
@@ -2406,21 +2238,18 @@ function validateDonationForm() {
     errors.push("Currency is required");
   }
 
-  // Skip donation cost center validation for In Kind Donation
   if (
-    donation.doc.donation_type !== "In Kind Donation" &&
-    (!donation.doc.donation_cost_center ||
-    donation.doc.donation_cost_center.trim() === "")
+    !donation.doc.donation_cost_center ||
+    donation.doc.donation_cost_center.trim() === ""
   ) {
     errors.push("Donation Cost Center is required");
   }
 
-  // Skip payment detail validation for In Kind Donation
+  // Payment detail validation
   if (
-    donation.doc.donation_type !== "In Kind Donation" &&
-    (!donation.doc.payment_detail ||
+    !donation.doc.payment_detail ||
     !Array.isArray(donation.doc.payment_detail) ||
-    donation.doc.payment_detail.length === 0)
+    donation.doc.payment_detail.length === 0
   ) {
     errors.push("At least one payment detail is required");
   } else {
@@ -2629,9 +2458,6 @@ async function prepareDonationForSubmission() {
         row.random_id = generateRandomId(doc.deduction_breakeven.indexOf(row) + 1);
       }
 
-      // CRITICAL: Preserve user-modified values by storing them as original values
-      // This ensures that when the backend API is called during creation,
-      // our preservation logic will detect these as user modifications
       if (row.percentage !== undefined) {
         row._originalPercentage = row.percentage;
         row._userModifiedPercentage = true;
@@ -2694,7 +2520,7 @@ async function applyDonorFilteringToForm() {
     console.log(
       "FieldLayout re-rendered for new donor identity:",
       donation.doc.donor_identity
-  );
+    );
   });
 }
 
@@ -2769,125 +2595,121 @@ function handleFundClassSelected(event) {
 }
 
 // ADD: Field-level validation functions for real-time feedback
-function validateField(fieldName, value, rowIndex = null) {
-  const errors = [];
+// function validateField(fieldName, value, rowIndex = null) {
+//   const errors = [];
 
-  // Main donation fields validation
-  if (fieldName === "company" && (!value || value.trim() === "")) {
-    errors.push("Company is required");
-  }
+//   // Main donation fields validation
+//   if (fieldName === "company" && (!value || value.trim() === "")) {
+//     errors.push("Company is required");
+//   }
 
-  if (fieldName === "donation_type" && (!value || value.trim() === "")) {
-    errors.push("Donation Type is required");
-  }
+//   if (fieldName === "donation_type" && (!value || value.trim() === "")) {
+//     errors.push("Donation Type is required");
+//   }
 
-  if (fieldName === "due_date" && !value) {
-    errors.push("Due Date is required");
-  }
+//   if (fieldName === "due_date" && !value) {
+//     errors.push("Due Date is required");
+//   }
 
-  if (fieldName === "donor_identity" && (!value || value.trim() === "")) {
-    errors.push("Donor Identity is required");
-  }
+//   if (fieldName === "donor_identity" && (!value || value.trim() === "")) {
+//     errors.push("Donor Identity is required");
+//   }
 
-  if (fieldName === "contribution_type" && (!value || value.trim() === "")) {
-    errors.push("Contribution Type is required");
-  }
+//   if (fieldName === "contribution_type" && (!value || value.trim() === "")) {
+//     errors.push("Contribution Type is required");
+//   }
 
-  if (fieldName === "posting_date" && !value) {
-    errors.push("Posting Date is required");
-  }
+//   if (fieldName === "posting_date" && !value) {
+//     errors.push("Posting Date is required");
+//   }
 
-  if (fieldName === "currency" && (!value || value.trim() === "")) {
-    errors.push("Currency is required");
-  }
+//   if (fieldName === "currency" && (!value || value.trim() === "")) {
+//     errors.push("Currency is required");
+//   }
 
-  if (
-    fieldName === "donation_cost_center" && 
-    donation.doc.donation_type !== "In Kind Donation" &&
-    (!value || value.trim() === "")
-  ) {
-    errors.push("Donation Cost Center is required");
-  }
+//   if (fieldName === "donation_cost_center" && (!value || value.trim() === "")) {
+//     errors.push("Donation Cost Center is required");
+//   }
 
-  // Payment detail fields validation
-  if (
-    rowIndex !== null &&
-    donation.doc.payment_detail &&
-    donation.doc.payment_detail[rowIndex]
-  ) {
-    const row = donation.doc.payment_detail[rowIndex];
-    const rowNum = rowIndex + 1;
+//   // Payment detail fields validation
+//   if (
+//     rowIndex !== null &&
+//     donation.doc.payment_detail &&
+//     donation.doc.payment_detail[rowIndex]
+//   ) {
+//     const row = donation.doc.payment_detail[rowIndex];
+//     const rowNum = rowIndex + 1;
 
-    if (fieldName === "donation_amount" && (!value || value <= 0)) {
-      errors.push(
-        `Donation Amount for payment detail row ${rowNum} is required and must be greater than 0`
-      );
-    }
+//     if (fieldName === "donation_amount" && (!value || value <= 0)) {
+//       errors.push(
+//         `Donation Amount for payment detail row ${rowNum} is required and must be greater than 0`
+//       );
+//     }
 
-    if (fieldName === "equity_account" && (!value || value.trim() === "")) {
-      errors.push(`Equity Account for payment detail row ${rowNum} is required`);
-    }
+//     if (fieldName === "equity_account" && (!value || value.trim() === "")) {
+//       errors.push(`Equity Account for payment detail row ${rowNum} is required`);
+//     }
 
-    if (fieldName === "receivable_account" && (!value || value.trim() === "")) {
-      errors.push(`Receivable Account for payment detail row ${rowNum} is required`);
-    }
+//     if (fieldName === "receivable_account" && (!value || value.trim() === "")) {
+//       errors.push(`Receivable Account for payment detail row ${rowNum} is required`);
+//     }
 
-    if (fieldName === "donor_id" && (!value || value.trim() === "")) {
-      errors.push(`Donor for payment detail row ${rowNum} is required`);
-    }
+//     if (fieldName === "donor_id" && (!value || value.trim() === "")) {
+//       errors.push(`Donor for payment detail row ${rowNum} is required`);
+//     }
 
-    if (fieldName === "fund_class_id" && (!value || value.trim() === "")) {
-      errors.push(`Fund Class for payment detail row ${rowNum} is required`);
-    }
+//     if (fieldName === "fund_class_id" && (!value || value.trim() === "")) {
+//       errors.push(`Fund Class for payment detail row ${rowNum} is required`);
+//     }
 
-    if (fieldName === "mode_of_payment" && (!value || value.trim() === "")) {
-      errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
-    }
+//     if (fieldName === "mode_of_payment" && (!value || value.trim() === "")) {
+//       errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
+//     }
 
-    // Transaction Type ID is always mandatory
-    if (fieldName === "transaction_type_id" && (!value || value.trim() === "")) {
-      errors.push(`Transaction Type ID for payment detail row ${rowNum} is required`);
-    }
+//     // Transaction Type ID is always mandatory
+//     if (fieldName === "transaction_type_id" && (!value || value.trim() === "")) {
+//       errors.push(`Transaction Type ID for payment detail row ${rowNum} is required`);
+//     }
 
-    // Conditional validation for bank/cheque/bank draft fields
-    if (
-      row.mode_of_payment &&
-      ["bank", "Cheque", "Bank Draft"].includes(row.mode_of_payment)
-    ) {
-      if (fieldName === "account_paid_to" && (!value || value.trim() === "")) {
-        errors.push(
-          `Account Paid To for payment detail row ${rowNum} is required when Mode of Payment is ${row.mode_of_payment}`
-        );
-      }
+//     // Conditional validation for bank/cheque/bank draft fields
+//     if (
+//       row.mode_of_payment &&
+//       ["bank", "Cheque", "Bank Draft"].includes(row.mode_of_payment)
+//     ) {
+//       if (fieldName === "account_paid_to" && (!value || value.trim() === "")) {
+//         errors.push(
+//           `Account Paid To for payment detail row ${rowNum} is required when Mode of Payment is ${row.mode_of_payment}`
+//         );
+//       }
 
-      if (fieldName === "transaction_no_cheque_no" && (!value || value.trim() === "")) {
-        errors.push(
-          `Transaction No/ Cheque No for payment detail row ${rowNum} is required when Mode of Payment is ${row.mode_of_payment}`
-        );
-      }
+//       if (fieldName === "transaction_no_cheque_no" && (!value || value.trim() === "")) {
+//         errors.push(
+//           `Transaction No/ Cheque No for payment detail row ${rowNum} is required when Mode of Payment is ${row.mode_of_payment}`
+//         );
+//       }
 
-      if (fieldName === "reference_date" && !value) {
-        errors.push(
-          `Cheque / Reference Date for payment detail row ${rowNum} is required when Mode of Payment is ${row.mode_of_payment}`
-        );
-      }
-    }
-  }
+//       if (fieldName === "reference_date" && !value) {
+//         errors.push(
+//           `Cheque / Reference Date for payment detail row ${rowNum} is required when Mode of Payment is ${row.mode_of_payment}`
+//         );
+//       }
+//     }
+//   }
 
-  return errors;
-}
+//   return errors;
+// }
 
 // ADD: Function to show field validation errors
-function showFieldValidationError(fieldName, value, rowIndex = null) {
-  const errors = validateField(fieldName, value, rowIndex);
+// function showFieldValidationError(fieldName, value, rowIndex = null) {
+//   const errors = validateField(fieldName, value, rowIndex);
 
-  if (errors.length > 0) {
-    toast.error(errors[0]);
-    return false;
-  }
+//   if (errors.length > 0) {
+//     toast.error(errors[0]);
+//     return false;
+//   }
 
-  return true;
-}
+//   return true;
+// }
 
 // NEW: Function to populate fund class fields for Pledge contribution type
 async function populateFundClassFieldsForPledge(row) {
@@ -2900,7 +2722,7 @@ async function populateFundClassFieldsForPledge(row) {
     // Call the same backend API that set_deduction_breakeven uses, but only for fund class field population
     const result = await call("crm.fcrm.doctype.donation.api.set_deduction_breakeven", {
       payment_details: [row], // Pass only the current row
-      company: donation.doc.company || "Alkhidmat Foundation Pakistan",
+      company: donation.doc.company || "Alkhidmat Foundation",
       contribution_type: "Pledge", // Explicitly set as Pledge
       donation_cost_center: donation.doc.donation_cost_center,
       currency: donation.doc.currency,
@@ -2971,8 +2793,6 @@ const netAmount = computed(() => {
 });
 
 const outstandingAmount = computed(() => {
-  // For Pledge: Outstanding Amount = Total Donation
-  // For Donation: Outstanding Amount = Net Amount
   if (donation.doc.contribution_type === "Pledge") {
     return totalDonation.value;
   } else {
@@ -2980,9 +2800,7 @@ const outstandingAmount = computed(() => {
   }
 });
 
-// ADD: Function to update calculation fields in the document
 function updateCalculationFields() {
-  // Update the document with calculated values
   donation.doc.base_total_donation = totalDonation.value;
   donation.doc.base_total_deduction = totalDeduction.value;
   donation.doc.base_net_amount = netAmount.value;
@@ -2999,7 +2817,6 @@ function updateCalculationFields() {
   });
 }
 
-// ADD: Watcher to update calculations when payment_detail changes
 watch(
   () => donation.doc.payment_detail,
   () => {
@@ -3008,7 +2825,6 @@ watch(
   { deep: true }
 );
 
-// ADD: Watcher to update calculations when deduction_breakeven changes
 watch(
   () => donation.doc.deduction_breakeven,
   () => {
@@ -3017,7 +2833,6 @@ watch(
   { deep: true }
 );
 
-// ADD: Watcher to update calculations when contribution_type changes
 watch(
   () => donation.doc.contribution_type,
   () => {
@@ -3025,12 +2840,10 @@ watch(
   }
 );
 
-// ADD: Function to validate percentage against min/max limits
 function validatePercentageLimits(row, rowIndex) {
   const rowNum = rowIndex + 1;
   const percentage = parseFloat(row.percentage);
 
-  // Check if percentage is a valid number
   if (isNaN(percentage)) {
     return {
       isValid: false,
@@ -3038,7 +2851,6 @@ function validatePercentageLimits(row, rowIndex) {
     };
   }
 
-  // Check if percentage is negative
   if (percentage < 0) {
     return {
       isValid: false,
@@ -3046,7 +2858,6 @@ function validatePercentageLimits(row, rowIndex) {
     };
   }
 
-  // Check if percentage exceeds 100%
   if (percentage > 100) {
     return {
       isValid: false,
@@ -3054,7 +2865,6 @@ function validatePercentageLimits(row, rowIndex) {
     };
   }
 
-  // Check min/max percentage limits if they exist
   if (
     row.min_percent !== null &&
     row.min_percent !== undefined &&
@@ -3087,12 +2897,10 @@ function validatePercentageLimits(row, rowIndex) {
   return { isValid: true };
 }
 
-// ADD: Function to calculate deduction amount based on percentage and donation amount
 function calculateDeductionAmount(row) {
   const percentage = parseFloat(row.percentage);
   const donationAmount = parseFloat(row.donation_amount);
 
-  // Validate inputs
   if (isNaN(percentage) || isNaN(donationAmount)) {
     console.log("Cannot calculate amount: invalid percentage or donation amount");
     return null;
@@ -3103,7 +2911,6 @@ function calculateDeductionAmount(row) {
     return null;
   }
 
-  // Calculate amount: (percentage / 100) * donation_amount
   const calculatedAmount = (percentage / 100) * donationAmount;
 
   console.log(
@@ -3113,52 +2920,46 @@ function calculateDeductionAmount(row) {
   return calculatedAmount;
 }
 
-// ADD: Function to store original backend values when deduction breakeven is first populated
-function storeOriginalDeductionValues() {
-  if (
-    donation.doc.deduction_breakeven &&
-    Array.isArray(donation.doc.deduction_breakeven)
-  ) {
-    donation.doc.deduction_breakeven.forEach((row, index) => {
-      if (row) {
-        // Store original values when first populated from backend
-        if (row._originalPercentage === undefined) {
-          row._originalPercentage = row.percentage;
-          row._originalMinPercent = row.min_percent;
-          row._originalMaxPercent = row.max_percent;
-          row._originalAmount = row.amount;
-          row._originalBaseAmount = row.base_amount;
-          console.log(`Stored original values for deduction row ${index}:`, {
-            percentage: row._originalPercentage,
-            min_percent: row._originalMinPercent,
-            max_percent: row._originalMaxPercent,
-            amount: row._originalAmount,
-            base_amount: row._originalBaseAmount,
-          });
-        }
-      }
-    });
-  }
-}
+// // ADD: Function to store original backend values when deduction breakeven is first populated
+// function storeOriginalDeductionValues() {
+//   if (
+//     donation.doc.deduction_breakeven &&
+//     Array.isArray(donation.doc.deduction_breakeven)
+//   ) {
+//     donation.doc.deduction_breakeven.forEach((row, index) => {
+//       if (row) {
+//         // Store original values when first populated from backend
+//         if (row._originalPercentage === undefined) {
+//           row._originalPercentage = row.percentage;
+//           row._originalMinPercent = row.min_percent;
+//           row._originalMaxPercent = row.max_percent;
+//           row._originalAmount = row.amount;
+//           row._originalBaseAmount = row.base_amount;
+//           console.log(`Stored original values for deduction row ${index}:`, {
+//             percentage: row._originalPercentage,
+//             min_percent: row._originalMinPercent,
+//             max_percent: row._originalMaxPercent,
+//             amount: row._originalAmount,
+//             base_amount: row._originalBaseAmount,
+//           });
+//         }
+//       }
+//     });
+//   }
+// }
 
-// BULLETPROOF FIX: Enhanced triggerOnRowRemove to sync deletion between payment_detail and deduction_breakeven
 const originalTriggerOnRowRemove = donation.triggerOnRowRemove;
 
-// Create custom triggerOnRowRemove that handles payment_detail to deduction_breakeven sync
 const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
   console.log("Custom triggerOnRowRemove called in DonationModal:", {
     selectedRows,
     remainingRows,
   });
 
-  // Check if this is a payment_detail table deletion
   if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
-    console.log("Payment detail table deletion detected in DonationModal");
 
-    // Get the random_ids of deleted payment detail rows
     const deletedRandomIds = new Set();
     selectedRows.forEach((rowName) => {
-      // Find the deleted row in the original payment_detail array
       const deletedRow = donation.doc.payment_detail.find((row) => row.name === rowName);
       if (deletedRow && deletedRow.random_id) {
         deletedRandomIds.add(deletedRow.random_id);
@@ -3168,7 +2969,6 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
       }
     });
 
-    // Delete corresponding rows in deduction_breakeven table
     if (
       deletedRandomIds.size > 0 &&
       donation.doc.deduction_breakeven &&
@@ -3176,7 +2976,6 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
     ) {
       const originalDeductionLength = donation.doc.deduction_breakeven.length;
 
-      // Filter out deduction_breakeven rows that match the deleted payment_detail random_ids
       donation.doc.deduction_breakeven = donation.doc.deduction_breakeven.filter(
         (deductionRow) => {
           const shouldKeep = !deletedRandomIds.has(deductionRow.random_id);
@@ -3202,56 +3001,11 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
     }
   }
 
-  // Call the original triggerOnRowRemove for normal functionality
   if (originalTriggerOnRowRemove) {
     originalTriggerOnRowRemove(selectedRows, remainingRows);
   }
 };
 
-// Override the triggerOnRowRemove in the donation context
 donation.triggerOnRowRemove = customTriggerOnRowRemove;
 
-function getFieldFilters(field) {
-  // Apply filter to link_doctype field in links/timeline_links child tables
-  // Only allow Donor, CRM Lead, Contact doctypes
-  if (
-    (parentFieldname === "links" || parentFieldname === "timeline_links") &&
-    field.fieldname === "link_doctype" &&
-    field.fieldtype === "Link" &&
-    field.options === "DocType"
-  ) {
-    return { name: ["in", ["Donor", "CRM Lead", "Contact"]] };
-  }
-
-  // Apply warehouse-specific filters for donation form
-  if (
-    field.fieldname === "warehouse" &&
-    field.fieldtype === "Link" &&
-    field.options === "Warehouse" &&
-    doctype === "Donation"
-  ) {
-    return {
-      is_group: 0,
-      is_rejected_warehouse: 0,
-      company: data.value?.company || "Alkhidmat Foundation Pakistan",
-    };
-  }
-
-  // Return existing filters if available
-  if (field.filters) {
-    return field.filters;
-  }
-
-  // Parse link_filters if available
-  if (field.link_filters) {
-    try {
-      const parsedFilters = JSON.parse(field.link_filters);
-      return parsedFilters;
-    } catch (e) {
-      return {};
-    }
-  }
-
-  return {};
-}
 </script>
