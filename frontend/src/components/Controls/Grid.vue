@@ -607,13 +607,7 @@ const toggleSelectRow = (row) => {
 }
 
 const addRow = () => {
-  if (props.parentFieldname === 'deduction_breakeven') {
-    const parent = props.parentDoc || window.parentDocument
-    if (parent && parent.contribution_type === 'Pledge') {
-      toast.warning('Deduction Breakeven rows cannot be added when Contribution Type is Pledge')
-      return
-    }
-  }
+  // Allow adding deduction_breakeven rows even when contribution_type is Pledge
 
   if (!rows.value) rows.value = []
 
@@ -650,14 +644,9 @@ const deleteRows = () => {
   selectedRows.clear()
 }
 
-/* -------------------------
-   Donor selection helpers (composable)
-   ------------------------- */
 const { fetchDonorDetails, updateDonorFields, clearDonorFields } = useDonorSelection()
 
-/* -------------------------
-   Deduction details & operations
-   ------------------------- */
+
 async function fetchDeductionDetails(fundClassId) {
   if (!fundClassId) return null
   try {
@@ -672,10 +661,7 @@ async function fetchDeductionDetails(fundClassId) {
 }
 
 async function addDeductionBreakevenRow(deductionDetails, fundClassId) {
-  if (parentDoc.value && parentDoc.value.contribution_type === 'Pledge') {
-    toast.warning('Deduction Breakeven rows cannot be added when Contribution Type is Pledge')
-    return null
-  }
+  // Allow adding deduction rows for Pledge as well
 
   const newDeductionRow = {
     random_id: Math.floor(1000 + Math.random() * 9000),
@@ -703,10 +689,7 @@ async function addDeductionBreakevenRow(deductionDetails, fundClassId) {
 async function addDeductionRowToParent(deductionDetails, fundClassId, paymentRowRandomId) {
   try {
     if (!parentDoc.value) return false
-    if (parentDoc.value.contribution_type === 'Pledge') {
-      toast.warning('Deduction Breakeven rows cannot be added when Contribution Type is Pledge')
-      return false
-    }
+    // Allow adding deduction rows for Pledge as well
 
     if (!parentDoc.value.deduction_breakeven) parentDoc.value.deduction_breakeven = []
 
@@ -894,6 +877,7 @@ function syncDonationAmountFromPaymentDetail() {
 /* -------------------------
    Field change handler
    ------------------------- */
+// Fix for deduction_breakeven row disappearing after fund_class selection
 async function fieldChange(value, field, row) {
   // Normalize value from Link/Autocomplete controls which may emit objects
   const normalizedValue = (value && typeof value === 'object')
@@ -925,24 +909,28 @@ async function fieldChange(value, field, row) {
 
   // Deduction fund_class change
   if (field.fieldname === 'fund_class' && props.parentFieldname === 'deduction_breakeven') {
-    if (normalizedValue) {
-      const deductionDetails = await fetchDeductionDetails(normalizedValue)
-      if (deductionDetails && Object.keys(deductionDetails).length > 0) {
-        updateDeductionFields(row, deductionDetails)
-        calculateDeductionAmount(row)
-        toast.success('Deduction details fetched successfully')
-      } else {
-        clearDeductionFields(row)
-        toast.info('No deduction details found for this fund class')
-      }
+  if (normalizedValue) {
+    const deductionDetails = await fetchDeductionDetails(normalizedValue)
+    if (deductionDetails && Object.keys(deductionDetails).length > 0) {
+      updateDeductionFields(row, deductionDetails)
+      calculateDeductionAmount(row)
+      toast.success('Deduction details fetched successfully')
     } else {
       clearDeductionFields(row)
-      toast.info('Deduction fields cleared')
+      toast.info('No deduction details found for this fund class')
     }
-    forceReactiveUpdate()
-    triggerOnChange(field.fieldname, normalizedValue, row)
-    return
+  } else {
+    clearDeductionFields(row)
+    toast.info('Deduction fields cleared')
   }
+
+  // 🔧 Trigger reactivity properly without breaking link
+  await nextTick()
+  forceReactiveUpdate() // if needed
+  triggerOnChange(field.fieldname, normalizedValue, row)
+  return
+}
+
 
   // Fund class id change in payment_detail -> load fund class details and potentially add deduction rows
   if (field.fieldname === 'fund_class_id' && props.parentFieldname === 'payment_detail') {
@@ -976,29 +964,11 @@ async function fieldChange(value, field, row) {
           const isArray = Array.isArray(deductionDetails)
           const detailsArray = isArray ? deductionDetails : [deductionDetails]
           let addedRowsCount = 0
-          let failedRowsCount = 0
           for (const detail of detailsArray) {
-            try {
-              const success = await addDeductionRowToParent(detail, normalizedValue, row.random_id)
-              if (success) addedRowsCount++
-              else failedRowsCount++
-            } catch {
-              failedRowsCount++
-            }
+            const success = await addDeductionRowToParent(detail, normalizedValue, row.random_id)
+            if (success) addedRowsCount++
           }
-          if (addedRowsCount > 0) {
-            if (addedRowsCount === 1) toast.success('New deduction row added successfully')
-            else toast.success(`${addedRowsCount} deduction rows added successfully`)
-          }
-          if (failedRowsCount > 0) toast.error(`Failed to add ${failedRowsCount} deduction rows`)
-          if (addedRowsCount === 0 && failedRowsCount > 0) {
-            emit('add-deduction-row', {
-              fundClassId: normalizedValue,
-              deductionDetails,
-              sourceTable: 'payment_detail',
-              sourceRow: row
-            })
-          }
+          if (addedRowsCount > 0) toast.success(`${addedRowsCount} deduction rows added successfully`)
         } else {
           toast.info('No deduction details found for this fund class')
         }
@@ -1072,6 +1042,8 @@ async function fieldChange(value, field, row) {
   if (field.fieldname === 'percentage' && props.parentFieldname === 'deduction_breakeven') {
     row.percentage = value
     calculateDeductionAmount(row)
+    // Ensure the row stays in the table by forcing a reactive update of the rows array
+    rows.value = [...rows.value]
     forceReactiveUpdate()
     triggerOnChange(field.fieldname, value, row)
     return
@@ -1083,7 +1055,7 @@ async function fieldChange(value, field, row) {
       try {
         const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
           fund_class_id: normalizedValue,
-          company: parentDoc.value?.company || 'Alkhidmat Foundation Pakistan'
+          company: parentDoc.value?.company || 'Alkhidmat Foundation'
         })
         if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
           if (fundClassDetails.service_area) row.service_area = fundClassDetails.service_area
@@ -1522,7 +1494,6 @@ async function handleFetchFromForItems(rowIndex, fieldname, value) {
           row.cost_center = fundClassDetails.cost_center
         }
         toast.success('Fund class details loaded successfully')
-        emit('fund-class-selected', { row, fundClassId: value, success: !!value })
       } else {
         console.log('⚠️ No fund class details found')
         toast.warning('No fund class details found')
@@ -1548,7 +1519,6 @@ async function handleFetchFromForItems(rowIndex, fieldname, value) {
           row.donor_desk = donorDetails.donor_desk
         }
         toast.success('Donor details loaded successfully')
-        emit('donor-selected', { row, donorId: value, success: !!value })
       } else {
         console.log('⚠️ No donor details found')
         toast.warning('No donor details found')

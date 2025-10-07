@@ -1643,7 +1643,11 @@ watch(
     }, 300);
   }
 );
+// === END ENRICHERS ===
 
+// === EXACT BACKEND TRIGGER LOGIC (REPLACING EXISTING WATCHERS) ===
+
+// Flags to prevent infinite loops
 let isProcessingPaymentDetail = false;
 let isProcessingDeductionBreakeven = false;
 let isUpdatingFromAPI = false;
@@ -1652,19 +1656,24 @@ let isUpdatingFromAPI = false;
 let paymentDetailTimeout = null;
 let deductionBreakevenTimeout = null;
 
+// Function to generate random ID for payment detail rows (same logic as backend)
 const generateRandomId = (idx) => {
   return Math.floor(1000 + idx + Math.random() * 9000);
 };
 
+// CRITICAL FIX: Enhanced intention_id change handling to prevent infinite loops
 watch(
   () => document.doc?.payment_detail,
   async (newPaymentDetail, oldPaymentDetail) => {
+    // Skip if we're processing or updating from API
     if (isProcessingPaymentDetail || isUpdatingFromAPI) return;
 
+    // Clear existing timeout
     if (paymentDetailTimeout) {
       clearTimeout(paymentDetailTimeout);
     }
 
+    // Debounce the processing
     paymentDetailTimeout = setTimeout(async () => {
       if (!newPaymentDetail || !Array.isArray(newPaymentDetail)) return;
 
@@ -1674,34 +1683,44 @@ watch(
         let shouldTriggerSetDeductionBreakeven = false;
         let hasChanges = false;
 
+        // Process each payment detail row for changes that trigger backend calls
         for (let index = 0; index < newPaymentDetail.length; index++) {
           const row = newPaymentDetail[index];
 
+          // Ensure random_id is present (EXACT backend logic)
           if (row && !row.random_id) {
+            // Assign a random_id immediately for newly added rows to keep linkages stable
             row.random_id = generateRandomId(index + 1);
             hasChanges = true;
           }
 
+          // EXACT backend trigger: donor_id change
           if (row.donor_id && row.donor_id !== row._lastDonorId) {
+            // console.log(`Donor ID changed in row ${index}:`, row.donor_id)
             row._lastDonorId = row.donor_id;
             row.donor = row.donor_id;
             await handleDonorSelectionDirect(row.donor_id, row);
             hasChanges = true;
           }
 
+          // EXACT backend trigger: fund_class_id change
           if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
             console.log(
               `Fund Class ID changed in row ${index}: from ${row._lastFundClassId} to ${row.fund_class_id}`
             );
 
+            // Store the old fund class before updating
             const oldFundClassId = row._lastFundClassId;
 
+            // Update the tracking variables
             row._lastFundClassId = row.fund_class_id;
             row.fund_class = row.fund_class_id;
 
+            // FIX: For Pledge contribution type, populate fund class fields without deduction breakeven
             if (document.doc.contribution_type === "Pledge") {
               await populateFundClassFieldsForPledge(row);
             } else {
+              // CRITICAL FIX: Check if deduction entries already exist for this payment row and fund class
               const existingEntries =
                 document.doc.deduction_breakeven?.filter(
                   (deductionRow) =>
@@ -1709,14 +1728,16 @@ watch(
                     deductionRow.fund_class_id === row.fund_class_id
                 ) || [];
 
+              // If entries already exist for this payment row and fund class, skip completely
               if (existingEntries.length > 0) {
                 console.log(
                   `DUPLICATE PREVENTION: Skipping deduction breakeven - entries already exist for payment row ${row.random_id} and fund class ${row.fund_class_id}`
                 );
                 hasChanges = true;
-                return; 
+                return; // Skip the rest of the processing for this row
               }
 
+              // If fund class actually changed (not just clicked the same one), clear old entries first
               if (oldFundClassId && oldFundClassId !== row.fund_class_id) {
                 console.log(
                   `FUND CLASS CHANGE: Clearing old entries for payment row ${row.random_id} - changed from ${oldFundClassId} to ${row.fund_class_id}`
@@ -1743,6 +1764,8 @@ watch(
                 }
               }
 
+              // Only trigger deduction breakeven for genuinely new fund class selections
+              // This ensures we don't add duplicates for the same fund class
               console.log(
                 `TRIGGERING DEDUCTION BREAKEVEN: For payment row ${row.random_id} with fund class ${row.fund_class_id}`
               );
@@ -1752,26 +1775,36 @@ watch(
             hasChanges = true;
           }
 
+          // EXACT backend trigger: donation_amount change
           if (row.donation_amount !== row._lastDonationAmount) {
+            // console.log(`Donation amount changed in row ${index}:`, row.donation_amount)
             row._lastDonationAmount = row.donation_amount;
             shouldTriggerSetDeductionBreakeven = true;
             hasChanges = true;
           }
 
+          // EXACT backend trigger: intention_id change
           if (row.intention_id !== row._lastIntentionId) {
+            // console.log(`Intention ID changed in row ${index}:`, row.intention_id)
             row._lastIntentionId = row.intention_id;
 
+            // CRITICAL FIX: Handle Zakat intention by clearing only corresponding deduction breakeven rows
             if (row.intention_id === "Zakat") {
+              // console.log(`Intention changed to Zakat for payment detail row ${index} with random_id ${row.random_id}`)
 
+              // Clear only deduction breakeven rows that correspond to this specific payment detail row
               if (
                 document.doc.deduction_breakeven &&
                 Array.isArray(document.doc.deduction_breakeven)
               ) {
                 const originalLength = document.doc.deduction_breakeven.length;
+
+                // Guard against missing random_id on either side; only remove when both ids are defined and equal
                 document.doc.deduction_breakeven = document.doc.deduction_breakeven.filter(
                   (deductionRow) => {
                     const payHasId = !!row.random_id;
                     const dedHasId = !!deductionRow.random_id;
+                    // Keep the row unless both ids exist and match
                     const shouldKeep = !(
                       payHasId &&
                       dedHasId &&
@@ -1785,19 +1818,22 @@ watch(
                   originalLength - document.doc.deduction_breakeven.length;
                 if (removedCount > 0) {
                   toast.success(
-                    `Cleared ${removedCount} deduction breakeven row(s) for Zakat intention` 
+                    `Cleared ${removedCount} deduction breakeven row(s) for Zakat intention`
                   );
                 }
               }
 
               hasChanges = true;
             } else {
+              // For non-Zakat intentions, trigger deduction breakeven population
               shouldTriggerSetDeductionBreakeven = true;
               hasChanges = true;
             }
           }
 
+          // EXACT backend trigger: mode of payment - handle account_paid_to auto-fill
           if (row.mode_of_payment && row.mode_of_payment !== row._lastMOPId) {
+            // console.log('MODE OF PAYMENT CHANGED IN DONATION DETAIL', row.mode_of_payment)
             row._lastMOPId = row.mode_of_payment;
 
             try {
@@ -1812,8 +1848,10 @@ watch(
               );
 
               if (result && result.success && result.account) {
+                // console.log('Account fetched successfully:', result.account)
                 row.account_paid_to = result.account;
               } else {
+                // console.log('No account found')
                 row.account_paid_to = "";
 
                 if (result && result.message) {
@@ -1823,6 +1861,7 @@ watch(
                 }
               }
             } catch (error) {
+              // console.error('Error fetching payment mode account:', error)
               row.account_paid_to = "";
               toast.error(`Error loading account for mode of payment: ${error.message}`);
             }
@@ -1831,23 +1870,33 @@ watch(
           }
         }
 
+        // CRITICAL FIX: Only call set_deduction_breakeven for non-Zakat intentions
         if (shouldTriggerSetDeductionBreakeven) {
+          // Check if any payment detail has Zakat intention
           const hasZakatIntention = newPaymentDetail.some(
             (row) => row.intention_id === "Zakat"
           );
 
           if (!hasZakatIntention) {
+            // console.log('Triggering set_deduction_breakeven due to payment detail changes...')
             await setDeductionBreakevenFromAPI();
           } else {
+            // console.log('Skipping set_deduction_breakeven due to Zakat intention - will handle row-specific clearing instead')
           }
         }
 
+        // FIXED: Only trigger reactive update if we actually made changes and it's not from API
         if (hasChanges && !isUpdatingFromAPI) {
+          // Use nextTick to avoid immediate re-triggering
           await nextTick();
+          // Mark that we're updating to prevent watcher loops
           isUpdatingFromAPI = true;
 
+          // CRITICAL FIX: Don't replace the array - just trigger reactivity without breaking row references
+          // This preserves the Grid component's selection state
           document.doc = { ...document.doc };
 
+          // Reset flag after a short delay
           setTimeout(() => {
             isUpdatingFromAPI = false;
           }, 100);
@@ -1860,9 +1909,11 @@ watch(
   { deep: true }
 );
 
+// CRITICAL FIX: Enhanced deduction breakeven watcher to prevent infinite loops
 watch(
   () => document.doc?.deduction_breakeven,
   async (newDeductionBreakeven, oldDeductionBreakeven) => {
+    // Skip if we're processing or updating from API
     if (isProcessingDeductionBreakeven || isUpdatingFromAPI) return;
 
     if (deductionBreakevenTimeout) {
