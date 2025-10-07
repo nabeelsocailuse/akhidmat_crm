@@ -3205,7 +3205,6 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
     ) {
       const originalDeductionLength = donation.doc.deduction_breakeven.length;
 
-      // Filter out deduction_breakeven rows that match the deleted payment_detail random_ids
       donation.doc.deduction_breakeven = donation.doc.deduction_breakeven.filter(
         (deductionRow) => {
           const shouldKeep = !deletedRandomIds.has(deductionRow.random_id);

@@ -1643,11 +1643,7 @@ watch(
     }, 300);
   }
 );
-// === END ENRICHERS ===
 
-// === EXACT BACKEND TRIGGER LOGIC (REPLACING EXISTING WATCHERS) ===
-
-// Flags to prevent infinite loops
 let isProcessingPaymentDetail = false;
 let isProcessingDeductionBreakeven = false;
 let isUpdatingFromAPI = false;
