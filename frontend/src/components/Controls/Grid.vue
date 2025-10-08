@@ -639,7 +639,7 @@ async function fetchDeductionDetails(fundClassId) {
   }
 }
 
-async function addDeductionRowToParent(deductionDetails, fundClassId, paymentRowRandomId) {
+async function addDeductionRowToParent(deductionDetails, fundClassId, paymentRowRandomId, donorId) {
   try {
     if (!parentDoc.value) return false
 
@@ -648,6 +648,8 @@ async function addDeductionRowToParent(deductionDetails, fundClassId, paymentRow
     const newDeductionRow = {
       random_id: paymentRowRandomId || Math.floor(1000 + parentDoc.value.deduction_breakeven.length + 1 + (Math.random() * 9000)),
       fund_class: fundClassId,
+      fund_class_id: fundClassId,
+      donor_id: donorId || '',
       percentage: deductionDetails?.percentage || 0,
       min_percent: deductionDetails?.min_percent || 0,
       max_percent: deductionDetails?.max_percent || 0,
@@ -817,6 +819,8 @@ async function fieldChange(value, field, row) {
           row.pay_subservice_area = fundClassDetails.subservice_area || ''
           row.pay_product = fundClassDetails.product || ''
           row.fund_class = fundClassDetails.fund_class_name || normalizedValue
+          row.equity_account = fundClassDetails.equity_account || ''
+          row.receivable_account = fundClassDetails.receivable_account || ''
           toast.success('Fund class details loaded successfully')
         } else {
           toast.warning('No fund class details found')
@@ -836,7 +840,7 @@ async function fieldChange(value, field, row) {
           const detailsArray = isArray ? deductionDetails : [deductionDetails]
           let addedRowsCount = 0
           for (const detail of detailsArray) {
-            const success = await addDeductionRowToParent(detail, normalizedValue, row.random_id)
+            const success = await addDeductionRowToParent(detail, normalizedValue, row.random_id, row.donor_id)
             if (success) addedRowsCount++
           }
           if (addedRowsCount > 0) toast.success(`${addedRowsCount} deduction rows added successfully`)

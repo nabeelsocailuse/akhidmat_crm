@@ -793,6 +793,7 @@ const handleCloseButton = () => {
     return;
   }
   show.value = false;
+  resetDonationData();
 };
 
 // Manage parent modal state when sub-modals are active
@@ -1493,7 +1494,11 @@ watch(
             row._lastFundClassId = row.fund_class_id;
             row.fund_class = row.fund_class_id;
 
-            shouldTriggerSetDeductionBreakeven = true;
+            // Trigger backend deduction logic only for Donation
+            // For Pledge, Grid component already handles deduction rows
+            if (donation.doc.contribution_type !== "Pledge") {
+              shouldTriggerSetDeductionBreakeven = true;
+            }
             shouldDoReactiveUpdate = true;
           }
 
@@ -1501,7 +1506,11 @@ watch(
           if (row.donation_amount !== row._lastDonationAmount) {
             console.log(`Donation amount changed in row ${index}:`, row.donation_amount);
             row._lastDonationAmount = row.donation_amount;
-            shouldTriggerSetDeductionBreakeven = true;
+            // Trigger backend deduction logic only for Donation
+            // For Pledge, Grid component already handles deduction rows
+            if (donation.doc.contribution_type !== "Pledge") {
+              shouldTriggerSetDeductionBreakeven = true;
+            }
             shouldDoReactiveUpdate = true;
           }
 
@@ -1509,7 +1518,11 @@ watch(
           if (row.intention_id !== row._lastIntentionId) {
             console.log(`Intention ID changed in row ${index}:`, row.intention_id);
             row._lastIntentionId = row.intention_id;
-            shouldTriggerSetDeductionBreakeven = true;
+            // Trigger backend deduction logic only for Donation
+            // For Pledge, Grid component already handles deduction rows
+            if (donation.doc.contribution_type !== "Pledge") {
+              shouldTriggerSetDeductionBreakeven = true;
+            }
             shouldDoReactiveUpdate = true;
           }
 
@@ -1740,7 +1753,8 @@ watch(
         });
 
         // CRITICAL: Allow backend API calls for all cases (restore existing functionality)
-        if (shouldTriggerSetDeductionBreakeven) {
+        // For Pledge, skip backend API as Grid component already handles deduction rows
+        if (shouldTriggerSetDeductionBreakeven && donation.doc.contribution_type !== "Pledge") {
           console.log(
             "Triggering set_deduction_breakeven due to deduction_breakeven changes..."
           );
@@ -2627,11 +2641,9 @@ async function validateDeductionBreakevenBeforeSubmission() {
   };
 }
 
-// ADD: Function to prepare donation document for submission
 async function prepareDonationForSubmission() {
   const doc = { ...donation.doc };
 
-  // Ensure payment_detail has random_id for each row
   if (doc.payment_detail && Array.isArray(doc.payment_detail)) {
     doc.payment_detail.forEach((row) => {
       if (!row.random_id) {
@@ -2640,16 +2652,12 @@ async function prepareDonationForSubmission() {
     });
   }
 
-  // ENHANCED: Ensure deduction_breakeven has random_id and preserve user modifications
   if (doc.deduction_breakeven && Array.isArray(doc.deduction_breakeven)) {
     doc.deduction_breakeven.forEach((row) => {
       if (!row.random_id) {
         row.random_id = generateRandomId(doc.deduction_breakeven.indexOf(row) + 1);
       }
 
-      // CRITICAL: Preserve user-modified values by storing them as original values
-      // This ensures that when the backend API is called during creation,
-      // our preservation logic will detect these as user modifications
       if (row.percentage !== undefined) {
         row._originalPercentage = row.percentage;
         row._userModifiedPercentage = true;
@@ -2905,72 +2913,78 @@ function validateField(fieldName, value, rowIndex = null) {
   return errors;
 }
 
-// ADD: Function to show field validation errors
-function showFieldValidationError(fieldName, value, rowIndex = null) {
-  const errors = validateField(fieldName, value, rowIndex);
 
-  if (errors.length > 0) {
-    toast.error(errors[0]);
-    return false;
+async function handleDonorSelectionForItem(donorId, row) {
+  if (!donorId) {
+    clearDonorFields(row);
+    return;
   }
-
-  return true;
-}
-
-// NEW: Function to populate fund class fields for Pledge contribution type
-async function populateFundClassFieldsForPledge(row) {
-  console.log(
-    "Populating fund class fields for Pledge contribution type:",
-    row.fund_class_id
-  );
-
   try {
-    // Call the same backend API that set_deduction_breakeven uses, but only for fund class field population
-    const result = await call("crm.fcrm.doctype.donation.api.set_deduction_breakeven", {
-      payment_details: [row], // Pass only the current row
-      company: donation.doc.company || "Alkhidmat Foundation Pakistan",
-      contribution_type: "Pledge", // Explicitly set as Pledge
-      donation_cost_center: donation.doc.donation_cost_center,
-      currency: donation.doc.currency,
-      to_currency: donation.doc.to_currency || donation.doc.currency,
-      posting_date: donation.doc.posting_date,
-      is_return: donation.doc.is_return || false,
-    });
-
-    if (
-      result.success &&
-      result.updated_payment_details &&
-      result.updated_payment_details.length > 0
-    ) {
-      const updatedRow = result.updated_payment_details[0];
-
-      // Update only the fund class related fields (equity_account, receivable_account, service areas, etc.)
-      const fieldsToUpdate = [
-        "equity_account",
-        "receivable_account",
-        "pay_service_area",
-        "pay_subservice_area",
-        "pay_product",
-        "cost_center",
-      ];
-
-      fieldsToUpdate.forEach((field) => {
-        if (updatedRow[field] !== undefined) {
-          row[field] = updatedRow[field];
-          console.log(`Updated ${field} for Pledge: ${row[field]}`);
-        }
-      });
-
-      console.log("Fund class fields populated successfully for Pledge");
-    } else {
-      console.error("Failed to populate fund class fields for Pledge:", result.message);
+    const donorDetails = await fetchDonorDetails(donorId);
+    if (donorDetails) {
+      updateDonorFields(row, donorDetails);
     }
   } catch (error) {
-    console.error("Error populating fund class fields for Pledge:", error);
+    toast.error("Error loading donor details");
   }
 }
 
-// ADD: Calculation computed properties
+async function handleFundClassSelectionForItem(fundClassId, row) {
+  if (!fundClassId) {
+    row.service_area = "";
+    row.subservice_area = "";
+    row.product = "";
+    return;
+  }
+  try {
+    const fundClassDetails = await fetchFundClassDetails(fundClassId);
+    if (fundClassDetails) {
+      // Map fund class details to item row fields
+      row.service_area = fundClassDetails.service_area || "";
+      row.subservice_area = fundClassDetails.subservice_area || "";
+      row.product = fundClassDetails.product || "";
+      // Force reactive update
+      if (donation.doc.items) {
+        donation.doc.items = [...donation.doc.items];
+      }
+    }
+  } catch (error) {
+    toast.error("Error loading fund class details");
+  }
+}
+
+// Watcher for items table fund_class changes
+watch(
+  () => donation.doc.items,
+  (newItems) => {
+    if (!newItems || !Array.isArray(newItems)) return;
+    newItems.forEach((row) => {
+      if (row.fund_class && row.fund_class !== row._lastFundClass) {
+        row._lastFundClass = row.fund_class;
+        handleFundClassSelectionForItem(row.fund_class, row);
+      }
+    });
+  },
+  { deep: true }
+);
+
+watch(
+  () => donation.doc.items,
+  (newItems) => {
+    if (!newItems || !Array.isArray(newItems)) return;
+    newItems.forEach((row) => {
+      if (row.donor && row.donor !== row._lastDonor) {
+        row._lastDonor = row.donor;
+        handleDonorSelectionForItem(row.donor, row);
+      }
+      if (row.fund_class && row.fund_class !== row._lastFundClass) {
+        row._lastFundClass = row.fund_class;
+        handleFundClassSelectionForItem(row.fund_class, row);
+      }
+    });
+  },
+  { deep: true }
+);
 const totalDonation = computed(() => {
   if (!donation.doc.payment_detail || !Array.isArray(donation.doc.payment_detail)) {
     return 0;
