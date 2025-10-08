@@ -65,11 +65,6 @@ const props = defineProps({
   readOnly: {
     type: Boolean,
     default: false
-  },
-  // NEW: When true and editing payment_detail in Donation Return, allow only donation_amount to be editable
-  returnAmountOnly: {
-    type: Boolean,
-    default: false
   }
 })
 
@@ -192,11 +187,6 @@ const filteredTabs = computed(() => {
                 enhancedField.fetch_from = fetchMap[field.fieldname]
               }
             }
-          }
-
-          // NEW: For Donation Return edit modal, make all fields read-only except donation_amount
-          if (props.returnAmountOnly && props.parentFieldname === 'payment_detail') {
-            enhancedField.read_only = enhancedField.fieldname === 'donation_amount' ? 0 : 1
           }
           
           return enhancedField
@@ -368,7 +358,7 @@ function isDonorDetailField(fieldname) {
 
 // Add field change handler for auto-fetching
 async function handleFieldChange(fieldname, value) {
-  console.log('🔥 GridRowModal handleFieldChange called:', { 
+  console.log(' GridRowModal handleFieldChange called:', { 
     fieldname, 
     value, 
     parentFieldname: props.parentFieldname,
@@ -376,7 +366,6 @@ async function handleFieldChange(fieldname, value) {
   })
   
   // Emit the field change to parent Grid component
-  console.log('🔥 GridRowModal emitting field-change event:', { fieldname, value })
   emit('field-change', fieldname, value)
   
   // Handle fund_class change in items table modal
@@ -545,22 +534,3 @@ async function handleFieldChange(fieldname, value) {
 // Provide the field change handler to child components
 provide('onFieldChange', handleFieldChange)
 </script>
-
-<style scoped>
-/* Ensure the modal doesn't expand too much when dropdowns are open */
-:deep(.dialog-content) {
-  max-height: 90vh !important;
-  overflow-y: auto !important;
-}
-
-/* Constrain autocomplete dropdowns in grid row modal */
-:deep(.combobox-options) {
-  max-height: 6rem !important;
-  overflow-y: auto !important;
-}
-
-/* For items table specifically */
-:deep(.parent-fieldname-items .combobox-options) {
-  max-height: 5rem !important;
-}
-</style>
