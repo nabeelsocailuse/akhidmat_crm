@@ -1484,14 +1484,13 @@ watch(
             row._lastDonorId = row.donor_id;
             row.donor = row.donor_id;
             handleDonorSelectionDirect(row.donor_id, row);
-            // Only trigger backend deduction logic for Donation; for Pledge we manage rows client-side
+            shouldDoReactiveUpdate = true;
+            
+            // FIX: For Pledge contribution type, don't trigger backend deduction logic
+            // as it will clear the client-side populated deduction_breakeven table
             if (donation.doc.contribution_type !== "Pledge") {
               shouldTriggerSetDeductionBreakeven = true;
-            } else {
-              // For Pledge, update existing deduction rows with new donor info
-              await updateDeductionRowsForPledge(row);
             }
-            shouldDoReactiveUpdate = true;
           }
 
           // EXACT backend trigger: fund_class_id change
@@ -1500,14 +1499,10 @@ watch(
             row._lastFundClassId = row.fund_class_id;
             row.fund_class = row.fund_class_id;
 
-            // Trigger backend deduction logic only for Donation; for Pledge we manage rows client-side
-            if (donation.doc.contribution_type !== "Pledge") {
-              shouldTriggerSetDeductionBreakeven = true;
-            } else {
-              // For Pledge, populate fund class fields and manage deduction rows client-side
-              await populateFundClassFieldsForPledge(row);
-              await manageDeductionRowsForPledge(row);
-            }
+          // Trigger backend deduction logic only for Donation; for Pledge we manage rows client-side
+          if (donation.doc.contribution_type !== "Pledge") {
+            shouldTriggerSetDeductionBreakeven = true;
+          }
 
             shouldDoReactiveUpdate = true;
           }
@@ -1516,10 +1511,13 @@ watch(
           if (row.donation_amount !== row._lastDonationAmount) {
             console.log(`Donation amount changed in row ${index}:`, row.donation_amount);
             row._lastDonationAmount = row.donation_amount;
-            // Only trigger backend deduction logic for Donation; for Pledge we manage rows client-side
+            
+            // FIX: For Pledge contribution type, don't trigger backend deduction logic
+            // as it will clear the client-side populated deduction_breakeven table
             if (donation.doc.contribution_type !== "Pledge") {
               shouldTriggerSetDeductionBreakeven = true;
             }
+            
             shouldDoReactiveUpdate = true;
           }
 
@@ -1527,13 +1525,13 @@ watch(
           if (row.intention_id !== row._lastIntentionId) {
             console.log(`Intention ID changed in row ${index}:`, row.intention_id);
             row._lastIntentionId = row.intention_id;
-            // Only trigger backend deduction logic for Donation; for Pledge we manage rows client-side
+            
+            // FIX: For Pledge contribution type, don't trigger backend deduction logic
+            // as it will clear the client-side populated deduction_breakeven table
             if (donation.doc.contribution_type !== "Pledge") {
               shouldTriggerSetDeductionBreakeven = true;
-            } else {
-              // For Pledge, update existing deduction rows with new intention info
-              await updateDeductionRowsForPledge(row);
             }
+            
             shouldDoReactiveUpdate = true;
           }
 
@@ -1718,7 +1716,11 @@ watch(
             row._lastPercentage = row.percentage;
             row._userModifiedPercentage = true; // Mark as user modified
             // Backend DOES call set_deduction_breakeven on percentage change
-            shouldTriggerSetDeductionBreakeven = true;
+            // FIX: For Pledge contribution type, don't trigger backend deduction logic
+            // as it will clear the client-side populated deduction_breakeven table
+            if (donation.doc.contribution_type !== "Pledge") {
+              shouldTriggerSetDeductionBreakeven = true;
+            }
             hasChanges = true;
           }
 
@@ -2989,119 +2991,6 @@ async function populateFundClassFieldsForPledge(row) {
     }
   } catch (error) {
     console.error("Error populating fund class fields for Pledge:", error);
-  }
-}
-
-// NEW: Function to manage deduction rows for Pledge contribution type
-async function manageDeductionRowsForPledge(row) {
-  console.log("Managing deduction rows for Pledge contribution type:", row.fund_class_id);
-
-  try {
-    // Call the backend API to get deduction details for this fund class
-    const result = await call("crm.fcrm.doctype.donation.api.get_deduction_details_comprehensive", {
-      fund_class_id: row.fund_class_id,
-      company: donation.doc.company || "Alkhidmat Foundation Pakistan"
-    });
-
-    if (result?.success && result?.data && result.data.length > 0) {
-      // Check if deduction rows already exist for this fund class and payment row
-      const existingRows = donation.doc.deduction_breakeven?.filter(
-        d => d.random_id === row.random_id && d.fund_class_id === row.fund_class_id
-      ) || [];
-
-      // Only add new rows if none exist for this fund class
-      if (existingRows.length === 0) {
-        // Add new deduction rows for this fund class
-        const newDeductionRows = [];
-        result.data.forEach((deductionDetail, index) => {
-          const newDeductionRow = {
-            random_id: row.random_id,
-            company: donation.doc.company || "Alkhidmat Foundation Pakistan",
-            income_type: deductionDetail.income_type,
-            project: deductionDetail.project,
-            account: deductionDetail.account,
-            percentage: deductionDetail.percentage || 0,
-            min_percent: deductionDetail.min_percent || 0,
-            max_percent: deductionDetail.max_percent || 0,
-            donation_amount: row.donation_amount || 0,
-            amount: 0, // Will be calculated
-            base_amount: 0, // Will be calculated
-            project_id: deductionDetail.project,
-            cost_center_id: donation.doc.donation_cost_center,
-            fund_class_id: row.fund_class_id,
-            service_area_id: row.pay_service_area,
-            subservice_area_id: row.pay_subservice_area,
-            product_id: row.pay_product,
-            donor_id: row.donor_id,
-            donor_type_id: row.donor_type,
-            donor_desk_id: row.donor_desk_id,
-            intention_id: row.intention_id,
-            transaction_type_id: row.transaction_type_id,
-            __islocal: true,
-            doctype: 'Deduction Breakeven',
-            parentfield: 'deduction_breakeven',
-            parenttype: 'Donation',
-            idx: (donation.doc.deduction_breakeven?.length || 0) + newDeductionRows.length + 1
-          };
-          newDeductionRows.push(newDeductionRow);
-        });
-
-        // Add the new deduction rows
-        if (!donation.doc.deduction_breakeven) {
-          donation.doc.deduction_breakeven = [];
-        }
-        donation.doc.deduction_breakeven.push(...newDeductionRows);
-        
-        // Force reactive update
-        donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven];
-        
-        console.log(`Added ${newDeductionRows.length} deduction rows for Pledge fund class`);
-      } else {
-        console.log(`Deduction rows already exist for this fund class and payment row`);
-      }
-    } else {
-      console.log("No deduction details found for this fund class in Pledge mode");
-    }
-  } catch (error) {
-    console.error("Error managing deduction rows for Pledge:", error);
-  }
-}
-
-// NEW: Function to update existing deduction rows for Pledge when donor/intention changes
-async function updateDeductionRowsForPledge(row) {
-  console.log("Updating deduction rows for Pledge contribution type:", row.random_id);
-
-  try {
-    // Find existing deduction rows for this payment row
-    if (donation.doc.deduction_breakeven && Array.isArray(donation.doc.deduction_breakeven)) {
-      const existingRows = donation.doc.deduction_breakeven.filter(
-        d => d.random_id === row.random_id
-      );
-
-      if (existingRows.length > 0) {
-        // Update donor and intention info in existing rows
-        existingRows.forEach(deductionRow => {
-          deductionRow.donor_id = row.donor_id;
-          deductionRow.donor_type_id = row.donor_type;
-          deductionRow.donor_desk_id = row.donor_desk_id;
-          deductionRow.intention_id = row.intention_id;
-          deductionRow.donation_amount = row.donation_amount || 0;
-        });
-
-        // Force reactive update
-        donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven];
-        
-        console.log(`Updated ${existingRows.length} deduction rows for Pledge`);
-      } else if (row.fund_class_id) {
-        // If no existing rows but fund class is selected, create deduction rows
-        console.log("No existing deduction rows found, creating new ones for fund class:", row.fund_class_id);
-        await manageDeductionRowsForPledge(row);
-      } else {
-        console.log("No existing deduction rows and no fund class selected yet");
-      }
-    }
-  } catch (error) {
-    console.error("Error updating deduction rows for Pledge:", error);
   }
 }
 
