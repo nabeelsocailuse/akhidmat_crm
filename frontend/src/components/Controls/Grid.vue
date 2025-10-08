@@ -795,6 +795,7 @@ async function fieldChange(value, field, row) {
     toast.info('Deduction fields cleared')
   }
 
+  // 🔧 Trigger reactivity properly without breaking link
   await nextTick()
   forceReactiveUpdate() // if needed
   triggerOnChange(field.fieldname, normalizedValue, row)

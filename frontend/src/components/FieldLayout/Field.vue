@@ -722,6 +722,21 @@ function setFieldValue(fieldName, value) {
   }
 }
 
+// Utility to find the input element for a given field name
+function findInputField(fieldName) {
+  // Try to find by name attribute
+  let el = document.querySelector(
+    `input[name='${fieldName}'], textarea[name='${fieldName}'], select[name='${fieldName}']`
+  );
+  if (!el) {
+    // Try to find by data-fieldname attribute
+    el = document.querySelector(
+      `[data-fieldname='${fieldName}'] input, [data-fieldname='${fieldName}'] textarea, [data-fieldname='${fieldName}'] select`
+    );
+  }
+  return el;
+}
+
 // Get field classes for validation feedback
 function getFieldClasses(field) {
   const classes = []

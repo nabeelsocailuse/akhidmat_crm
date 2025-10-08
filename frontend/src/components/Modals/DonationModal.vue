@@ -1485,12 +1485,6 @@ watch(
             row.donor = row.donor_id;
             handleDonorSelectionDirect(row.donor_id, row);
             shouldDoReactiveUpdate = true;
-            
-            // FIX: For Pledge contribution type, don't trigger backend deduction logic
-            // as it will clear the client-side populated deduction_breakeven table
-            if (donation.doc.contribution_type !== "Pledge") {
-              shouldTriggerSetDeductionBreakeven = true;
-            }
           }
 
           // EXACT backend trigger: fund_class_id change
@@ -1499,11 +1493,7 @@ watch(
             row._lastFundClassId = row.fund_class_id;
             row.fund_class = row.fund_class_id;
 
-          // Trigger backend deduction logic only for Donation; for Pledge we manage rows client-side
-          if (donation.doc.contribution_type !== "Pledge") {
             shouldTriggerSetDeductionBreakeven = true;
-          }
-
             shouldDoReactiveUpdate = true;
           }
 
@@ -1511,13 +1501,7 @@ watch(
           if (row.donation_amount !== row._lastDonationAmount) {
             console.log(`Donation amount changed in row ${index}:`, row.donation_amount);
             row._lastDonationAmount = row.donation_amount;
-            
-            // FIX: For Pledge contribution type, don't trigger backend deduction logic
-            // as it will clear the client-side populated deduction_breakeven table
-            if (donation.doc.contribution_type !== "Pledge") {
-              shouldTriggerSetDeductionBreakeven = true;
-            }
-            
+            shouldTriggerSetDeductionBreakeven = true;
             shouldDoReactiveUpdate = true;
           }
 
@@ -1525,13 +1509,7 @@ watch(
           if (row.intention_id !== row._lastIntentionId) {
             console.log(`Intention ID changed in row ${index}:`, row.intention_id);
             row._lastIntentionId = row.intention_id;
-            
-            // FIX: For Pledge contribution type, don't trigger backend deduction logic
-            // as it will clear the client-side populated deduction_breakeven table
-            if (donation.doc.contribution_type !== "Pledge") {
-              shouldTriggerSetDeductionBreakeven = true;
-            }
-            
+            shouldTriggerSetDeductionBreakeven = true;
             shouldDoReactiveUpdate = true;
           }
 
@@ -1716,11 +1694,7 @@ watch(
             row._lastPercentage = row.percentage;
             row._userModifiedPercentage = true; // Mark as user modified
             // Backend DOES call set_deduction_breakeven on percentage change
-            // FIX: For Pledge contribution type, don't trigger backend deduction logic
-            // as it will clear the client-side populated deduction_breakeven table
-            if (donation.doc.contribution_type !== "Pledge") {
-              shouldTriggerSetDeductionBreakeven = true;
-            }
+            shouldTriggerSetDeductionBreakeven = true;
             hasChanges = true;
           }
 
@@ -2750,6 +2724,7 @@ function handleAddDeductionRow() {
   const newRow = {
     random_id: generateRandomId(donation.doc.deduction_breakeven.length + 1),
     fund_class_id: "",
+    donor_id: "", // Initialize donor_id field
     percentage: 0,
     deduction_amount: 0,
     currency: donation.doc.currency || "PKR",
@@ -2779,6 +2754,7 @@ function handleFundClassSelected(event) {
       const newRow = {
         random_id: generateRandomId(donation.doc.deduction_breakeven.length + 1),
         fund_class_id: fundClassId,
+        donor_id: row.donor_id || "", // Add donor_id from payment detail row
         percentage: 0,
         deduction_amount: 0,
         currency: donation.doc.currency || "PKR",
