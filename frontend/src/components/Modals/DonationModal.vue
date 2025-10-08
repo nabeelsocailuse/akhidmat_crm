@@ -1485,6 +1485,12 @@ watch(
             row.donor = row.donor_id;
             handleDonorSelectionDirect(row.donor_id, row);
             shouldDoReactiveUpdate = true;
+            
+            // FIX: For Pledge contribution type, don't trigger backend deduction logic
+            // as it will clear the client-side populated deduction_breakeven table
+            if (donation.doc.contribution_type !== "Pledge") {
+              shouldTriggerSetDeductionBreakeven = true;
+            }
           }
 
           // EXACT backend trigger: fund_class_id change
@@ -1505,7 +1511,13 @@ watch(
           if (row.donation_amount !== row._lastDonationAmount) {
             console.log(`Donation amount changed in row ${index}:`, row.donation_amount);
             row._lastDonationAmount = row.donation_amount;
-            shouldTriggerSetDeductionBreakeven = true;
+            
+            // FIX: For Pledge contribution type, don't trigger backend deduction logic
+            // as it will clear the client-side populated deduction_breakeven table
+            if (donation.doc.contribution_type !== "Pledge") {
+              shouldTriggerSetDeductionBreakeven = true;
+            }
+            
             shouldDoReactiveUpdate = true;
           }
 
@@ -1513,7 +1525,13 @@ watch(
           if (row.intention_id !== row._lastIntentionId) {
             console.log(`Intention ID changed in row ${index}:`, row.intention_id);
             row._lastIntentionId = row.intention_id;
-            shouldTriggerSetDeductionBreakeven = true;
+            
+            // FIX: For Pledge contribution type, don't trigger backend deduction logic
+            // as it will clear the client-side populated deduction_breakeven table
+            if (donation.doc.contribution_type !== "Pledge") {
+              shouldTriggerSetDeductionBreakeven = true;
+            }
+            
             shouldDoReactiveUpdate = true;
           }
 
@@ -1698,7 +1716,11 @@ watch(
             row._lastPercentage = row.percentage;
             row._userModifiedPercentage = true; // Mark as user modified
             // Backend DOES call set_deduction_breakeven on percentage change
-            shouldTriggerSetDeductionBreakeven = true;
+            // FIX: For Pledge contribution type, don't trigger backend deduction logic
+            // as it will clear the client-side populated deduction_breakeven table
+            if (donation.doc.contribution_type !== "Pledge") {
+              shouldTriggerSetDeductionBreakeven = true;
+            }
             hasChanges = true;
           }
 
@@ -2471,17 +2493,18 @@ function validateDonationForm() {
       if (!row.fund_class_id || row.fund_class_id.trim() === "") {
         errors.push(`Fund Class for payment detail row ${rowNum} is required`);
       }
-
-      if (!row.mode_of_payment || row.mode_of_payment.trim() === "") {
-        errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
+      if (donation.doc.contribution_type !== "Pledge") {
+        if (!row.mode_of_payment || row.mode_of_payment.trim() === "") {
+          errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
+        }
       }
-
+      
       // Transaction Type ID is always mandatory
       if (!row.transaction_type_id || row.transaction_type_id.trim() === "") {
         errors.push(`Transaction Type ID for payment detail row ${rowNum} is required`);
       }
 
-      // Conditional mandatory fields based on mode of payment
+      // Conditional mandatory fields based on mode of payment  
       if (
         row.mode_of_payment &&
         ["bank", "Cheque", "Bank Draft"].includes(row.mode_of_payment)
@@ -2740,22 +2763,105 @@ function handleAddDeductionRow() {
 }
 
 // ADD: Function to handle fund class selection in FieldLayout
-function handleFundClassSelected(event) {
+async function handleFundClassSelected(event) {
   const { row, fundClassId, success } = event;
 
   if (success && fundClassId && row) {
     console.log("Processing fund class selection for row:", row, "with fund class ID:", fundClassId);
 
-    // Check if the fundClassId already exists in deduction_breakeven
-    const existingEntry = donation.doc.deduction_breakeven.find(
-      (entry) => entry.fund_class_id === fundClassId
-    );
+    // FIX: Check if fund class actually changed to prevent unnecessary processing
+    if (row.fund_class_id === fundClassId && row._lastFundClassId === fundClassId) {
+      console.log(`Fund class ${fundClassId} already selected for this row, skipping duplicate processing`);
+      return;
+    }
 
-    if (!existingEntry) {
-      // Add new entry if it doesn't exist
+    // Update the tracking variable
+    row._lastFundClassId = fundClassId;
+
+    // FIX: Clear existing entries for this payment row before adding new fund class entries
+    // This ensures the table is refreshed with new fund class values
+    if (donation.doc.deduction_breakeven && Array.isArray(donation.doc.deduction_breakeven)) {
+      const originalLength = donation.doc.deduction_breakeven.length;
+      donation.doc.deduction_breakeven = donation.doc.deduction_breakeven.filter(
+        (deductionRow) => deductionRow.random_id !== row.random_id
+      );
+      const removedCount = originalLength - donation.doc.deduction_breakeven.length;
+      if (removedCount > 0) {
+        console.log(
+          `FUND CLASS CHANGE: Removed ${removedCount} existing deduction entries for payment row ${row.random_id}`
+        );
+      }
+    }
+
+    // FIX: Fetch all deduction details for this fund class to show multiple rows like Donation
+    try {
+      const deductionDetails = await call('crm.fcrm.doctype.donation.api.get_deduction_details', {
+        fund_class_id: fundClassId
+      });
+      
+      if (deductionDetails && Object.keys(deductionDetails).length > 0) {
+        const isArray = Array.isArray(deductionDetails);
+        const detailsArray = isArray ? deductionDetails : [deductionDetails];
+        let addedRowsCount = 0;
+        
+        for (const detail of detailsArray) {
+          const newRow = {
+            random_id: row.random_id || generateRandomId(donation.doc.deduction_breakeven.length + 1),
+            fund_class_id: fundClassId,
+            fund_class: fundClassId,
+            percentage: detail.percentage || 0,
+            min_percent: detail.min_percent || 0,
+            max_percent: detail.max_percent || 0,
+            amount: 0,
+            company: detail.company || '',
+            income_type: detail.income_type || '',
+            account: detail.account || '',
+            project: detail.project || '',
+            currency: donation.doc.currency || "PKR",
+            to_currency: donation.doc.to_currency || donation.doc.currency,
+            posting_date: donation.doc.posting_date,
+            is_return: donation.doc.is_return || false,
+            __islocal: true,
+            doctype: 'Deduction Breakeven',
+            parentfield: 'deduction_breakeven',
+            parenttype: 'Donation',
+            idx: (donation.doc.deduction_breakeven.length + 1)
+          };
+          
+          donation.doc.deduction_breakeven.push(newRow);
+          addedRowsCount++;
+        }
+        
+        // Force reactive update
+        donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven];
+        
+        if (addedRowsCount > 0) {
+          toast.success(`${addedRowsCount} deduction rows added successfully for fund class ${fundClassId}`);
+        }
+      } else {
+        // Fallback: Add single entry if no deduction details found
+        const newRow = {
+          random_id: row.random_id || generateRandomId(donation.doc.deduction_breakeven.length + 1),
+          fund_class_id: fundClassId,
+          fund_class: fundClassId,
+          percentage: 0,
+          deduction_amount: 0,
+          currency: donation.doc.currency || "PKR",
+          to_currency: donation.doc.to_currency || donation.doc.currency,
+          posting_date: donation.doc.posting_date,
+          is_return: donation.doc.is_return || false,
+        };
+        donation.doc.deduction_breakeven.push(newRow);
+        donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven];
+        toast.success("Fund class added successfully to deduction breakeven.");
+      }
+    } catch (error) {
+      console.error('Error fetching deduction details:', error);
+      // Fallback: Add single entry if API call fails
       const newRow = {
-        random_id: generateRandomId(donation.doc.deduction_breakeven.length + 1),
+        random_id: row.random_id || generateRandomId(donation.doc.deduction_breakeven.length + 1),
         fund_class_id: fundClassId,
+        fund_class: fundClassId,
         percentage: 0,
         deduction_amount: 0,
         currency: donation.doc.currency || "PKR",
@@ -2764,20 +2870,13 @@ function handleFundClassSelected(event) {
         is_return: donation.doc.is_return || false,
       };
       donation.doc.deduction_breakeven.push(newRow);
-
-      // Force reactive update
       donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven];
-
       toast.success("Fund class added successfully to deduction breakeven.");
-    } else {
-      // Log and show warning for duplicate fund class
-      console.warn(`Duplicate fund class detected: ${fundClassId}`);
-      toast.warning("Duplicate fund class entry detected in deduction breakeven.");
     }
 
     // Ensure payment_detail table is updated reactively
     if (donation.doc.payment_detail) {
-      donation.doc.payment_detail = [...donation.doc.payment_detail];
+      donation.doc.payment_detail = [...donation.doc.payment_detail]; 
     }
 
     // Ensure items table is updated reactively
@@ -2869,9 +2968,9 @@ function validateField(fieldName, value, rowIndex = null) {
       errors.push(`Fund Class for payment detail row ${rowNum} is required`);
     }
 
-    if (fieldName === "mode_of_payment" && (!value || value.trim() === "")) {
-      errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
-    }
+    // if (fieldName === "mode_of_payment" && (!value || value.trim() === "")) {
+    //   errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
+    // }
 
     // Transaction Type ID is always mandatory
     if (fieldName === "transaction_type_id" && (!value || value.trim() === "")) {
@@ -3205,6 +3304,7 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
     ) {
       const originalDeductionLength = donation.doc.deduction_breakeven.length;
 
+      // Filter out deduction_breakeven rows that match the deleted payment_detail random_ids
       donation.doc.deduction_breakeven = donation.doc.deduction_breakeven.filter(
         (deductionRow) => {
           const shouldKeep = !deletedRandomIds.has(deductionRow.random_id);

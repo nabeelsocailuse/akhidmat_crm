@@ -1172,8 +1172,6 @@ async function handleFetchFromForItems(rowIndex, fieldname, value) {
     toast.error(`Error loading ${fieldname} details`)
   }
 }
-
-
 onMounted(() => {
 })
 </script>
