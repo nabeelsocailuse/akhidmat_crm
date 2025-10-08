@@ -333,6 +333,7 @@
                 :parentFieldname="parentFieldname"
                 :donorFiltering="getDonorFilteringFromParent()"
                 :readOnly="!gridSettings.editable_grid"
+                :returnAmountOnly="parentDoctype === 'Donation' && parentFieldname === 'payment_detail' && isDonationReturn"
                 @field-change="(fieldname, value) => handleGridRowModalFieldChange(index, fieldname, value)"
               />
             </div>
@@ -404,9 +405,6 @@ import Draggable from 'vuedraggable'
 import { ref, reactive, computed, inject, provide, watch, nextTick, onMounted } from 'vue'
 import { useDonorSelection } from '@/composables/useDonorSelection'
 
-/* -------------------------
-   Props, emits, injected API
-   ------------------------- */
 const props = defineProps({
   label: { type: String, default: '' },
   doctype: { type: String, required: true },
@@ -421,9 +419,6 @@ const triggerOnChange = inject('triggerOnChange', () => {})
 const triggerOnRowAdd = inject('triggerOnRowAdd', () => {})
 const triggerOnRowRemove = inject('triggerOnRowRemove', () => {})
 
-/* -------------------------
-   Stores & meta helpers
-   ------------------------- */
 const { users, getUser } = usersStore()
 const {
   getGridViewSettings,
@@ -435,9 +430,6 @@ const {
 } = getMeta(props.doctype)
 getMeta(props.parentDoctype)
 
-/* -------------------------
-   Reactive state
-   ------------------------- */
 const rows = defineModel()
 const parentDoc = defineModel('parent')
 
@@ -457,16 +449,12 @@ const selectedRows = reactive(new Set())
 const showGridFieldsEditorModal = ref(false)
 const showGridRowFieldsModal = ref(false)
 
-/* -------------------------
-   Computed & derived data
-   ------------------------- */
 const gridSettings = computed(() => {
   const settings = getGridSettings()
   if (props.readOnly) return { ...settings, editable_grid: false }
   return settings
 })
 
-// Disallow adding new payment_detail rows on Donation returns
 const isDonationReturn = computed(() => {
   if (props.parentDoctype !== 'Donation' || props.parentFieldname !== 'payment_detail') return false
   const doc = parentDoc.value || {}
@@ -483,7 +471,6 @@ const canAddRows = computed(() => {
 
 function canEditField(field) {
   if (!gridSettings.value.editable_grid) return false
-  // During Donation Return, only donation_amount is editable in payment_detail
   if (props.parentDoctype === 'Donation' && props.parentFieldname === 'payment_detail' && isDonationReturn.value) { 
     return field?.fieldname === 'donation_amount'
   }
@@ -534,9 +521,6 @@ const allRowsSelected = computed(() => {
 
 const showDeleteBtn = computed(() => selectedRows.size > 0)
 
-/* -------------------------
-   Helper: field object shaping
-   ------------------------- */
 function setQueryForField(field) {
   if (field.fieldname === 'donor_id' && field.options === 'Donor') {
     const filters = { status: 'Active' }
@@ -589,9 +573,6 @@ function getFieldObj(field) {
   return fieldObj
 }
 
-/* -------------------------
-   Selection & row helpers
-   ------------------------- */
 const toggleSelectAllRows = (iSelected) => {
   if (iSelected) {
     rows.value?.forEach((row) => selectedRows.add(row.name))
@@ -606,13 +587,6 @@ const toggleSelectRow = (row) => {
 }
 
 const addRow = () => {
-  if (props.parentFieldname === 'deduction_breakeven') {
-    const parent = props.parentDoc || window.parentDocument
-    if (parent && parent.contribution_type === 'Pledge') {
-      toast.warning('Deduction Breakeven rows cannot be added when Contribution Type is Pledge')
-      return
-    }
-  }
 
   if (!rows.value) rows.value = []
 
@@ -649,14 +623,9 @@ const deleteRows = () => {
   selectedRows.clear()
 }
 
-/* -------------------------
-   Donor selection helpers (composable)
-   ------------------------- */
 const { fetchDonorDetails, updateDonorFields, clearDonorFields } = useDonorSelection()
 
-/* -------------------------
-   Deduction details & operations
-   ------------------------- */
+
 async function fetchDeductionDetails(fundClassId) {
   if (!fundClassId) return null
   try {
@@ -670,42 +639,9 @@ async function fetchDeductionDetails(fundClassId) {
   }
 }
 
-async function addDeductionBreakevenRow(deductionDetails, fundClassId) {
-  if (parentDoc.value && parentDoc.value.contribution_type === 'Pledge') {
-    toast.warning('Deduction Breakeven rows cannot be added when Contribution Type is Pledge')
-    return null
-  }
-
-  const newDeductionRow = {
-    random_id: Math.floor(1000 + Math.random() * 9000),
-    fund_class: fundClassId,
-    percentage: deductionDetails?.percentage || 0,
-    min_percent: deductionDetails?.min_percent || 0,
-    max_percent: deductionDetails?.max_percent || 0,
-    amount: 0,
-    company: deductionDetails?.company || '',
-    income_type: deductionDetails?.income_type || '',
-    account: deductionDetails?.account || '',
-    project: deductionDetails?.project || '',
-  }
-
-  emit('add-deduction-row', {
-    fundClassId,
-    deductionDetails,
-    newRowData: newDeductionRow,
-    sourceTable: 'payment_detail'
-  })
-
-  return newDeductionRow
-}
-
 async function addDeductionRowToParent(deductionDetails, fundClassId, paymentRowRandomId) {
   try {
     if (!parentDoc.value) return false
-    if (parentDoc.value.contribution_type === 'Pledge') {
-      toast.warning('Deduction Breakeven rows cannot be added when Contribution Type is Pledge')
-      return false
-    }
 
     if (!parentDoc.value.deduction_breakeven) parentDoc.value.deduction_breakeven = []
 
@@ -748,7 +684,6 @@ function updateDeductionFields(row, deductionDetails) {
 
   const validationErrors = validateDeductionFields(row)
   if (validationErrors.length > 0) {
-    // keep behavior: we only surface toast/warnings where needed; currently only validation list returned
   }
   calculateDeductionAmount(row)
 }
@@ -766,58 +701,6 @@ function validateDeductionFields(row) {
   return errors
 }
 
-function validateAllDeductionRows() {
-  if (props.parentFieldname !== 'deduction_breakeven') return []
-  const allErrors = []
-  if (rows.value && Array.isArray(rows.value)) {
-    rows.value.forEach((row, index) => {
-      if (row.fund_class) {
-        const rowErrors = validateDeductionFields(row)
-        if (rowErrors.length > 0) {
-          allErrors.push({ row: index + 1, errors: rowErrors })
-        }
-      }
-    })
-  }
-  return allErrors
-}
-
-function getDeductionValidationSummary() {
-  const validationErrors = validateAllDeductionRows()
-  if (validationErrors.length === 0) return { valid: true, message: 'All deduction fields are valid' }
-  const totalErrors = validationErrors.reduce((sum, item) => sum + item.errors.length, 0)
-  const message = `Found ${totalErrors} validation error(s) in ${validationErrors.length} row(s)`
-  return { valid: false, message, details: validationErrors }
-}
-
-function getDeductionDataSummary() {
-  if (props.parentFieldname !== 'deduction_breakeven') return null
-  if (!rows.value || !Array.isArray(rows.value)) return null
-  const summary = { totalRows: rows.value.length, rowsWithFundClass: 0, totalPercentage: 0, totalAmount: 0, validationStatus: getDeductionValidationSummary() }
-  rows.value.forEach((row) => {
-    if (row.fund_class) {
-      summary.rowsWithFundClass++
-      if (row.percentage) summary.totalPercentage += parseFloat(row.percentage) || 0
-      if (row.amount) summary.totalAmount += parseFloat(row.amount) || 0
-    }
-  })
-  return summary
-}
-
-function exportDeductionData() {
-  if (props.parentFieldname !== 'deduction_breakeven') return null
-  const data = {
-    timestamp: new Date().toISOString(),
-    parentDocument: parentDoc.value ? { company: parentDoc.value.company, donation_amount: parentDoc.value.donation_amount } : null,
-    rows: rows.value ? [...rows.value] : [],
-    summary: getDeductionDataSummary()
-  }
-  return data
-}
-
-/* -------------------------
-   Deduction utilities: clear, calc, summaries
-   ------------------------- */
 function clearDeductionFields(row) {
   row.percentage = 0
   row.min_percent = 0
@@ -841,28 +724,6 @@ function calculateDeductionAmount(row) {
     row.amount = 0
     row.base_amount = 0
     return 0
-  }
-}
-
-function getDonationAmountFromParent() {
-  if (!parentDoc.value) return 0
-  if (parentDoc.value.donation_amount) return parseFloat(parentDoc.value.donation_amount) || 0
-  if (parentDoc.value.payment_detail && Array.isArray(parentDoc.value.payment_detail)) {
-    return parentDoc.value.payment_detail.reduce((sum, row) => sum + (parseFloat(row.donation_amount) || 0), 0)
-  }
-  return 0
-}
-
-function syncDonationAmount() {
-  if (props.parentFieldname !== 'deduction_breakeven') return
-  const donationAmount = getDonationAmountFromParent()
-  if (rows.value && Array.isArray(rows.value)) {
-    rows.value.forEach((row) => {
-      if (row.donation_amount !== donationAmount) {
-        row.donation_amount = donationAmount
-        if (row.percentage) calculateDeductionAmount(row)
-      }
-    })
   }
 }
 
@@ -890,60 +751,64 @@ function syncDonationAmountFromPaymentDetail() {
   forceReactiveUpdate()
 }
 
-/* -------------------------
-   Field change handler
-   ------------------------- */
 async function fieldChange(value, field, row) {
-  // Skip mode_of_payment handling here - parent handles it
+  const normalizedValue = (value && typeof value === 'object')
+    ? (value.value ?? value.name ?? '')
+    : value
+
   const isModeOfPaymentField = field?.fieldname === 'mode_of_payment'
   const isPaymentDetailTable = props.parentFieldname === 'payment_detail'
   if (isModeOfPaymentField && isPaymentDetailTable) {
-    triggerOnChange(field.fieldname, value, row)
+    triggerOnChange(field.fieldname, normalizedValue, row)
     return
   }
 
   // Payment detail donor_id -> fetch donor details
   if (field.fieldname === 'donor_id' && props.parentFieldname === 'payment_detail') {
-    row.donor_id = value
-    if (value) {
-      const donorDetails = await fetchDonorDetails(value)
+    row.donor_id = normalizedValue
+    if (normalizedValue) {
+      const donorDetails = await fetchDonorDetails(normalizedValue)
       if (donorDetails) updateDonorFields(row, donorDetails)
     } else {
       clearDonorFields(row)
     }
-    emit('donor-selected', { row, donorId: value, success: !!value })
+    emit('donor-selected', { row, donorId: normalizedValue, success: !!normalizedValue })
     forceReactiveUpdate()
-    triggerOnChange(field.fieldname, value, row)
+    triggerOnChange(field.fieldname, normalizedValue, row)
     return
   }
 
   // Deduction fund_class change
   if (field.fieldname === 'fund_class' && props.parentFieldname === 'deduction_breakeven') {
-    if (value) {
-      const deductionDetails = await fetchDeductionDetails(value)
-      if (deductionDetails && Object.keys(deductionDetails).length > 0) {
-        updateDeductionFields(row, deductionDetails)
-        calculateDeductionAmount(row)
-        toast.success('Deduction details fetched successfully')
-      } else {
-        clearDeductionFields(row)
-        toast.info('No deduction details found for this fund class')
-      }
+  if (normalizedValue) {
+    const deductionDetails = await fetchDeductionDetails(normalizedValue)
+    if (deductionDetails && Object.keys(deductionDetails).length > 0) {
+      updateDeductionFields(row, deductionDetails)
+      calculateDeductionAmount(row)
+      toast.success('Deduction details fetched successfully')
     } else {
       clearDeductionFields(row)
-      toast.info('Deduction fields cleared')
+      toast.info('No deduction details found for this fund class')
     }
-    forceReactiveUpdate()
-    triggerOnChange(field.fieldname, value, row)
-    return
+  } else {
+    clearDeductionFields(row)
+    toast.info('Deduction fields cleared')
   }
+
+  // 🔧 Trigger reactivity properly without breaking link
+  await nextTick()
+  forceReactiveUpdate() // if needed
+  triggerOnChange(field.fieldname, normalizedValue, row)
+  return
+}
+
 
   // Fund class id change in payment_detail -> load fund class details and potentially add deduction rows
   if (field.fieldname === 'fund_class_id' && props.parentFieldname === 'payment_detail') {
-    if (value) {
+    if (normalizedValue) {
       try {
         const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
-          fund_class_id: value,
+          fund_class_id: normalizedValue,
           company: parentDoc.value?.company || 'Alkhidmat Foundation Pakistan'
         })
 
@@ -951,7 +816,7 @@ async function fieldChange(value, field, row) {
           row.pay_service_area = fundClassDetails.service_area || ''
           row.pay_subservice_area = fundClassDetails.subservice_area || ''
           row.pay_product = fundClassDetails.product || ''
-          row.fund_class = fundClassDetails.fund_class_name || value
+          row.fund_class = fundClassDetails.fund_class_name || normalizedValue
           toast.success('Fund class details loaded successfully')
         } else {
           toast.warning('No fund class details found')
@@ -965,41 +830,23 @@ async function fieldChange(value, field, row) {
         await clearDeductionBreakevenTable()
         toast.info('Deduction breakeven table cleared (Zakat intention)')
       } else {
-        const deductionDetails = await fetchDeductionDetails(value)
+        const deductionDetails = await fetchDeductionDetails(normalizedValue)
         if (deductionDetails && Object.keys(deductionDetails).length > 0) {
           const isArray = Array.isArray(deductionDetails)
           const detailsArray = isArray ? deductionDetails : [deductionDetails]
           let addedRowsCount = 0
-          let failedRowsCount = 0
           for (const detail of detailsArray) {
-            try {
-              const success = await addDeductionRowToParent(detail, value, row.random_id)
-              if (success) addedRowsCount++
-              else failedRowsCount++
-            } catch {
-              failedRowsCount++
-            }
+            const success = await addDeductionRowToParent(detail, normalizedValue, row.random_id)
+            if (success) addedRowsCount++
           }
-          if (addedRowsCount > 0) {
-            if (addedRowsCount === 1) toast.success('New deduction row added successfully')
-            else toast.success(`${addedRowsCount} deduction rows added successfully`)
-          }
-          if (failedRowsCount > 0) toast.error(`Failed to add ${failedRowsCount} deduction rows`)
-          if (addedRowsCount === 0 && failedRowsCount > 0) {
-            emit('add-deduction-row', {
-              fundClassId: value,
-              deductionDetails,
-              sourceTable: 'payment_detail',
-              sourceRow: row
-            })
-          }
+          if (addedRowsCount > 0) toast.success(`${addedRowsCount} deduction rows added successfully`)
         } else {
           toast.info('No deduction details found for this fund class')
         }
       }
     }
     forceReactiveUpdate()
-    triggerOnChange(field.fieldname, value, row)
+    triggerOnChange(field.fieldname, normalizedValue, row)
     return
   }
 
@@ -1009,13 +856,13 @@ async function fieldChange(value, field, row) {
     if (isProcessingIntentionChange) return
     isProcessingIntentionChange = true
     try {
-      row.intention_id = value
-      if (value === 'Zakat') {
+      row.intention_id = normalizedValue
+      if (normalizedValue === 'Zakat') {
         if (parentDoc.value && parentDoc.value.deduction_breakeven) {
           parentDoc.value.deduction_breakeven = []
           toast.info('Deduction breakeven table cleared (Zakat intention)')
         }
-      } else if (value && value !== 'Zakat') {
+      } else if (normalizedValue && normalizedValue !== 'Zakat') {
         if (parentDoc.value && parentDoc.value.deduction_breakeven && Array.isArray(parentDoc.value.deduction_breakeven) && parentDoc.value.deduction_breakeven.length === 0 && parentDoc.value.payment_detail && Array.isArray(parentDoc.value.payment_detail) && parentDoc.value.payment_detail.length > 0) {
           try {
             const result = await call('crm.fcrm.doctype.donation.api.set_deduction_breakeven', {
@@ -1039,7 +886,7 @@ async function fieldChange(value, field, row) {
         }
       }
       forceReactiveUpdate()
-      triggerOnChange(field.fieldname, value, row)
+      triggerOnChange(field.fieldname, normalizedValue, row)
     } finally {
       setTimeout(() => { isProcessingIntentionChange = false }, 1000)
     }
@@ -1048,35 +895,34 @@ async function fieldChange(value, field, row) {
 
   // donation_amount change in payment_detail -> sync to deduction_breakeven
   if (field.fieldname === 'donation_amount' && props.parentFieldname === 'payment_detail') {
-    row.donation_amount = value
+    row.donation_amount = normalizedValue
     if (parentDoc.value && parentDoc.value.deduction_breakeven) {
       const matchingDeductionRows = parentDoc.value.deduction_breakeven.filter(d => d.random_id === row.random_id)
       matchingDeductionRows.forEach((deductionRow) => {
-        deductionRow.donation_amount = value
+        deductionRow.donation_amount = normalizedValue
         calculateDeductionAmount(deductionRow)
       })
       parentDoc.value.deduction_breakeven = [...parentDoc.value.deduction_breakeven]
     }
     forceReactiveUpdate()
-    triggerOnChange(field.fieldname, value, row)
+    triggerOnChange(field.fieldname, normalizedValue, row)
     return
   }
 
-  // percentage change in deduction_breakeven -> recalc
   if (field.fieldname === 'percentage' && props.parentFieldname === 'deduction_breakeven') {
     row.percentage = value
     calculateDeductionAmount(row)
+    rows.value = [...rows.value]
     forceReactiveUpdate()
     triggerOnChange(field.fieldname, value, row)
     return
   }
 
-  // items table auto-fetch handlers (fund_class, donor, project, item_code)
   if (props.parentFieldname === 'items') {
-    if (field.fieldname === 'fund_class' && value) {
+    if (field.fieldname === 'fund_class' && normalizedValue) {
       try {
         const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
-          fund_class_id: value,
+          fund_class_id: normalizedValue,
           company: parentDoc.value?.company || 'Alkhidmat Foundation'
         })
         if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
@@ -1091,15 +937,15 @@ async function fieldChange(value, field, row) {
       } catch {
         toast.error('Error loading fund class details')
       }
-      emit('fund-class-selected', { row, fundClassId: value, success: !!value })
+      emit('fund-class-selected', { row, fundClassId: normalizedValue, success: !!normalizedValue })
       forceReactiveUpdate()
-      triggerOnChange(field.fieldname, value, row)
+      triggerOnChange(field.fieldname, normalizedValue, row)
       return
     }
 
-    if (field.fieldname === 'donor' && value) {
+    if (field.fieldname === 'donor' && normalizedValue) {
       try {
-        const donorDetails = await call('frappe.client.get', { doctype: 'Donor', name: value })
+        const donorDetails = await call('frappe.client.get', { doctype: 'Donor', name: normalizedValue })
         if (donorDetails) {
           if (donorDetails.donor_name) row.donor_name = donorDetails.donor_name
           if (donorDetails.donor_type) row.donor_type = donorDetails.donor_type
@@ -1111,15 +957,15 @@ async function fieldChange(value, field, row) {
       } catch {
         toast.error('Error loading donor details')
       }
-      emit('donor-selected', { row, donorId: value, success: !!value })
+      emit('donor-selected', { row, donorId: normalizedValue, success: !!normalizedValue })
       forceReactiveUpdate()
-      triggerOnChange(field.fieldname, value, row)
+      triggerOnChange(field.fieldname, normalizedValue, row)
       return
     }
 
-    if (field.fieldname === 'project' && value) {
+    if (field.fieldname === 'project' && normalizedValue) {
       try {
-        const projectDetails = await call('frappe.client.get', { doctype: 'Project', name: value })
+        const projectDetails = await call('frappe.client.get', { doctype: 'Project', name: normalizedValue })
         if (projectDetails) {
           if (projectDetails.cost_center) row.cost_center = projectDetails.cost_center
           if (projectDetails.custom_service_area) row.service_area = projectDetails.custom_service_area
@@ -1134,13 +980,13 @@ async function fieldChange(value, field, row) {
         toast.error('Error loading project details')
       }
       forceReactiveUpdate()
-      triggerOnChange(field.fieldname, value, row)
+      triggerOnChange(field.fieldname, normalizedValue, row)
       return
     }
 
-    if (field.fieldname === 'item_code' && value) {
+    if (field.fieldname === 'item_code' && normalizedValue) {
       try {
-        const itemDetails = await call('frappe.client.get', { doctype: 'Item', name: value })
+        const itemDetails = await call('frappe.client.get', { doctype: 'Item', name: normalizedValue })
         if (itemDetails) {
           if (itemDetails.item_name) row.item_name = itemDetails.item_name
           if (itemDetails.valuation_rate) row.basic_rate = itemDetails.valuation_rate
@@ -1152,18 +998,14 @@ async function fieldChange(value, field, row) {
         toast.error('Error loading item details')
       }
       forceReactiveUpdate()
-      triggerOnChange(field.fieldname, value, row)
+      triggerOnChange(field.fieldname, normalizedValue, row)
       return
     }
   }
 
-  // default: propagate change
-  triggerOnChange(field.fieldname, value, row)
+  triggerOnChange(field.fieldname, normalizedValue, row)
 }
 
-/* -------------------------
-   Watchers to sync donation/payment/donor changes
-   ------------------------- */
 watch(
   () => parentDoc.value?.payment_detail,
   (newPaymentDetail) => {
@@ -1204,9 +1046,6 @@ async function handleDonorSelectionFromWatcher(donorId, row) {
   }
 }
 
-/* -------------------------
-   Attach handling, reactive helpers
-   ------------------------- */
 function onAttachSuccess(file, field, row) {
   const fileUrl = file?.file_url || file?.name || ''
   row[field.fieldname] = fileUrl
@@ -1218,125 +1057,6 @@ function forceReactiveUpdate() {
   if (rows.value && Array.isArray(rows.value)) rows.value = [...rows.value]
 }
 
-/* -------------------------
-   Misc helpers & summaries
-   ------------------------- */
-function resetAllDeductionFields() {
-  if (props.parentFieldname !== 'deduction_breakeven') return
-  if (rows.value && Array.isArray(rows.value)) {
-    rows.value.forEach((row) => clearDeductionFields(row))
-    forceReactiveUpdate()
-    toast.success('All deduction fields have been reset')
-  }
-}
-
-async function refreshAllDeductionFields() {
-  if (props.parentFieldname !== 'deduction_breakeven') return
-  if (!parentDoc.value?.company) {
-    toast.error('Company is required to refresh deduction fields')
-    return
-  }
-  if (rows.value && Array.isArray(rows.value)) {
-    let refreshCount = 0
-    let errorCount = 0
-    for (const row of rows.value) {
-      if (row.fund_class) {
-        try {
-          const deductionDetails = await fetchDeductionDetails(row.fund_class)
-          if (deductionDetails && Object.keys(deductionDetails).length > 0) {
-            updateDeductionFields(row, deductionDetails)
-            refreshCount++
-          } else {
-            clearDeductionFields(row)
-          }
-        } catch {
-          clearDeductionFields(row)
-          errorCount++
-        }
-      }
-    }
-    forceReactiveUpdate()
-    if (refreshCount > 0) toast.success(`Refreshed deduction fields for ${refreshCount} row(s)`)
-    if (errorCount > 0) toast.error(`Failed to refresh ${errorCount} row(s)`)
-  }
-}
-
-function checkRequiredDeductionFields() {
-  if (props.parentFieldname !== 'deduction_breakeven') return { valid: true, missing: [] }
-  const missing = []
-  if (rows.value && Array.isArray(rows.value)) {
-    rows.value.forEach((row, index) => {
-      if (row.fund_class) {
-        if (!row.percentage && row.percentage !== 0) missing.push(`Row ${index + 1}: Percentage is required`)
-        if (!row.account) missing.push(`Row ${index + 1}: Account is required`)
-        if (!row.income_type) missing.push(`Row ${index + 1}: Income Type is required`)
-      }
-    })
-  }
-  return { valid: missing.length === 0, missing }
-}
-
-function getDeductionValidationReport() {
-  if (props.parentFieldname !== 'deduction_breakeven') return null
-  const fieldValidation = checkRequiredDeductionFields()
-  const percentageValidation = getDeductionValidationSummary()
-  const dataSummary = getDeductionDataSummary()
-  return {
-    timestamp: new Date().toISOString(),
-    requiredFields: fieldValidation,
-    percentageValidation,
-    dataSummary,
-    overallValid: fieldValidation.valid && percentageValidation.valid,
-    recommendations: []
-  }
-}
-
-function getTotalDeductionAmount() {
-  if (props.parentFieldname !== 'deduction_breakeven') return 0
-  if (!rows.value || !Array.isArray(rows.value)) return 0
-  return rows.value.reduce((sum, row) => sum + (row.fund_class && row.amount ? (parseFloat(row.amount) || 0) : 0), 0)
-}
-
-function getTotalDeductionPercentage() {
-  if (props.parentFieldname !== 'deduction_breakeven') return 0
-  if (!rows.value || !Array.isArray(rows.value)) return 0
-  return rows.value.reduce((sum, row) => sum + (row.fund_class && row.percentage ? (parseFloat(row.percentage) || 0) : 0), 0)
-}
-
-function checkDeductionPercentageLimit() {
-  const totalPercentage = getTotalDeductionPercentage()
-  if (totalPercentage > 100) {
-    toast.warning(`Total deduction percentage (${totalPercentage.toFixed(2)}%) exceeds 100%`)
-    return false
-  }
-  return true
-}
-
-function getNetDonationAmount() {
-  if (props.parentFieldname !== 'deduction_breakeven') return 0
-  const totalDonationAmount = getDonationAmountFromParent()
-  const totalDeductionAmount = getTotalDeductionAmount()
-  return totalDonationAmount - totalDeductionAmount
-}
-
-function getDeductionSummary() {
-  if (props.parentFieldname !== 'deduction_breakeven') return null
-  const totalDonationAmount = getDonationAmountFromParent()
-  const totalDeductionAmount = getTotalDeductionAmount()
-  const totalDeductionPercentage = getTotalDeductionPercentage()
-  const netAmount = getNetDonationAmount()
-  return {
-    totalDonationAmount,
-    totalDeductionAmount,
-    totalDeductionPercentage,
-    netAmount,
-    deductionRatio: totalDonationAmount > 0 ? (totalDeductionAmount / totalDonationAmount) * 100 : 0
-  }
-}
-
-/* -------------------------
-   Helpers: default values & donor filtering
-   ------------------------- */
 function getDefaultValue(defaultValue, fieldtype) {
   if (['Float', 'Currency', 'Percent'].includes(fieldtype)) return flt(defaultValue)
   if (fieldtype === 'Check') {
@@ -1363,151 +1083,95 @@ function getDonorFilteringFromData() {
   return getDonorFilteringFromParent()
 }
 
-/* -------------------------
-   API helpers (exact backend mapping / calculations)
-   ------------------------- */
-async function addDeductionBreakevenRowFromAPI(paymentRow, fundClassId) {
-  if (!paymentRow || !fundClassId) return false
-  try {
-    const deductionDetails = await call('crm.fcrm.doctype.donation.api.get_deduction_details_comprehensive', {
-      fund_class_id: fundClassId,
-      company: parentDoc.value.company || 'Alkhidmat Foundation'
-    })
-    if (!deductionDetails?.success || !deductionDetails?.data || deductionDetails.data.length === 0) return false
-    const newDeductionRows = []
-    for (const deductionDetail of deductionDetails.data) {
-      const percentageAmount = paymentRow.donation_amount * (deductionDetail.percentage / 100)
-      const baseAmount = percentageAmount
-      const newDeductionRow = {
-        random_id: paymentRow.random_id,
-        company: parentDoc.value.company || 'Alkhidmat Foundation',
-        income_type: deductionDetail.income_type,
-        project: deductionDetail.project,
-        account: deductionDetail.account,
-        percentage: deductionDetail.percentage || 0,
-        min_percent: deductionDetail.min_percent || 0,
-        max_percent: deductionDetail.max_percent || 0,
-        donation_amount: paymentRow.donation_amount,
-        amount: percentageAmount,
-        base_amount: baseAmount,
-        project_id: deductionDetail.project,
-        cost_center_id: parentDoc.value.donation_cost_center,
-        fund_class_id: paymentRow.fund_class_id,
-        service_area_id: paymentRow.pay_service_area,
-        subservice_area_id: paymentRow.pay_subservice_area,
-        product_id: paymentRow.pay_product,
-        donor_id: paymentRow.donor_id,
-        donor_type_id: paymentRow.donor_type,
-        donor_desk_id: paymentRow.donor_desk_id,
-        intention_id: paymentRow.intention_id,
-        transaction_type_id: paymentRow.transaction_type_id,
-        __islocal: true,
-        doctype: 'Deduction Breakeven',
-        parentfield: 'deduction_breakeven',
-        parenttype: props.parentDoctype || 'Donation',
-        idx: (parentDoc.value.deduction_breakeven.length + newDeductionRows.length + 1)
-      }
-      newDeductionRows.push(newDeductionRow)
-    }
-    parentDoc.value.deduction_breakeven.push(...newDeductionRows)
-    parentDoc.value.deduction_breakeven = [...parentDoc.value.deduction_breakeven]
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function updateDeductionAmountsFromAPI() {
-  if (!parentDoc.value.payment_detail || !parentDoc.value.deduction_breakeven) return
-  try {
-    const result = await call('crm.fcrm.doctype.donation.api.calculate_deduction_amounts', {
-      payment_details: parentDoc.value.payment_detail,
-      deduction_breakeven: parentDoc.value.deduction_breakeven
-    })
-    if (result.success) {
-      result.data.forEach(calculation => {
-        const matchingDeductions = parentDoc.value.deduction_breakeven.filter(d => d.random_id === calculation.random_id)
-        matchingDeductions.forEach((deduction, index) => {
-          if (calculation.deduction_details[index]) {
-            deduction.amount = calculation.deduction_details[index].amount
-            deduction.base_amount = calculation.deduction_details[index].amount
-          }
-        })
-      })
-      parentDoc.value.deduction_breakeven = [...parentDoc.value.deduction_breakeven]
-    }
-  } catch {
-  }
-}
-
-async function validateDeductionPercentagesFromAPI() {
-  if (!parentDoc.value.deduction_breakeven || parentDoc.value.deduction_breakeven.length === 0) return { success: true, message: 'No deduction breakeven to validate' }
-  try {
-    const result = await call('crm.fcrm.doctype.donation.api.validate_deduction_percentages', { deduction_breakeven: parentDoc.value.deduction_breakeven })
-    return result
-  } catch {
-    return { success: false, message: 'Error validating deduction percentages' }
-  }
-}
-
-/* -------------------------
-   Debounced update helper
-   ------------------------- */
-let updateDeductionTimeout = null
-function debouncedUpdateDeductionAmounts() {
-  if (updateDeductionTimeout) clearTimeout(updateDeductionTimeout)
-  updateDeductionTimeout = setTimeout(async () => {
-    await updateDeductionAmountsFromAPI()
-  }, 300)
-}
-
-/* -------------------------
-   Grid row modal handling
-   ------------------------- */
 function handleGridRowModalFieldChange(rowIndex, fieldname, value) {
+  console.log('🔥 Grid handleGridRowModalFieldChange called:', { rowIndex, fieldname, value, parentFieldname: props.parentFieldname })
+
+  const normalizedValue = (value && typeof value === 'object')
+    ? (value.value ?? value.name ?? '')
+    : value
+
   if (rowIndex >= 0 && rowIndex < data.value.length) {
-    data.value[rowIndex][fieldname] = value
+    data.value[rowIndex][fieldname] = normalizedValue
     if (props.parentFieldname === 'items') {
-      if (fieldname === 'fund_class' && value) handleFetchFromForItems(rowIndex, 'fund_class', value)
-      if (fieldname === 'donor' && value) handleFetchFromForItems(rowIndex, 'donor', value)
+      console.log('🔥 Items table field change detected:', { fieldname, value: normalizedValue })
+      if (fieldname === 'fund_class' && normalizedValue) {
+        console.log('🔥 Triggering fund_class auto-fill')
+        handleFetchFromForItems(rowIndex, 'fund_class', normalizedValue)
+      }
+      if (fieldname === 'donor' && normalizedValue) {
+        console.log('🔥 Triggering donor auto-fill')
+        handleFetchFromForItems(rowIndex, 'donor', normalizedValue)
+      }
     }
   }
 }
 
 async function handleFetchFromForItems(rowIndex, fieldname, value) {
+  console.log('🔥 handleFetchFromForItems called:', { rowIndex, fieldname, value })
+  
   try {
     const row = data.value[rowIndex]
     if (fieldname === 'fund_class') {
+      console.log('🔥 Fetching fund class details for:', value)
       const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', { fund_class_id: value, company: parentDoc.value?.company || 'Alkhidmat Foundation Pakistan' })
+      console.log('🔥 Fund class details received:', fundClassDetails)
+      
       if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
-        if (fundClassDetails.service_area) row.service_area = fundClassDetails.service_area
-        if (fundClassDetails.subservice_area) row.subservice_area = fundClassDetails.subservice_area
-        if (fundClassDetails.product) row.product = fundClassDetails.product
-        if (fundClassDetails.cost_center) row.cost_center = fundClassDetails.cost_center
+        if (fundClassDetails.service_area) {
+          console.log('🔥 Setting service_area:', fundClassDetails.service_area)
+          row.service_area = fundClassDetails.service_area
+        }
+        if (fundClassDetails.subservice_area) {
+          console.log('🔥 Setting subservice_area:', fundClassDetails.subservice_area)
+          row.subservice_area = fundClassDetails.subservice_area
+        }
+        if (fundClassDetails.product) {
+          console.log('🔥 Setting product:', fundClassDetails.product)
+          row.product = fundClassDetails.product
+        }
+        if (fundClassDetails.cost_center) {
+          console.log('🔥 Setting cost_center:', fundClassDetails.cost_center)
+          row.cost_center = fundClassDetails.cost_center
+        }
         toast.success('Fund class details loaded successfully')
       } else {
+        console.log('⚠️ No fund class details found')
         toast.warning('No fund class details found')
       }
     }
 
     if (fieldname === 'donor') {
+      console.log('🔥 Fetching donor details for:', value)
       const donorDetails = await call('frappe.client.get', { doctype: 'Donor', name: value })
+      console.log('🔥 Donor details received:', donorDetails)
+      
       if (donorDetails) {
-        if (donorDetails.donor_name) row.donor_name = donorDetails.donor_name
-        if (donorDetails.donor_type) row.donor_type = donorDetails.donor_type
-        if (donorDetails.donor_desk) row.donor_desk = donorDetails.donor_desk
+        if (donorDetails.donor_name) {
+          console.log('🔥 Setting donor_name:', donorDetails.donor_name)
+          row.donor_name = donorDetails.donor_name
+        }
+        if (donorDetails.donor_type) {
+          console.log('🔥 Setting donor_type:', donorDetails.donor_type)
+          row.donor_type = donorDetails.donor_type
+        }
+        if (donorDetails.donor_desk) {
+          console.log('🔥 Setting donor_desk:', donorDetails.donor_desk)
+          row.donor_desk = donorDetails.donor_desk
+        }
         toast.success('Donor details loaded successfully')
       } else {
+        console.log('⚠️ No donor details found')
         toast.warning('No donor details found')
       }
     }
+    
+    console.log('🔥 Forcing reactive update')
     forceReactiveUpdate()
-  } catch {
+  } catch (error) {
+    console.error('❌ Error in handleFetchFromForItems:', error)
     toast.error(`Error loading ${fieldname} details`)
   }
 }
-
-
 onMounted(() => {
 })
 </script>

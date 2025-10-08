@@ -223,6 +223,26 @@ const addPaymentDetailRow = () => {
     donation.doc.payment_detail = [];
   }
   donation.doc.payment_detail.push(newRow);
+
+  // Auto-populate donor when donor identity is Unknown (or Merchant - Unknown)
+  const identity = donation.doc.donor_identity;
+  if (identity === "Unknown" || identity === "Merchant - Unknown") {
+    call("frappe.client.get_value", {
+      doctype: "Donor",
+      filters: { donor_identity: identity },
+      fieldname: "name",
+    }).then((r) => {
+      const donorId = r?.message?.name;
+      if (donorId) {
+        newRow.donor_id = donorId;
+        newRow.donor = donorId;
+        // Force reactive update so UI reflects donor_id immediately
+        if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
+          donation.doc.payment_detail = [...donation.doc.payment_detail];
+        }
+      }
+    });
+  }
 };
 
 // Initialize donation with default values including edit_posting_date_time
@@ -500,6 +520,11 @@ const filteredTabs = computed(() => {
                 );
               }
 
+              if (field.fieldname === "contribution_type") {
+                enhancedField.depends_on = "eval:doc.donation_type == 'Cash'"
+              }
+
+
               return enhancedField;
             });
 
@@ -684,7 +709,7 @@ onMounted(() => {
   // initializeDonationDocument();
 
   // Configure field queries for child tables
-  configureFieldQueries();
+  // configureFieldQueries();
 
   // Apply donor filtering after form is rendered
   nextTick(() => {
@@ -1154,7 +1179,7 @@ async function fetchFundClassDetails(fundClassId) {
       fund_class_id: fundClassId,
       company: donation.doc.company || "Alkhidmat Foundation Pakistan",
     });
-
+    
     console.log("Fund Class details received:", result);
     return result;
   } catch (error) {
@@ -1300,7 +1325,7 @@ async function fetchPaymentModeAccount(modeOfPayment, company) {
 
 // Add donor selection handler
 function handleDonorSelected(event) {
-  console.log("Donor selected in payment detail:", event);
+  console.log("Donor selected:", event);
 
   const { row, donorId, success } = event;
 
@@ -1311,6 +1336,12 @@ function handleDonorSelected(event) {
     if (donation.doc.payment_detail) {
       console.log("Forcing reactive update of payment_detail");
       donation.doc.payment_detail = [...donation.doc.payment_detail];
+    }
+
+    // Force a reactive update of the items table
+    if (donation.doc.items) {
+      console.log("Forcing reactive update of items");
+      donation.doc.items = [...donation.doc.items];
     }
   }
 }
@@ -1453,6 +1484,13 @@ watch(
             row._lastDonorId = row.donor_id;
             row.donor = row.donor_id;
             handleDonorSelectionDirect(row.donor_id, row);
+            // Only trigger backend deduction logic for Donation; for Pledge we manage rows client-side
+            if (donation.doc.contribution_type !== "Pledge") {
+              shouldTriggerSetDeductionBreakeven = true;
+            } else {
+              // For Pledge, update existing deduction rows with new donor info
+              await updateDeductionRowsForPledge(row);
+            }
             shouldDoReactiveUpdate = true;
           }
 
@@ -1462,11 +1500,13 @@ watch(
             row._lastFundClassId = row.fund_class_id;
             row.fund_class = row.fund_class_id;
 
-            // FIX: For Pledge contribution type, populate fund class fields without deduction breakeven
-            if (donation.doc.contribution_type === "Pledge") {
-              await populateFundClassFieldsForPledge(row);
-            } else {
+            // Trigger backend deduction logic only for Donation; for Pledge we manage rows client-side
+            if (donation.doc.contribution_type !== "Pledge") {
               shouldTriggerSetDeductionBreakeven = true;
+            } else {
+              // For Pledge, populate fund class fields and manage deduction rows client-side
+              await populateFundClassFieldsForPledge(row);
+              await manageDeductionRowsForPledge(row);
             }
 
             shouldDoReactiveUpdate = true;
@@ -1476,7 +1516,10 @@ watch(
           if (row.donation_amount !== row._lastDonationAmount) {
             console.log(`Donation amount changed in row ${index}:`, row.donation_amount);
             row._lastDonationAmount = row.donation_amount;
-            shouldTriggerSetDeductionBreakeven = true;
+            // Only trigger backend deduction logic for Donation; for Pledge we manage rows client-side
+            if (donation.doc.contribution_type !== "Pledge") {
+              shouldTriggerSetDeductionBreakeven = true;
+            }
             shouldDoReactiveUpdate = true;
           }
 
@@ -1484,7 +1527,13 @@ watch(
           if (row.intention_id !== row._lastIntentionId) {
             console.log(`Intention ID changed in row ${index}:`, row.intention_id);
             row._lastIntentionId = row.intention_id;
-            shouldTriggerSetDeductionBreakeven = true;
+            // Only trigger backend deduction logic for Donation; for Pledge we manage rows client-side
+            if (donation.doc.contribution_type !== "Pledge") {
+              shouldTriggerSetDeductionBreakeven = true;
+            } else {
+              // For Pledge, update existing deduction rows with new intention info
+              await updateDeductionRowsForPledge(row);
+            }
             shouldDoReactiveUpdate = true;
           }
 
@@ -1757,10 +1806,7 @@ async function setDeductionBreakevenFromAPI() {
     return;
   }
 
-  if (donation.doc.contribution_type === "Pledge") {
-    console.log("Skipping deduction breakeven for Pledge contribution type");
-    return;
-  }
+  // Allow deduction breakeven for all contribution types, including Pledge
 
   try {
     // Mark that we're updating from API to prevent watcher loops
@@ -1781,14 +1827,20 @@ async function setDeductionBreakevenFromAPI() {
     if (result.success) {
       console.log("Backend API set deduction breakeven successfully:", result);
 
-      // PRESERVE account_paid_to field before backend API replaces the array
-      const preservedAccountPaidTo = {};
+      // PRESERVE mode_of_payment and account_paid_to (by random_id) before backend API replaces the array
+      const preservedPaymentDetailByRandomId = {};
       if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
         donation.doc.payment_detail.forEach((row, index) => {
-          if (row && row.account_paid_to) {
-            preservedAccountPaidTo[index] = row.account_paid_to;
+          if (!row) return;
+          const key = row.random_id || `idx_${index}`;
+          preservedPaymentDetailByRandomId[key] = {
+            mode_of_payment: row.mode_of_payment || '',
+            account_paid_to: row.account_paid_to || '',
+          };
+          if (row.mode_of_payment || row.account_paid_to) {
             console.log(
-              `Preserving account_paid_to for row ${index}: ${row.account_paid_to}`
+              `Preserving MOP/APT for key ${key}:`,
+              preservedPaymentDetailByRandomId[key]
             );
           }
         });
@@ -1839,14 +1891,25 @@ async function setDeductionBreakevenFromAPI() {
       donation.doc.deduction_breakeven = result.deduction_breakeven;
       donation.doc.payment_detail = result.updated_payment_details;
 
-      // RESTORE account_paid_to field after backend API replaces the array
+      // RESTORE mode_of_payment and account_paid_to by random_id after backend API replaces the array
       if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
         donation.doc.payment_detail.forEach((row, index) => {
-          if (row && preservedAccountPaidTo[index]) {
-            row.account_paid_to = preservedAccountPaidTo[index];
-            console.log(
-              `Restored account_paid_to for row ${index}: ${row.account_paid_to}`
-            );
+          if (!row) return;
+          const key = row.random_id || `idx_${index}`;
+          const preserved = preservedPaymentDetailByRandomId[key];
+          if (preserved) {
+            if (preserved.mode_of_payment && !row.mode_of_payment) {
+              row.mode_of_payment = preserved.mode_of_payment;
+              console.log(
+                `Restored mode_of_payment for row ${index}: ${row.mode_of_payment}`
+              );
+            }
+            if (preserved.account_paid_to && !row.account_paid_to) {
+              row.account_paid_to = preserved.account_paid_to;
+              console.log(
+                `Restored account_paid_to for row ${index}: ${row.account_paid_to}`
+              );
+            }
           }
         });
       }
@@ -1969,22 +2032,8 @@ watch(
       newContributionType
     );
 
-    if (newContributionType === "Pledge") {
-      // Clear deduction_breakeven table when contribution type is Pledge (same as backend)
-      if (
-        donation.doc.deduction_breakeven &&
-        donation.doc.deduction_breakeven.length > 0
-      ) {
-        donation.doc.deduction_breakeven = [];
-        console.log(
-          "Cleared deduction_breakeven table due to contribution_type being Pledge"
-        );
-      }
-    } else if (newContributionType === "Donation" && oldContributionType === "Pledge") {
-      // Populate deduction breakeven when switching from Pledge to Donation (same as backend)
-      console.log("Switched from Pledge to Donation, populating deduction breakeven...");
-      await setDeductionBreakevenFromAPI();
-    }
+  // Do not clear deduction breakeven for Pledge; always allow and recompute
+  await setDeductionBreakevenFromAPI();
   }
 );
 
@@ -2369,13 +2418,25 @@ function validateDonationForm() {
     }
   });
 
+
   // Additional business logic required fields
   if (!donation.doc.donor_identity || donation.doc.donor_identity.trim() === "") {
     errors.push("Donor Identity is required");
   }
 
-  if (!donation.doc.contribution_type || donation.doc.contribution_type.trim() === "") {
+    if (
+    donation.doc.donation_type !== "In Kind Donation" && 
+    (!donation.doc.contribution_type || donation.doc.contribution_type.trim() === "")
+  ) {
     errors.push("Contribution Type is required");
+  }
+  if (donation.doc.donation_type === "In Kind Donation") {
+    if (!donation.doc.warehouse || donation.doc.warehouse.trim() === "") {
+      errors.push("Warehouse is required");
+    } 
+    if (!donation.doc.items || donation.doc.items.length === 0) {
+      errors.push("At least one item is required");
+    }
   }
 
   if (!donation.doc.posting_date) {
@@ -2386,18 +2447,21 @@ function validateDonationForm() {
     errors.push("Currency is required");
   }
 
+  // Skip donation cost center validation for In Kind Donation
   if (
-    !donation.doc.donation_cost_center ||
-    donation.doc.donation_cost_center.trim() === ""
+    donation.doc.donation_type !== "In Kind Donation" &&
+    (!donation.doc.donation_cost_center ||
+    donation.doc.donation_cost_center.trim() === "")
   ) {
     errors.push("Donation Cost Center is required");
   }
 
-  // Payment detail validation
+  // Skip payment detail validation for In Kind Donation
   if (
-    !donation.doc.payment_detail ||
+    donation.doc.donation_type !== "In Kind Donation" &&
+    (!donation.doc.payment_detail ||
     !Array.isArray(donation.doc.payment_detail) ||
-    donation.doc.payment_detail.length === 0
+    donation.doc.payment_detail.length === 0)
   ) {
     errors.push("At least one payment detail is required");
   } else {
@@ -2427,17 +2491,18 @@ function validateDonationForm() {
       if (!row.fund_class_id || row.fund_class_id.trim() === "") {
         errors.push(`Fund Class for payment detail row ${rowNum} is required`);
       }
-
-      if (!row.mode_of_payment || row.mode_of_payment.trim() === "") {
-        errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
+      if (donation.doc.contribution_type !== "Pledge") {
+        if (!row.mode_of_payment || row.mode_of_payment.trim() === "") {
+          errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
+        }
       }
-
+      
       // Transaction Type ID is always mandatory
       if (!row.transaction_type_id || row.transaction_type_id.trim() === "") {
         errors.push(`Transaction Type ID for payment detail row ${rowNum} is required`);
       }
 
-      // Conditional mandatory fields based on mode of payment
+      // Conditional mandatory fields based on mode of payment  
       if (
         row.mode_of_payment &&
         ["bank", "Cheque", "Bank Draft"].includes(row.mode_of_payment)
@@ -2487,24 +2552,24 @@ function validateDonationForm() {
 }
 
 // ENHANCED: Function to validate and show user-friendly error messages
-function validateAndShowErrors() {
-  const errors = validateDonationForm();
+// function validateAndShowErrors() {
+//   const errors = validateDonationForm();
 
-  if (errors.length > 0) {
-    // Show the first error as a toast
-    toast.error(errors[0]);
+//   if (errors.length > 0) {
+//     // Show the first error as a toast
+//     toast.error(errors[0]);
 
-    // Log all errors for debugging
-    console.error("Validation errors:", errors);
+//     // Log all errors for debugging
+//     console.error("Validation errors:", errors);
 
-    // Set error message for display
-    error.value = errors[0];
+//     // Set error message for display
+//     error.value = errors[0];
 
-    return false;
-  }
+//     return false;
+//   }
 
-  return true;
-}
+//   return true;
+// }
 
 // ENHANCED: Function to validate deduction percentages before submission with min/max validation
 async function validateDeductionBreakevenBeforeSubmission() {
@@ -2671,7 +2736,7 @@ async function applyDonorFilteringToForm() {
     console.log(
       "FieldLayout re-rendered for new donor identity:",
       donation.doc.donor_identity
-    );
+  );
   });
 }
 
@@ -2700,6 +2765,8 @@ function handleFundClassSelected(event) {
   const { row, fundClassId, success } = event;
 
   if (success && fundClassId && row) {
+    console.log("Processing fund class selection for row:", row, "with fund class ID:", fundClassId);
+
     // Check if the fundClassId already exists in deduction_breakeven
     const existingEntry = donation.doc.deduction_breakeven.find(
       (entry) => entry.fund_class_id === fundClassId
@@ -2732,6 +2799,12 @@ function handleFundClassSelected(event) {
     // Ensure payment_detail table is updated reactively
     if (donation.doc.payment_detail) {
       donation.doc.payment_detail = [...donation.doc.payment_detail];
+    }
+
+    // Ensure items table is updated reactively
+    if (donation.doc.items) {
+      console.log("Forcing reactive update of items table for fund class selection");
+      donation.doc.items = [...donation.doc.items];
     }
   } else {
     // Log error for invalid event data
@@ -2778,7 +2851,11 @@ function validateField(fieldName, value, rowIndex = null) {
     errors.push("Currency is required");
   }
 
-  if (fieldName === "donation_cost_center" && (!value || value.trim() === "")) {
+  if (
+    fieldName === "donation_cost_center" && 
+    donation.doc.donation_type !== "In Kind Donation" &&
+    (!value || value.trim() === "")
+  ) {
     errors.push("Donation Cost Center is required");
   }
 
@@ -2813,9 +2890,9 @@ function validateField(fieldName, value, rowIndex = null) {
       errors.push(`Fund Class for payment detail row ${rowNum} is required`);
     }
 
-    if (fieldName === "mode_of_payment" && (!value || value.trim() === "")) {
-      errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
-    }
+    // if (fieldName === "mode_of_payment" && (!value || value.trim() === "")) {
+    //   errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
+    // }
 
     // Transaction Type ID is always mandatory
     if (fieldName === "transaction_type_id" && (!value || value.trim() === "")) {
@@ -2912,6 +2989,119 @@ async function populateFundClassFieldsForPledge(row) {
     }
   } catch (error) {
     console.error("Error populating fund class fields for Pledge:", error);
+  }
+}
+
+// NEW: Function to manage deduction rows for Pledge contribution type
+async function manageDeductionRowsForPledge(row) {
+  console.log("Managing deduction rows for Pledge contribution type:", row.fund_class_id);
+
+  try {
+    // Call the backend API to get deduction details for this fund class
+    const result = await call("crm.fcrm.doctype.donation.api.get_deduction_details_comprehensive", {
+      fund_class_id: row.fund_class_id,
+      company: donation.doc.company || "Alkhidmat Foundation Pakistan"
+    });
+
+    if (result?.success && result?.data && result.data.length > 0) {
+      // Check if deduction rows already exist for this fund class and payment row
+      const existingRows = donation.doc.deduction_breakeven?.filter(
+        d => d.random_id === row.random_id && d.fund_class_id === row.fund_class_id
+      ) || [];
+
+      // Only add new rows if none exist for this fund class
+      if (existingRows.length === 0) {
+        // Add new deduction rows for this fund class
+        const newDeductionRows = [];
+        result.data.forEach((deductionDetail, index) => {
+          const newDeductionRow = {
+            random_id: row.random_id,
+            company: donation.doc.company || "Alkhidmat Foundation Pakistan",
+            income_type: deductionDetail.income_type,
+            project: deductionDetail.project,
+            account: deductionDetail.account,
+            percentage: deductionDetail.percentage || 0,
+            min_percent: deductionDetail.min_percent || 0,
+            max_percent: deductionDetail.max_percent || 0,
+            donation_amount: row.donation_amount || 0,
+            amount: 0, // Will be calculated
+            base_amount: 0, // Will be calculated
+            project_id: deductionDetail.project,
+            cost_center_id: donation.doc.donation_cost_center,
+            fund_class_id: row.fund_class_id,
+            service_area_id: row.pay_service_area,
+            subservice_area_id: row.pay_subservice_area,
+            product_id: row.pay_product,
+            donor_id: row.donor_id,
+            donor_type_id: row.donor_type,
+            donor_desk_id: row.donor_desk_id,
+            intention_id: row.intention_id,
+            transaction_type_id: row.transaction_type_id,
+            __islocal: true,
+            doctype: 'Deduction Breakeven',
+            parentfield: 'deduction_breakeven',
+            parenttype: 'Donation',
+            idx: (donation.doc.deduction_breakeven?.length || 0) + newDeductionRows.length + 1
+          };
+          newDeductionRows.push(newDeductionRow);
+        });
+
+        // Add the new deduction rows
+        if (!donation.doc.deduction_breakeven) {
+          donation.doc.deduction_breakeven = [];
+        }
+        donation.doc.deduction_breakeven.push(...newDeductionRows);
+        
+        // Force reactive update
+        donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven];
+        
+        console.log(`Added ${newDeductionRows.length} deduction rows for Pledge fund class`);
+      } else {
+        console.log(`Deduction rows already exist for this fund class and payment row`);
+      }
+    } else {
+      console.log("No deduction details found for this fund class in Pledge mode");
+    }
+  } catch (error) {
+    console.error("Error managing deduction rows for Pledge:", error);
+  }
+}
+
+// NEW: Function to update existing deduction rows for Pledge when donor/intention changes
+async function updateDeductionRowsForPledge(row) {
+  console.log("Updating deduction rows for Pledge contribution type:", row.random_id);
+
+  try {
+    // Find existing deduction rows for this payment row
+    if (donation.doc.deduction_breakeven && Array.isArray(donation.doc.deduction_breakeven)) {
+      const existingRows = donation.doc.deduction_breakeven.filter(
+        d => d.random_id === row.random_id
+      );
+
+      if (existingRows.length > 0) {
+        // Update donor and intention info in existing rows
+        existingRows.forEach(deductionRow => {
+          deductionRow.donor_id = row.donor_id;
+          deductionRow.donor_type_id = row.donor_type;
+          deductionRow.donor_desk_id = row.donor_desk_id;
+          deductionRow.intention_id = row.intention_id;
+          deductionRow.donation_amount = row.donation_amount || 0;
+        });
+
+        // Force reactive update
+        donation.doc.deduction_breakeven = [...donation.doc.deduction_breakeven];
+        
+        console.log(`Updated ${existingRows.length} deduction rows for Pledge`);
+      } else if (row.fund_class_id) {
+        // If no existing rows but fund class is selected, create deduction rows
+        console.log("No existing deduction rows found, creating new ones for fund class:", row.fund_class_id);
+        await manageDeductionRowsForPledge(row);
+      } else {
+        console.log("No existing deduction rows and no fund class selected yet");
+      }
+    }
+  } catch (error) {
+    console.error("Error updating deduction rows for Pledge:", error);
   }
 }
 
