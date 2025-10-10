@@ -126,29 +126,38 @@ const oldFields = computed(() => {
   let gridViewSettings = getGridViewSettings(props.parentDoctype)
 
   if (gridViewSettings.length) {
-    return gridViewSettings.map((field) => {
-      let f = _fields.find((f) => f.fieldname === field.fieldname)
-      if (f) {
-        f.columns = field.columns
-        return fieldObj(f)
-      }
-    })
+    return gridViewSettings
+      .map((field) => {
+        let f = _fields.find((f) => f.fieldname === field.fieldname)
+        if (f) {
+          f.columns = field.columns
+          return fieldObj(f)
+        }
+        return null
+      })
+      .filter(Boolean)
   }
   return _fields?.filter((field) => field.in_list_view).map((f) => fieldObj(f))
 })
 
-const fields = ref(JSON.parse(JSON.stringify(oldFields.value || [])))
+const fields = ref(JSON.parse(JSON.stringify((oldFields.value || []).filter(Boolean))))
 
 // Fallback: fetch full doctype meta to ensure ALL fields are available (union with store)
 const fullDoctypeFields = ref([])
 onMounted(async () => {
   try {
-    const meta = await call('frappe.client.get_meta', { doctype: props.doctype })
-    if (meta && Array.isArray(meta.fields)) {
-      fullDoctypeFields.value = meta.fields
-    }
+    // Use supported meta fetch API
+    const res = await call('frappe.desk.form.load.getdoctype', { doctype: props.doctype })
+    // Response typically has docs with DocType and fields
+    const fetched = Array.isArray(res?.docs)
+      ? (res.docs.find((d) => d.doctype === 'DocType' && d.name === props.doctype)?.fields || [])
+      : Array.isArray(res?.fields)
+        ? res.fields
+        : []
+    fullDoctypeFields.value = fetched.filter(Boolean)
   } catch (e) {
     // Ignore errors; fallback to store fields only
+    fullDoctypeFields.value = getFields() || []
   }
 })
 
@@ -176,12 +185,10 @@ const dropdownFields = computed(() => {
   }
   const base = Array.from(byName.values())
   const filtered = base.filter((field) => {
-    return (
-      !fields.value.find((f) => f.fieldname === field.fieldname) &&
-      !['Tab Break', 'Section Break', 'Column Break', 'Table'].includes(
-        field.fieldtype,
-      )
-    )
+    if (!field || !field.fieldname) return false
+    const alreadyIn = fields.value.find((f) => f && f.fieldname === field.fieldname)
+    const blockedType = ['Tab Break', 'Section Break', 'Column Break', 'Table'].includes(field.fieldtype)
+    return !alreadyIn && !blockedType
   })
   // Ensure Transaction Attachment appears in dropdown if not already present
   const alreadyInLayout = fields.value.find((f) => f.fieldname === 'transaction_attachment')
@@ -209,8 +216,8 @@ function addField(field) {
 }
 
 function removeField(field) {
-  const index = fields.value.findIndex((f) => f.fieldname === field.fieldname)
-  fields.value.splice(index, 1)
+  const index = fields.value.findIndex((f) => f && f.fieldname === field.fieldname)
+  if (index >= 0) fields.value.splice(index, 1)
 }
 
 function update() {

@@ -2456,47 +2456,51 @@ function validateDonationForm() {
       const rowNum = index + 1;
 
       // Mandatory fields from JSON schema
-          if (contribution_type === "Donation") {
-      if (!row.donation_amount || row.donation_amount <= 0) {
-        errors.push(
-          `Donation Amount for payment detail row ${rowNum} is required and must be greater than 0`
-        );
+          if (donation.doc.donation_type !== "In Kind Donation") {
+      if (!row.donation_amount || Number(row.donation_amount) <= 0) {
+        errors.push(`Donation Amount for payment detail row ${rowNum} is required and must be greater than 0`);
       }
     }
-
-
+      if (donation.doc.donation_type !== "In Kind Donation") {
       if (!row.intention || row.intention.trim() === "") {
         errors.push(`Intention for payment detail row ${rowNum} is required`);
       }
-
+    }
+    if (donation.doc.donation_type !== "In Kind Donation") {
       if (!row.equity_account || row.equity_account.trim() === "") {
         errors.push(`Equity Account for payment detail row ${rowNum} is required`);
       }
+    }
 
+    if (donation.doc.donation_type !== "In Kind Donation") {
       if (!row.receivable_account || row.receivable_account.trim() === "") {
         errors.push(`Receivable Account for payment detail row ${rowNum} is required`);
       }
-
-      // Business logic required fields
+    }
+      if (donation.doc.donation_type !== "In Kind Donation") {
       if (!row.donor || row.donor.trim() === "") {
         errors.push(`Donor for payment detail row ${rowNum} is required`);
       }
+    }
 
+    if (donation.doc.donation_type !== "In Kind Donation") {
       if (!row.fund_class || row.fund_class.trim() === "") {
         errors.push(`Fund Class for payment detail row ${rowNum} is required`);
       }
+    }
+
+      if (donation.doc.donation_type !== "In Kind Donation") {
       if (donation.doc.contribution_type !== "Pledge") {
         if (!row.mode_of_payment || row.mode_of_payment.trim() === "") {
           errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
         }
       }
-      
-      // Transaction Type ID is always mandatory
+    }
+      if (donation.doc.donation_type !== "In Kind Donation") {
       if (!row.transaction_type || row.transaction_type.trim() === "") {
         errors.push(`Transaction Type  for payment detail row ${rowNum} is required`);
       }
-
-      // Conditional mandatory fields based on mode of payment  
+    }
       if (
         row.mode_of_payment &&
         ["bank", "Cheque", "Bank Draft"].includes(row.mode_of_payment)
