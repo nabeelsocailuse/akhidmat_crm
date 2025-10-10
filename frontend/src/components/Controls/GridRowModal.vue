@@ -119,8 +119,9 @@ const filteredTabs = computed(() => {
         
         // Filter fields within columns
         filteredColumn.fields = column.fields.filter(field => {
-          // FIX: Don't filter out donor field for items table
-          if (field.fieldname === 'donor' && props.parentFieldname !== 'items') {
+          // FIX: Don't filter out donor field for items, payment_detail, and deduction_breakeven tables
+          const allowedTables = ['items', 'payment_detail', 'deduction_breakeven']
+          if (field.fieldname === 'donor' && !allowedTables.includes(props.parentFieldname)) {
             console.log('GridRowModal: Filtering out duplicate donor field from column', columnIndex)
             return false
           }
@@ -135,10 +136,11 @@ const filteredTabs = computed(() => {
             console.log('GridRowModal: Configured donor_id field with comprehensive filtering')
           }
           
-          // Configure donor field for items table
-          if (field.fieldname === 'donor' && props.parentFieldname === 'items') {
+          // Configure donor field for items, payment_detail, and deduction_breakeven tables
+          const allowedTablesForDonor = ['items', 'payment_detail', 'deduction_breakeven']
+          if (field.fieldname === 'donor' && allowedTablesForDonor.includes(props.parentFieldname)) {
             enhancedField = configureDonorField(field)
-            console.log('GridRowModal: Configured donor field for items table')
+            console.log('GridRowModal: Configured donor field for', props.parentFieldname, 'table')
           }
           
           // FIX: Configure field visibility and fetching for items table
@@ -176,17 +178,17 @@ const filteredTabs = computed(() => {
             }
             // Fund class detail fields should appear once a fund class is selected; make them read-only
             if (['pay_service_area', 'pay_subservice_area', 'pay_product', 'equity_account', 'receivable_account', 'cost_center'].includes(field.fieldname)) {
-              enhancedField.depends_on = 'fund_class_id'
+              enhancedField.depends_on = 'fund_class'
               enhancedField.read_only = 1
               enhancedField.hidden = false
               // Provide fetch_from so FieldLayout auto-populates when fund_class_id is set
               const fetchMap = {
-                pay_service_area: 'fund_class_id.service_area',
-                pay_subservice_area: 'fund_class_id.subservice_area',
-                pay_product: 'fund_class_id.product',
-                equity_account: 'fund_class_id.equity_account',
-                receivable_account: 'fund_class_id.receivable_account',
-                cost_center: 'fund_class_id.cost_center'
+                pay_service_area: 'fund_class.service_area',
+                pay_subservice_area: 'fund_class.subservice_area',
+                pay_product: 'fund_class.product',
+                equity_account: 'fund_class.equity_account',
+                receivable_account: 'fund_class.receivable_account',
+                cost_center: 'fund_class.cost_center'
               }
               if (fetchMap[field.fieldname]) {
                 enhancedField.fetch_from = fetchMap[field.fieldname]
@@ -385,7 +387,7 @@ async function handleFieldChange(fieldname, value) {
     
     try {
       const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
-        fund_class_id: value,
+        fund_class: value,
         company: 'Alkhidmat Foundation'
       })
       
@@ -423,45 +425,8 @@ async function handleFieldChange(fieldname, value) {
     }
   }
 
-  // Restore: When fund class is selected in payment_detail modal, also populate equity and receivable accounts
-  if (fieldname === 'fund_class_id' && value && props.parentFieldname === 'payment_detail') {
-    try {
-      const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
-        fund_class_id: value,
-        company: 'Alkhidmat Foundation'
-      })
-      if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
-        setTimeout(() => {
-          if (fundClassDetails.equity_account) {
-            emit('field-change', 'equity_account', fundClassDetails.equity_account)
-          }
-          if (fundClassDetails.receivable_account) {
-            emit('field-change', 'receivable_account', fundClassDetails.receivable_account)
-          }
-          if (fundClassDetails.cost_center) {
-            emit('field-change', 'cost_center', fundClassDetails.cost_center)
-          }
-          if (fundClassDetails.service_area) {
-            emit('field-change', 'pay_service_area', fundClassDetails.service_area)
-            emit('field-change', 'service_area', fundClassDetails.service_area)
-            if (props.data) props.data.pay_service_area = fundClassDetails.service_area
-          }
-          if (fundClassDetails.subservice_area) {
-            emit('field-change', 'pay_subservice_area', fundClassDetails.subservice_area)
-            emit('field-change', 'subservice_area', fundClassDetails.subservice_area)
-            if (props.data) props.data.pay_subservice_area = fundClassDetails.subservice_area
-          }
-          if (fundClassDetails.product) {
-            emit('field-change', 'pay_product', fundClassDetails.product)
-            emit('field-change', 'product', fundClassDetails.product)
-            if (props.data) props.data.pay_product = fundClassDetails.product
-          }
-        }, 100)
-      }
-    } catch (e) {
-      console.error('Error restoring fund class account fetch:', e)
-    }
-  }
+  // Note: Fund class handling for payment_detail is now done in Grid.vue's handleGridRowModalFieldChange
+  // to avoid duplicate handling and prop mutation issues
   
   // Handle donor change in items table modal
   if (fieldname === 'donor' && value && props.parentFieldname === 'items') {

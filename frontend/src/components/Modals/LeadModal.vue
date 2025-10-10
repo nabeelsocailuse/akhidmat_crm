@@ -185,6 +185,14 @@ async function createNewLead() {
 
   await triggerOnBeforeCreate?.()
 
+  // Sync identification fields to core fieldnames to ensure detail view shows the value
+  if (lead.doc.custom_identification_type) {
+    lead.doc.identification_type = lead.doc.custom_identification_type
+  }
+  if (lead.doc.custom_identification_value) {
+    lead.doc.identification_value = lead.doc.custom_identification_value
+  }
+ 
   createLead.submit(
     {
       doc: { doctype: 'CRM Lead', ...lead.doc },

@@ -821,11 +821,11 @@ async function validateDonationForm() {
         }
 
         // Business logic required fields
-        if (!row.donor_id || row.donor_id.trim() === "") {
+        if (!row.donor || row.donor.trim() === "") {
           errors.push(`Donor for payment detail row ${rowNum} is required`);
         }
 
-        if (!row.fund_class_id || row.fund_class_id.trim() === "") {
+        if (!row.fund_class || row.fund_class.trim() === "") {
           errors.push(`Fund Class for payment detail row ${rowNum} is required`);
         }
 
@@ -1467,7 +1467,7 @@ async function safeFetchFundClass(fcId) {
   try {
     return fcId
       ? await call("crm.fcrm.doctype.donation.api.get_fund_class_details", {
-          fund_class_id: fcId,
+          fund_class: fcId,
           company: document.doc?.company || "Alkhidmat Foundation Pakistan",
         })
       : null;
@@ -1540,15 +1540,15 @@ async function enrichOnceAfterLoad() {
         if (row && !row.random_id)
           row.random_id = Math.floor(1000 + i + 1 + Math.random() * 9000);
         // Initialize tracking fields for fund class changes
-        if (row && !row._lastFundClassId && row.fund_class_id) {
-          row._lastFundClassId = row.fund_class_id;
+        if (row && !row._lastFundClassId && row.fund_class) {
+          row._lastFundClassId = row.fund_class;
         }
-        if (row?.donor_id) {
-          const d = await safeFetchDonor(row.donor_id);
+        if (row?.donor) {
+          const d = await safeFetchDonor(row.donor);
           mapDonor(row, d);
         }
-        if (row?.fund_class_id) {
-          const fc = await safeFetchFundClass(row.fund_class_id);
+        if (row?.fund_class) {
+          const fc = await safeFetchFundClass(row.fund_class);
           mapFundClass(row, fc);
         }
         if (row?.mode_of_payment) {
@@ -1568,7 +1568,7 @@ async function enrichOnceAfterLoad() {
         const r = document.doc.deduction_breakeven[i];
         if (r && !r.random_id)
           r.random_id = Math.floor(1000 + i + 1 + Math.random() * 9000);
-        const fcid = r.fund_class_id || r.fund_class;
+        const fcid = r.fund_class || r.fund_class;
         if (fcid) {
           const fc = await safeFetchFundClass(fcid);
           if (fc) {
@@ -1691,26 +1691,26 @@ watch(
           }
 
           // EXACT backend trigger: donor_id change
-          if (row.donor_id && row.donor_id !== row._lastDonorId) {
+          if (row.donor && row.donor !== row._lastDonorId) {
             // console.log(`Donor ID changed in row ${index}:`, row.donor_id)
-            row._lastDonorId = row.donor_id;
-            row.donor = row.donor_id;
-            await handleDonorSelectionDirect(row.donor_id, row);
+            row._lastDonorId = row.donor;
+            row.donor = row.donor;
+            await handleDonorSelectionDirect(row.donor, row);
             hasChanges = true;
           }
 
-          // EXACT backend trigger: fund_class_id change
-          if (row.fund_class_id && row.fund_class_id !== row._lastFundClassId) {
+          // EXACT backend trigger: fund_class change
+          if (row.fund_class && row.fund_class !== row._lastFundClassId) {
             console.log(
-              `Fund Class ID changed in row ${index}: from ${row._lastFundClassId} to ${row.fund_class_id}`
+              `Fund Class ID changed in row ${index}: from ${row._lastFundClassId} to ${row.fund_class}`
             );
 
             // Store the old fund class before updating
             const oldFundClassId = row._lastFundClassId;
 
             // Update the tracking variables
-            row._lastFundClassId = row.fund_class_id;
-            row.fund_class = row.fund_class_id;
+            row._lastFundClassId = row.fund_class;
+            row.fund_class = row.fund_class;
 
             // FIX: For Pledge contribution type, populate fund class fields without deduction breakeven
             if (document.doc.contribution_type === "Pledge") {
@@ -1721,22 +1721,22 @@ watch(
                 document.doc.deduction_breakeven?.filter(
                   (deductionRow) =>
                     deductionRow.random_id === row.random_id &&
-                    deductionRow.fund_class_id === row.fund_class_id
+                    deductionRow.fund_class === row.fund_class
                 ) || [];
 
               // If entries already exist for this payment row and fund class, skip completely
               if (existingEntries.length > 0) {
                 console.log(
-                  `DUPLICATE PREVENTION: Skipping deduction breakeven - entries already exist for payment row ${row.random_id} and fund class ${row.fund_class_id}`
+                  `DUPLICATE PREVENTION: Skipping deduction breakeven - entries already exist for payment row ${row.random_id} and fund class ${row.fund_class}`
                 );
                 hasChanges = true;
                 return; // Skip the rest of the processing for this row
               }
 
               // If fund class actually changed (not just clicked the same one), clear old entries first
-              if (oldFundClassId && oldFundClassId !== row.fund_class_id) {
+              if (oldFundClassId && oldFundClassId !== row.fund_class) {
                 console.log(
-                  `FUND CLASS CHANGE: Clearing old entries for payment row ${row.random_id} - changed from ${oldFundClassId} to ${row.fund_class_id}`
+                  `FUND CLASS CHANGE: Clearing old entries for payment row ${row.random_id} - changed from ${oldFundClassId} to ${row.fund_class}`
                 );
                 if (
                   document.doc.deduction_breakeven &&
@@ -1747,7 +1747,7 @@ watch(
                     (deductionRow) =>
                       !(
                         deductionRow.random_id === row.random_id &&
-                        deductionRow.fund_class_id === oldFundClassId
+                        deductionRow.fund_class === oldFundClassId
                       )
                   );
                   const removedCount =
@@ -1763,7 +1763,7 @@ watch(
               // Only trigger deduction breakeven for genuinely new fund class selections
               // This ensures we don't add duplicates for the same fund class
               console.log(
-                `TRIGGERING DEDUCTION BREAKEVEN: For payment row ${row.random_id} with fund class ${row.fund_class_id}`
+                `TRIGGERING DEDUCTION BREAKEVEN: For payment row ${row.random_id} with fund class ${row.fund_class}`
               );
               shouldTriggerSetDeductionBreakeven = true;
             }
@@ -2089,13 +2089,13 @@ function clearDonorFields(row) {
 
 }
 async function populateFundClassFieldsForPledge(row) {
-  if (!row.fund_class_id) {
+  if (!row.fund_class) {
     clearFundClassFields(row);
     return;
   }
 
   try {
-    const fundClassDetails = await fetchFundClassDetails(row.fund_class_id);
+    const fundClassDetails = await fetchFundClassDetails(row.fund_class);
     if (fundClassDetails) {
       updateFundClassFields(row, fundClassDetails);
     } else {
@@ -2110,7 +2110,7 @@ async function fetchFundClassDetails(fundClassId) {
 
   try {
     const result = await call("crm.fcrm.doctype.donation.api.get_fund_class_details", {
-      fund_class_id: fundClassId,
+      fund_class: fundClassId,
       company: document.doc.company || "Alkhidmat Foundation Pakistan",
     });
     return result;

@@ -546,40 +546,44 @@ const {
 
 function setFieldValue(fieldName, value) {
   if (document.doc) {
-    document.doc[fieldName] = value
+    if (document.doc[fieldName] !== value) {
+      document.doc[fieldName] = value
+    }
   }
 }
 
 watch(
   () => doc.value?.custom_identification_type,
   (newType, oldType) => {
-    if (newType && newType !== oldType) {
+    if (!newType) return
+    // Skip clearing on initial load (oldType undefined) to preserve saved value
+    if (oldType !== undefined && newType !== oldType) {
       if (document.doc) {
         document.doc.custom_identification_value = ''
       }
-      nextTick(() => {
-        applyCnicMaskToInput(
-          'custom_identification_value',
-          newType,
-          setFieldValue,
-        )
-      })
     }
+    nextTick(() => {
+      applyCnicMaskToInput(
+        'custom_identification_value',
+        newType,
+        setFieldValue,
+      )
+    })
   },
 )
 
 watch(
   () => doc.value?.custom_identification_value,
   (newValue, oldValue) => {
-    if (newValue && newValue !== oldValue && doc.value?.custom_identification_type) {
-      nextTick(() => {
-        applyCnicMaskToInput(
-          'custom_identification_value',
-          doc.value.custom_identification_type,
-          setFieldValue,
-        )
-      })
-    }
+    if (!doc.value?.custom_identification_type) return
+    // Always re-apply mask, but avoid writing same value back
+    nextTick(() => {
+      applyCnicMaskToInput(
+        'custom_identification_value',
+        doc.value.custom_identification_type,
+        setFieldValue,
+      )
+    })
   },
 )
 

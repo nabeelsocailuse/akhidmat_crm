@@ -293,7 +293,7 @@ import { flt } from '@/utils/numberFormat.js'
 import { getMeta } from '@/stores/meta'
 import { usersStore } from '@/stores/users'
 import { useDocument } from '@/data/document'
-import { Tooltip, DatePicker, DateTimePicker, FileUploader, Button } from 'frappe-ui'
+import { Tooltip, DatePicker, DateTimePicker, FileUploader, Button, call } from 'frappe-ui'
 import { computed, provide, inject, watch, onMounted, nextTick } from 'vue'
 import { useDonorFieldValidation } from '@/composables/useDonorFieldValidation'
 
@@ -540,6 +540,27 @@ function fieldChange(value, df) {
     onFieldChange(df.fieldname, value)
   } else {
     emit('field-change', df.fieldname, value)
+  }
+
+  // Sync branch_abbreviation when branch changes (centralized behavior)
+  if (doctype === 'Donor' && df.fieldname === 'branch') {
+    if (!value && data.value) {
+      data.value.branch_abbreviation = ''
+    } else if (value) {
+      // Match DonorModal behavior: fetch custom_abbreviation from Cost Center
+      call('frappe.client.get_value', {
+        doctype: 'Cost Center',
+        fieldname: 'custom_abbreviation',
+        filters: { name: value },
+      })
+        .then((res) => {
+          const abbr = res?.message?.custom_abbreviation || res?.custom_abbreviation || ''
+          if (data.value) data.value.branch_abbreviation = abbr
+        })
+        .catch(() => {
+          if (data.value) data.value.branch_abbreviation = ''
+        })
+    }
   }
   
   if (isGridRow) {

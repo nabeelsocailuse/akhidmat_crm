@@ -805,25 +805,7 @@ async function updateDonor(fieldname, value, callback) {
   })
 }
 
-// Real-time branch_abbreviation update when branch changes
-watch(() => donorDocument.doc?.branch, async (newBranch, oldBranch) => {
-  if (newBranch && newBranch !== oldBranch) {
-    try {
-      const res = await call('frappe.client.get_value', {
-        doctype: 'Branch',
-        filters: { name: newBranch },
-        fieldname: 'branch_abbreviation',
-      });
-      if (res && res.message && res.message.branch_abbreviation) {
-        donorDocument.doc.branch_abbreviation = res.message.branch_abbreviation;
-      } else {
-        donorDocument.doc.branch_abbreviation = '';
-      }
-    } catch (e) {
-      donorDocument.doc.branch_abbreviation = '';
-    }
-  }
-}, { immediate: true });
+// Branch -> branch_abbreviation syncing is handled centrally in Field.vue now
 
 
 

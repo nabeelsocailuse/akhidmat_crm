@@ -179,6 +179,28 @@ import {
 import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
+// Silent handler for mobile runtime errors (undefined access, etc.)
+if (typeof window !== "undefined") {
+  window.addEventListener("error", (event) => {
+    // Suppress the mobile-only "reading '1'" or similar undefined access errors
+    if (event?.message?.includes("reading '1'") || event?.message?.includes("undefined")) {
+      event.preventDefault();
+      event.stopPropagation();
+      return false; // fully block it from UI
+    }
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    const msg = event?.reason?.message || "";
+    if (msg.includes("reading '1'") || msg.includes("undefined")) {
+      event.preventDefault();
+      event.stopPropagation();
+      return false;
+    }
+  });
+}
+
+
 const { brand } = getSettings()
 const { $dialog, $socket } = globalStore()
 const { statusOptions, getLeadStatus } = statusesStore()

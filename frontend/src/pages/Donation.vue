@@ -136,7 +136,7 @@ function parseRows(rows, columns = []) {
     "name",
     "donor_identity",
     "company",
-    "contribution_type",
+  "contribution_type",
     "status",
     "amount",
     "posting_date",

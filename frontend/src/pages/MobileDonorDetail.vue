@@ -382,27 +382,7 @@ watch(
   }
 );
 
-// Watcher to autofill branch_abbreviation when branch changes (matches DonorModal)
-watch(
-  () => donorDocument.doc.branch,
-  async (newBranch) => {
-    if (!newBranch) {
-      donorDocument.doc.branch_abbreviation = ''
-      return
-    }
-    try {
-      const res = await call('frappe.client.get_value', {
-        doctype: 'Cost Center',
-        fieldname: 'custom_abbreviation',
-        filters: { name: newBranch }
-      })
-      const abbr = res?.message?.custom_abbreviation || res?.custom_abbreviation || ''
-      donorDocument.doc.branch_abbreviation = abbr
-    } catch (e) {
-      donorDocument.doc.branch_abbreviation = ''
-    }
-  }
-);
+// Branch -> branch_abbreviation syncing is handled centrally in Field.vue now
 
 // Watcher to clear donor_desk when department changes (matches DonorModal)
 watch(

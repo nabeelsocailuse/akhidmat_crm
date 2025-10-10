@@ -522,7 +522,7 @@ const allRowsSelected = computed(() => {
 const showDeleteBtn = computed(() => selectedRows.size > 0)
 
 function setQueryForField(field) {
-  if (field.fieldname === 'donor_id' && field.options === 'Donor') {
+  if (field.fieldname === 'donor' && field.options === 'Donor') {
     const filters = { status: 'Active' }
     if (parentDoc.value?.currency) filters.default_currency = parentDoc.value.currency
     if (parentDoc.value?.donor_identity && parentDoc.value.donor_identity.trim() !== '') filters.donor_identity = parentDoc.value.donor_identity
@@ -626,10 +626,10 @@ const deleteRows = () => {
 const { fetchDonorDetails, updateDonorFields, clearDonorFields } = useDonorSelection()
 
 
-async function fetchDeductionDetails(fundClassId) {
-  if (!fundClassId) return null
+async function fetchDeductionDetails(fundClass) {
+  if (!fundClass) return null
   try {
-    const params = { fund_class_id: fundClassId }
+    const params = { fund_class: fundClass }
     const result = await call('crm.fcrm.doctype.donation.api.get_deduction_details', params)
     if (result && Object.keys(result).length > 0) return result
     return null
@@ -639,7 +639,7 @@ async function fetchDeductionDetails(fundClassId) {
   }
 }
 
-async function addDeductionRowToParent(deductionDetails, fundClassId, paymentRowRandomId, donorId) {
+async function addDeductionRowToParent(deductionDetails, fundClass, paymentRowRandomId, donorId) {
   try {
     if (!parentDoc.value) return false
 
@@ -647,9 +647,9 @@ async function addDeductionRowToParent(deductionDetails, fundClassId, paymentRow
 
     const newDeductionRow = {
       random_id: paymentRowRandomId || Math.floor(1000 + parentDoc.value.deduction_breakeven.length + 1 + (Math.random() * 9000)),
-      fund_class: fundClassId,
-      fund_class_id: fundClassId,
-      donor_id: donorId || '',
+      fund_class: fundClass,
+      fund_class: fundClass,
+      donor: donor || '',
       percentage: deductionDetails?.percentage || 0,
       min_percent: deductionDetails?.min_percent || 0,
       max_percent: deductionDetails?.max_percent || 0,
@@ -668,7 +668,7 @@ async function addDeductionRowToParent(deductionDetails, fundClassId, paymentRow
     parentDoc.value.deduction_breakeven.push(newDeductionRow)
     parentDoc.value.deduction_breakeven = [...parentDoc.value.deduction_breakeven]
 
-    emit('deduction-row-added', { row: newDeductionRow, fundClassId, deductionDetails })
+    emit('deduction-row-added', { row: newDeductionRow, fundClass, deductionDetails })
     return true
   } catch (error) {
     return false
@@ -766,8 +766,8 @@ async function fieldChange(value, field, row) {
   }
 
   // Payment detail donor_id -> fetch donor details
-  if (field.fieldname === 'donor_id' && props.parentFieldname === 'payment_detail') {
-    row.donor_id = normalizedValue
+  if (field.fieldname === 'donor' && props.parentFieldname === 'payment_detail') {
+    row.donor = normalizedValue
     if (normalizedValue) {
       const donorDetails = await fetchDonorDetails(normalizedValue)
       if (donorDetails) updateDonorFields(row, donorDetails)
@@ -806,11 +806,11 @@ async function fieldChange(value, field, row) {
 
 
   // Fund class id change in payment_detail -> load fund class details and potentially add deduction rows
-  if (field.fieldname === 'fund_class_id' && props.parentFieldname === 'payment_detail') {
+  if (field.fieldname === 'fund_class' && props.parentFieldname === 'payment_detail') {
     if (normalizedValue) {
       try {
         const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
-          fund_class_id: normalizedValue,
+          fund_class: normalizedValue,
           company: parentDoc.value?.company || 'Alkhidmat Foundation Pakistan'
         })
 
@@ -840,7 +840,7 @@ async function fieldChange(value, field, row) {
           const detailsArray = isArray ? deductionDetails : [deductionDetails]
           let addedRowsCount = 0
           for (const detail of detailsArray) {
-            const success = await addDeductionRowToParent(detail, normalizedValue, row.random_id, row.donor_id)
+            const success = await addDeductionRowToParent(detail, normalizedValue, row.random_id, row.donor)
             if (success) addedRowsCount++
           }
           if (addedRowsCount > 0) toast.success(`${addedRowsCount} deduction rows added successfully`)
@@ -926,7 +926,7 @@ async function fieldChange(value, field, row) {
     if (field.fieldname === 'fund_class' && normalizedValue) {
       try {
         const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
-          fund_class_id: normalizedValue,
+          fund_class: normalizedValue,
           company: parentDoc.value?.company || 'Alkhidmat Foundation'
         })
         if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
@@ -941,7 +941,7 @@ async function fieldChange(value, field, row) {
       } catch {
         toast.error('Error loading fund class details')
       }
-      emit('fund-class-selected', { row, fundClassId: normalizedValue, success: !!normalizedValue })
+      emit('fund-class-selected', { row, fundClass: normalizedValue, success: !!normalizedValue })
       forceReactiveUpdate()
       triggerOnChange(field.fieldname, normalizedValue, row)
       return
@@ -1030,9 +1030,9 @@ watch(
 watch(rows, (newRows) => {
   if (!newRows) { rows.value = []; return }
   newRows.forEach((row) => {
-    if (row.donor_id && row.donor_id !== row._lastDonorId) {
-      row._lastDonorId = row.donor_id
-      handleDonorSelectionFromWatcher(row.donor_id, row)
+    if (row.donor && row.donor !== row._lastDonorId) {
+      row._lastDonorId = row.donor
+      handleDonorSelectionFromWatcher(row.donor, row)
     }
   })
 }, { deep: true })
@@ -1087,25 +1087,44 @@ function getDonorFilteringFromData() {
   return getDonorFilteringFromParent()
 }
 
-function handleGridRowModalFieldChange(rowIndex, fieldname, value) {
-  console.log('🔥 Grid handleGridRowModalFieldChange called:', { rowIndex, fieldname, value, parentFieldname: props.parentFieldname })
+async function handleGridRowModalFieldChange(rowIndex, fieldname, value) {
+  console.log('🔥 Grid handleGridRowModalFieldChange called:', { 
+    rowIndex, 
+    fieldname, 
+    value, 
+    parentFieldname: props.parentFieldname,
+    doctype: props.doctype 
+  })
 
   const normalizedValue = (value && typeof value === 'object')
     ? (value.value ?? value.name ?? '')
     : value
 
   if (rowIndex >= 0 && rowIndex < data.value.length) {
-    data.value[rowIndex][fieldname] = normalizedValue
-    if (props.parentFieldname === 'items') {
-      console.log('🔥 Items table field change detected:', { fieldname, value: normalizedValue })
-      if (fieldname === 'fund_class' && normalizedValue) {
-        console.log('🔥 Triggering fund_class auto-fill')
-        handleFetchFromForItems(rowIndex, 'fund_class', normalizedValue)
+    const row = data.value[rowIndex]
+    row[fieldname] = normalizedValue
+    
+    // Find the field definition from allFields
+    const field = allFields.value?.find(f => f.fieldname === fieldname)
+    
+    console.log('🔥 allFields has', allFields.value?.length, 'fields')
+    console.log('🔥 Field found:', !!field, field ? `(${field.fieldname})` : '')
+    console.log('🔥 Available field names:', allFields.value?.map(f => f.fieldname).join(', '))
+    
+    if (field) {
+      // Call the main fieldChange function which has all the fetch logic
+      console.log('🔥 Calling fieldChange with:', { value: normalizedValue, fieldname: field.fieldname, fieldtype: field.fieldtype })
+      await fieldChange(normalizedValue, field, row)
+    } else {
+      console.warn('🔥 Field definition not found for:', fieldname, '- Creating temporary field object')
+      // Create a temporary field object for fields not in allFields
+      const tempField = {
+        fieldname: fieldname,
+        fieldtype: 'Link', // Assume Link for fund_class
+        options: fieldname === 'fund_class' ? 'Fund Class' : undefined
       }
-      if (fieldname === 'donor' && normalizedValue) {
-        console.log('🔥 Triggering donor auto-fill')
-        handleFetchFromForItems(rowIndex, 'donor', normalizedValue)
-      }
+      console.log('🔥 Calling fieldChange with temporary field:', tempField)
+      await fieldChange(normalizedValue, tempField, row)
     }
   }
 }
@@ -1117,7 +1136,7 @@ async function handleFetchFromForItems(rowIndex, fieldname, value) {
     const row = data.value[rowIndex]
     if (fieldname === 'fund_class') {
       console.log('🔥 Fetching fund class details for:', value)
-      const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', { fund_class_id: value, company: parentDoc.value?.company || 'Alkhidmat Foundation Pakistan' })
+      const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', { fund_class: value, company: parentDoc.value?.company || 'Alkhidmat Foundation Pakistan' })
       console.log('🔥 Fund class details received:', fundClassDetails)
       
       if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {

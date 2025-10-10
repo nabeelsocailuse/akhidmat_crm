@@ -74,29 +74,31 @@ def test_deduction_simple(fund_class):
         return {"success": False, "error": str(e)[:100]} 
 
 @frappe.whitelist()
-def get_fund_class_details(fund_class_id, company=None):
+def get_fund_class_details(fund_class=None, fund_class_id=None, company=None):
     """
     Get fund class details including service area, subservice area, product, and account information.
-    This method is called from the frontend when a fund class is selected in payment details.
+    Accepts either 'fund_class' or 'fund_class_id' for backward compatibility.
     """
     try:
-        if not fund_class_id:
+        # Support both parameter names
+        fund_class_value = fund_class or fund_class_id
+        if not fund_class_value:
             return {}
-       
+
         # Get the fund class document
-        fund_class = frappe.get_doc("Fund Class", fund_class_id)
-       
+        fund_class_doc = frappe.get_doc("Fund Class", fund_class_value)
+
         # Get basic fund class details
         result = {
-            'service_area': fund_class.service_area,
-            'subservice_area': fund_class.subservice_area,
-            'product': fund_class.product,
-            'fund_class_name': fund_class.fund_class_name
+            'service_area': fund_class_doc.service_area,
+            'subservice_area': fund_class_doc.subservice_area,
+            'product': fund_class_doc.product,
+            'fund_class_name': fund_class_doc.fund_class_name
         }
-       
+
         # Get account defaults if company is provided
-        if company and fund_class.accounts_default:
-            for account_default in fund_class.accounts_default:
+        if company and fund_class_doc.accounts_default:
+            for account_default in fund_class_doc.accounts_default:
                 if account_default.company == company:
                     result.update({
                         'equity_account': account_default.equity_account,
@@ -104,19 +106,19 @@ def get_fund_class_details(fund_class_id, company=None):
                         'cost_center': account_default.cost_center
                     })
                     break
-       
+
         # If no company-specific accounts found, try to get any available accounts
-        if not company and fund_class.accounts_default:
-            for account_default in fund_class.accounts_default:
+        if not company and fund_class_doc.accounts_default:
+            for account_default in fund_class_doc.accounts_default:
                 result.update({
                     'equity_account': account_default.equity_account,
                     'receivable_account': account_default.receivable_account,
                     'cost_center': account_default.cost_center
                 })
                 break
-       
+
         return result
-       
+
     except Exception as e:
         frappe.log_error(f"Error in get_fund_class_details: {str(e)}", "Fund Class Details Error")
         return {}
@@ -148,6 +150,25 @@ def set_deduction_breakeven(payment_details, company, contribution_type, donatio
         if not company:
             return {"success": False, "message": "Company is required"}
         
+        # Normalize incoming rows to support both 'fund_class' and 'fund_class_id'
+        normalized_payment_details = []
+        for pd_row in payment_details:
+            if not isinstance(pd_row, dict):
+                continue
+            row = dict(pd_row)
+            # Align with doctypes JSON (remove *_id usage)
+            if row.get('fund_class_id') and not row.get('fund_class'):
+                row['fund_class'] = row.get('fund_class_id')
+            if row.get('donor_id') and not row.get('donor'):
+                row['donor'] = row.get('donor_id')
+            if row.get('intention_id') and not row.get('intention'):
+                row['intention'] = row.get('intention_id')
+            if row.get('transaction_type_id') and not row.get('transaction_type'):
+                row['transaction_type'] = row.get('transaction_type_id')
+            if row.get('donor_desk_id') and not row.get('donor_desk'):
+                row['donor_desk'] = row.get('donor_desk_id')
+            normalized_payment_details.append(row)
+        
         def reset_mode_of_payment(row):
             if contribution_type == "Pledge":
                 row['mode_of_payment'] = None
@@ -158,8 +179,8 @@ def set_deduction_breakeven(payment_details, company, contribution_type, donatio
         
         def get_deduction_details(row, deduction_breakeven):
             # Skip deduction for Zakat or Pledge (EXACT backend logic)
-            intention_id = row.get('intention_id')
-            if intention_id in [None, "Zakat"] or contribution_type == 'Pledge':
+            intention_val = row.get('intention')
+            if intention_val in [None, "Zakat"]:
                 return []
             
             # Check existing deduction breakeven first
@@ -182,7 +203,7 @@ def set_deduction_breakeven(payment_details, company, contribution_type, donatio
                     ifnull(account, "") != ""
                     and company = '{company}'
                     and parenttype = "Fund Class"
-                    and parent = '{row.get("fund_class_id")}'
+                    and parent = '{row.get("fund_class")}'
             """, as_dict=True)
             
             return result
@@ -202,16 +223,16 @@ def set_deduction_breakeven(payment_details, company, contribution_type, donatio
                 "amount": percentage_amount,
                 "base_amount": base_amount,
                 "project_id": args.get('project'),
-                "cost_center_id": donation_cost_center,
-                "fund_class_id": row.get('fund_class_id'),
-                "service_area_id": row.get('pay_service_area'),
-                "subservice_area_id": row.get('pay_subservice_area'),
-                "product_id": row.get('pay_product'),
-                "donor_id": row.get('donor_id'),
-                "donor_type_id": row.get('donor_type'),
-                "donor_desk_id": row.get('donor_desk_id'),
-                "intention_id": row.get('intention_id'),
-                "transaction_type_id": row.get('transaction_type_id'),
+                "cost_center": donation_cost_center,
+                "fund_class": row.get('fund_class'),
+                "service_area": row.get('pay_service_area'),
+                "subservice_area": row.get('pay_subservice_area'),
+                "product": row.get('pay_product'),
+                "donor": row.get('donor'),
+                "donor_type": row.get('donor_type'),
+                "donor_desk": row.get('donor_desk'),
+                "intention": row.get('intention'),
+                "transaction_type": row.get('transaction_type'),
                 "__islocal": True,
                 "doctype": "Deduction Breakeven",
                 "parentfield": "deduction_breakeven",
@@ -219,10 +240,10 @@ def set_deduction_breakeven(payment_details, company, contribution_type, donatio
             }
             return deduction_row
         
-        def get_default_accounts(fund_class_id, fieldname):
+        def get_default_accounts(fund_class, fieldname):
             # EXACT backend logic
             return frappe.db.get_value('Accounts Default', {
-                'parent': fund_class_id, 
+                'parent': fund_class, 
                 'company': company
             }, fieldname)
         
@@ -243,13 +264,13 @@ def set_deduction_breakeven(payment_details, company, contribution_type, donatio
         
         def validate_active_donor(row):
             # EXACT backend logic
-            if frappe.db.exists("Donor", {"name": row.get('donor_id'), "status": "Blocked"}):
-                frappe.throw(f"<b>Row#{row.get('idx')}</b> donor: {row.get('donor_id')} is blocked.", title='Blocked Donor.')
+            if frappe.db.exists("Donor", {"name": row.get('donor'), "status": "Blocked"}):
+                frappe.throw(f"<b>Row#{row.get('idx')}</b> donor: {row.get('donor')} is blocked.", title='Blocked Donor.')
         
         def validate_donor_currency(row):
             # EXACT backend logic
-            if currency and not frappe.db.exists("Donor", {"name": row.get('donor_id'), "default_currency": currency}):
-                donor_id = get_link_to_form("Donor", row.get('donor_id'))
+            if currency and not frappe.db.exists("Donor", {"name": row.get('donor'), "default_currency": currency}):
+                donor_id = get_link_to_form("Donor", row.get('donor'))
                 frappe.throw(f"<b>Row#{row.get('idx')}</b> donor: {donor_id} currency is not {currency}.", title='Currency conflict')
         
         def apply_currency_exchange(amount):
@@ -272,7 +293,7 @@ def set_deduction_breakeven(payment_details, company, contribution_type, donatio
         deduction_amount = 0
         total_donation = 0
         
-        for row in payment_details:
+        for row in normalized_payment_details:
             # Validate required fields
             if not row.get('random_id'):
                 row['random_id'] = frappe.generate_hash(length=8)
@@ -301,8 +322,8 @@ def set_deduction_breakeven(payment_details, company, contribution_type, donatio
                 deduction_breakeven_rows.append(deduction_row)
             
             # Set account details (EXACT backend logic)
-            row['equity_account'] = get_default_accounts(row.get('fund_class_id'), 'equity_account')
-            default_receivable_account = get_default_donor_account(row.get('donor_id'), "default_account")
+            row['equity_account'] = get_default_accounts(row.get('fund_class'), 'equity_account')
+            default_receivable_account = get_default_donor_account(row.get('donor'), "default_account")
             row['receivable_account'] = default_receivable_account if default_receivable_account else get_default_accounts(row.get('pay_service_area'), 'receivable_account')
             row['cost_center'] = donation_cost_center
             
@@ -324,7 +345,7 @@ def set_deduction_breakeven(payment_details, company, contribution_type, donatio
         return {
             "success": True,
             "deduction_breakeven": deduction_breakeven_rows,
-            "updated_payment_details": payment_details,
+            "updated_payment_details": normalized_payment_details,
             "total_donation": total_donation,
             "total_deduction_amount": deduction_amount,
             "total_donors": total_donors
@@ -394,7 +415,7 @@ def update_deduction_breakeven(payment_details, deduction_breakeven, company, co
                         "max_percent": row2.get('max_percent', 0),
                         "company": row2.get('company'),
                         "cost_center_id": row1.get('cost_center'),
-                        "fund_class": row1.get('fund_class_id'),
+                        "fund_class": row1.get('fund_class'),
                         "service_area_id": row1.get('pay_service_area'),
                         "subservice_area_id": row1.get('pay_subservice_area'),
                         "product_id": row1.get('pay_product'),
@@ -449,7 +470,7 @@ def validate_deduction_percentages(deduction_breakeven):
             if not row.get('account'):
                 continue
             
-            fund_class = row.get('fund_class_id') or row.get('fund_class')
+            fund_class = row.get('fund_class') or row.get('fund_class')
             account = row.get('account')
             percentage = row.get('percentage', 0)
             
@@ -559,7 +580,7 @@ def populate_deduction_breakeven(payment_details, company, contribution_type,
             if not row.get('donor_id'):
                 continue
                 
-            if not row.get('fund_class_id'):
+            if not row.get('fund_class'):
                 continue
                 
             if not row.get('donation_amount') or row.get('donation_amount', 0) <= 0:
@@ -604,7 +625,7 @@ def populate_deduction_breakeven(payment_details, company, contribution_type,
                 deduction_breakeven_rows.append(deduction_row)
             
             # Set account details for payment row
-            row['equity_account'] = get_default_accounts(row.get('fund_class_id'), 'equity_account', company)
+            row['equity_account'] = get_default_accounts(row.get('fund_class'), 'equity_account', company)
             default_receivable_account = get_default_donor_account(row.get('donor_id'), "default_account")
             row['receivable_account'] = default_receivable_account if default_receivable_account else get_default_accounts(row.get('pay_service_area'), 'receivable_account', company)
             row['cost_center'] = donation_cost_center
@@ -643,8 +664,8 @@ def get_deduction_details_for_row(row, company, contribution_type):
         if intention_id in [None, "Zakat"] or contribution_type == 'Pledge':
             return []
         
-        fund_class_id = row.get('fund_class_id')
-        if not fund_class_id:
+        fund_class = row.get('fund_class')
+        if not fund_class:
             return []
         
         result = frappe.db.sql("""
@@ -657,10 +678,10 @@ def get_deduction_details_for_row(row, company, contribution_type):
                 ifnull(account, "") != ""
                 and company = %(company)s
                 and parenttype = "Fund Class"
-                and parent = %(fund_class_id)s
+                and parent = %(fund_class)s
         """, {
             'company': company,
-            'fund_class_id': fund_class_id
+            'fund_class': fund_class
         }, as_dict=True)
         
         return result
@@ -686,7 +707,7 @@ def create_deduction_breakeven_row(payment_row, deduction_detail, percentage_amo
         # EXACT backend field mapping
         "project_id": deduction_detail.get('project'),
         "cost_center_id": donation_cost_center,
-        "fund_class_id": payment_row.get('fund_class_id'),
+        "fund_class": payment_row.get('fund_class'),
         "service_area_id": payment_row.get('pay_service_area'),
         "subservice_area_id": payment_row.get('pay_subservice_area'),
         "product_id": payment_row.get('pay_product'),
@@ -800,13 +821,13 @@ def apply_currency_exchange(amount, from_currency, to_currency, posting_date):
         return amount
 
 @frappe.whitelist()
-def get_deduction_details_comprehensive(fund_class_id, company):
+def get_deduction_details_comprehensive(fund_class, company):
     """
     Get comprehensive deduction details for a fund class.
     This is an enhanced version of the existing get_deduction_details function.
     """
     try:
-        if not fund_class_id:
+        if not fund_class:
             return {"success": False, "message": "Fund class ID is required"}
         
         if not company:
@@ -831,12 +852,12 @@ def get_deduction_details_comprehensive(fund_class_id, company):
             LEFT JOIN `tabAccount` a ON dd.account = a.name
             WHERE 
                 dd.parenttype = "Fund Class"
-                and dd.parent = %(fund_class_id)s
+                and dd.parent = %(fund_class)s
                 and dd.company = %(company)s
                 and ifnull(dd.account, "") != ""
             ORDER BY dd.idx
         """, {
-            'fund_class_id': fund_class_id,
+            'fund_class': fund_class,
             'company': company
         }, as_dict=True)
         
@@ -928,20 +949,20 @@ def test_deduction_breakeven_population(payment_details, company, contribution_t
                 "index": i,
                 "donor_id": row.get('donor_id'),
                 "intention_id": row.get('intention_id'),
-                "fund_class_id": row.get('fund_class_id'),
+                "fund_class": row.get('fund_class'),
                 "donation_amount": row.get('donation_amount'),
                 "random_id": row.get('random_id'),
                 "all_fields": row
             })
         
         # Test deduction details retrieval
-        if payment_details and payment_details[0].get('fund_class_id'):
-            fund_class_id = payment_details[0].get('fund_class_id')
+        if payment_details and payment_details[0].get('fund_class'):
+            fund_class = payment_details[0].get('fund_class')
             deduction_details = get_deduction_details_for_row(payment_details[0], company, contribution_type)
             debug_info["deduction_details_sample"] = deduction_details
         
         # Test creating a sample deduction row
-        if payment_details and payment_details[0].get('fund_class_id'):
+        if payment_details and payment_details[0].get('fund_class'):
             sample_payment = payment_details[0]
             sample_deduction = {
                 "company": company,
