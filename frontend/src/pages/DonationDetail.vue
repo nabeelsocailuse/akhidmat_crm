@@ -805,39 +805,46 @@ async function validateDonationForm() {
       document.doc.payment_detail.forEach((row, index) => {
         const rowNum = index + 1;
 
-        // Mandatory fields from JSON schema
+        if (document.doc.donation_type !== "In kind Donaiton") {
         if (!row.donation_amount || row.donation_amount <= 0) {
           errors.push(
             `Donation Amount for payment detail row ${rowNum} is required and must be greater than 0`
           );
         }
+      }
 
+       if (document.doc.donaiton_type !== "In Kind Donation") {
         if (!row.equity_account || row.equity_account.trim() === "") {
           errors.push(`Equity Account for payment detail row ${rowNum} is required`);
         }
-
+      }
+       if (document.doc.donation_type !== "In Kind Donation") {
         if (!row.receivable_account || row.receivable_account.trim() === "") {
           errors.push(`Receivable Account for payment detail row ${rowNum} is required`);
         }
-
-        // Business logic required fields
+      }
+        if (document.doc.donation_type !== "In Kind Donation") {
         if (!row.donor || row.donor.trim() === "") {
           errors.push(`Donor for payment detail row ${rowNum} is required`);
         }
+      }
 
+      if (document.doc.donation_type !== "In Kind Donation") {
         if (!row.fund_class || row.fund_class.trim() === "") {
           errors.push(`Fund Class for payment detail row ${rowNum} is required`);
         }
-
+      }
+      if (document.doc.donation_type !== "In Kind Donation") {
         if (!row.mode_of_payment || row.mode_of_payment.trim() === "") {
           errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
         }
-
+      }
+       if (document.doc.donation_type !== "In Kind Donation") {
         // Transaction Type ID is always mandatory
-        if (!row.transaction_type_id || row.transaction_type_id.trim() === "") {
-          errors.push(`Transaction Type ID for payment detail row ${rowNum} is required`);
+        if (!row.transaction_type || row.transaction_type.trim() === "") {
+          errors.push(`Transaction Type for payment detail row ${rowNum} is required`);
         }
-
+      }
         // Conditional mandatory fields based on mode of payment
         if (
           row.mode_of_payment &&
