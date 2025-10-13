@@ -39,7 +39,8 @@
             document.doc &&
             document.doc.docstatus === 1 &&
             !document.doc.is_return &&
-            (document.doc.status || '').toLowerCase() !== 'credit note issued'
+            (document.doc.status || '').toLowerCase() !== 'credit note issued' &&
+            (document.doc.donation_type || '').toLowerCase() !== 'in kind donation'
           "
           :options="createDropdownOptions"
         >
@@ -172,6 +173,49 @@
   </AppStyling>
 
   <ErrorPage v-if="errorTitle" :errorTitle="errorTitle" :errorMessage="errorMessage" />
+
+  <!-- Payment Entry Modal -->
+  <div v-if="showPaymentEntryModal" class="fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-black/50" @click="showPaymentEntryModal = false"></div>
+    <div class="relative z-10 w-[520px] rounded-lg bg-white shadow-xl">
+      <div class="flex items-center justify-between border-b px-4 py-3">
+        <div class="text-base font-medium">{{ __('Payment Entry') }}</div>
+        <button class="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100" @click="showPaymentEntryModal = false">{{ __('Close') }}</button>
+      </div>
+      <div class="p-4 space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <FormControl :label="__('Donor ID')" type="text" v-model="paymentEntryForm.donor_id" readonly />
+          <FormControl :label="__('Serial No.')" type="text" v-model="paymentEntryForm.serial_no" readonly />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <FormControl :label="__('Outstanding Amount')" type="text" :modelValue="formatCurrency(paymentReadonly.outstanding_amount)" readonly />
+          <FormControl :label="__('Paid Amount')" type="number" v-model="paymentEntryForm.paid_amount" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <FormControl :label="__('Doubtful Debt Amount')" type="text" :modelValue="formatCurrency(paymentReadonly.doubtful_debt_amount)" readonly />
+          <FormControl :label="__('Remaining Amount')" type="text" :modelValue="formatCurrency(paymentReadonly.remaining_amount)" readonly />
+        </div>
+
+        <div class="pt-2 text-sm font-medium text-gray-700">{{ __('Accounts Detail') }}</div>
+        <div class="grid grid-cols-2 gap-3">
+          <FormControl :label="__('Mode of Payment')" type="link" :options="{ doctype: 'Mode of Payment' }" :modelValue="paymentEntryForm.mode_of_payment" @change="handleModeOfPaymentChanged($event)" />
+          <FormControl :label="__('Account Paid To')" type="link" :options="{ doctype: 'Account' }" v-model="paymentEntryForm.account_paid_to" />
+        </div>
+
+        <div class="pt-2 text-sm font-medium text-gray-700">{{ __('Transaction Detail') }}</div>
+        <div class="grid grid-cols-2 gap-3">
+          <FormControl :label="__('Cheque/Reference No')" type="text" v-model="paymentEntryForm.cheque_reference_no" />
+          <FormControl :label="__('Cheque/Reference Date')" type="date" v-model="paymentEntryForm.cheque_reference_date" />
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 border-t px-4 py-3">
+        <button class="rounded px-3 py-1.5 text-sm hover:bg-gray-100" @click="showPaymentEntryModal = false">{{ __('Cancel') }}</button>
+        <Button variant="solid" :label="__('Create')" @click="submitPaymentEntry" />
+      </div>
+    </div>
+  </div>
 
   <div v-if="showPrintModal" class="fixed inset-0 z-50 flex items-center justify-center">
     <div class="absolute inset-0 bg-black/50" @click="closePrintModal"></div>
@@ -706,7 +750,7 @@ const updateDonation = createResource({
 async function validateRequired(fieldname, value) {
   let meta = document.fields_meta || {};
   if (meta[fieldname]?.reqd && !value) {
-    toast.error(__("{0} is a required field", [meta[fieldname].label]));
+    toast.error(__("{0} is a required field", [meta[fieldname].label]));  
     return true;
   }
   return false;
@@ -1049,6 +1093,9 @@ async function saveChanges(data) {
     return; // Don't save if validation fails
   }
 
+  // Ensure any user-edited deduction percentages are applied to the doc
+  applyUserModifiedDeductionPercentages();
+
   // BULLETPROOF FIX: Preserve user-modified percentage values before saving
   const preservedUserModifications = preserveUserModificationsBeforeSave();
 
@@ -1068,10 +1115,28 @@ async function saveChanges(data) {
   });
 }
 
+// Apply user-edited deduction percentages into the document before persisting
+function applyUserModifiedDeductionPercentages() {
+  if (
+    document.doc.deduction_breakeven &&
+    Array.isArray(document.doc.deduction_breakeven)
+  ) {
+    document.doc.deduction_breakeven.forEach((row) => {
+      if (!row) return;
+      if (row._userModifiedPercentage && row._lastPercentage !== undefined) {
+        row.percentage = row._lastPercentage;
+      }
+    });
+    // Trigger shallow reactivity without replacing arrays used by Grid
+    document.doc = { ...document.doc };
+  }
+}
+
 // BULLETPROOF FIX: Function to preserve user modifications before save
 function preserveUserModificationsBeforeSave() {
   const userModifications = {};
 
+  // Preserve deduction breakeven modifications
   if (
     document.doc.deduction_breakeven &&
     Array.isArray(document.doc.deduction_breakeven)
@@ -1095,6 +1160,41 @@ function preserveUserModificationsBeforeSave() {
     });
   }
 
+  // Preserve payment detail fields including mode_of_payment
+  if (
+    document.doc.payment_detail &&
+    Array.isArray(document.doc.payment_detail)
+  ) {
+    document.doc.payment_detail.forEach((row, index) => {
+      if (row) {
+        userModifications[`payment_detail_${index}`] = {
+          mode_of_payment: row.mode_of_payment,
+          account_paid_to: row.account_paid_to,
+          transaction_no_cheque_no: row.transaction_no_cheque_no,
+          cheque_reference_date: row.cheque_reference_date,
+          donor_id: row.donor_id,
+          donor_name: row.donor_name,
+          donor_type: row.donor_type,
+          contact_no: row.contact_no,
+          email: row.email,
+          city: row.city,
+          address: row.address,
+          cnic: row.cnic,
+          co_name: row.co_name,
+          co_contact_no: row.co_contact_no,
+          co_email: row.co_email,
+          co_address: row.co_address,
+          relationship_with_donor: row.relationship_with_donor,
+          area: row.area,
+          co_city: row.co_city,
+          co_country: row.co_country,
+          co_designation: row.co_designation,
+          _lastMOPId: row._lastMOPId,
+        };
+      }
+    });
+  }
+
   // Store in sessionStorage to survive the save process
   sessionStorage.setItem("preservedUserModifications", JSON.stringify(userModifications));
 
@@ -1103,7 +1203,7 @@ function preserveUserModificationsBeforeSave() {
 
 // BULLETPROOF FIX: Function to restore user modifications after save
 function restoreUserModificationsAfterSave(preservedUserModifications) {
-  if (!document.doc || !document.doc.deduction_breakeven) {
+  if (!document.doc) {
     return;
   }
 
@@ -1172,12 +1272,32 @@ function restoreUserModificationsAfterSave(preservedUserModifications) {
         }
       }
     });
-
-    // Force reactive update to show restored values
-    document.doc = { ...document.doc };
-
-    // console.log('User modifications restored successfully after save')
   }
+
+  // Restore payment detail fields including mode_of_payment
+  if (
+    document.doc.payment_detail &&
+    Array.isArray(document.doc.payment_detail)
+  ) {
+    document.doc.payment_detail.forEach((row, index) => {
+      const key = `payment_detail_${index}`;
+      if (row && modifications[key]) {
+        const preserved = modifications[key];
+
+        // Restore all preserved payment detail fields
+        Object.keys(preserved).forEach(fieldName => {
+          if (preserved[fieldName] !== undefined && preserved[fieldName] !== null) {
+            row[fieldName] = preserved[fieldName];
+          }
+        });
+      }
+    });
+  }
+
+  // Force reactive update to show restored values
+  document.doc = { ...document.doc };
+
+  // console.log('User modifications restored successfully after save')
 }
 
 // ADD: Function to calculate deduction amount (if not already exists)
@@ -1708,72 +1828,31 @@ watch(
 
           // EXACT backend trigger: fund_class change
           if (row.fund_class && row.fund_class !== row._lastFundClassId) {
-            console.log(
-              `Fund Class ID changed in row ${index}: from ${row._lastFundClassId} to ${row.fund_class}`
-            );
-
-            // Store the old fund class before updating
-            const oldFundClassId = row._lastFundClassId;
-
-            // Update the tracking variables
+            console.log(`Fund Class ID changed in row ${index}:`, row.fund_class);
             row._lastFundClassId = row.fund_class;
             row.fund_class = row.fund_class;
 
-            // FIX: For Pledge contribution type, populate fund class fields without deduction breakeven
-            if (document.doc.contribution_type === "Pledge") {
-              await populateFundClassFieldsForPledge(row);
-            } else {
-              // CRITICAL FIX: Check if deduction entries already exist for this payment row and fund class
-              const existingEntries =
-                document.doc.deduction_breakeven?.filter(
-                  (deductionRow) =>
-                    deductionRow.random_id === row.random_id &&
-                    deductionRow.fund_class === row.fund_class
-                ) || [];
-
-              // If entries already exist for this payment row and fund class, skip completely
-              if (existingEntries.length > 0) {
-                console.log(
-                  `DUPLICATE PREVENTION: Skipping deduction breakeven - entries already exist for payment row ${row.random_id} and fund class ${row.fund_class}`
-                );
-                hasChanges = true;
-                return; // Skip the rest of the processing for this row
-              }
-
-              // If fund class actually changed (not just clicked the same one), clear old entries first
-              if (oldFundClassId && oldFundClassId !== row.fund_class) {
-                console.log(
-                  `FUND CLASS CHANGE: Clearing old entries for payment row ${row.random_id} - changed from ${oldFundClassId} to ${row.fund_class}`
-                );
-                if (
-                  document.doc.deduction_breakeven &&
-                  Array.isArray(document.doc.deduction_breakeven)
-                ) {
-                  const originalLength = document.doc.deduction_breakeven.length;
-                  document.doc.deduction_breakeven = document.doc.deduction_breakeven.filter(
-                    (deductionRow) =>
-                      !(
-                        deductionRow.random_id === row.random_id &&
-                        deductionRow.fund_class === oldFundClassId
-                      )
-                  );
-                  const removedCount =
-                    originalLength - document.doc.deduction_breakeven.length;
-                  if (removedCount > 0) {
-                    console.log(
-                      `FUND CLASS CHANGE: Removed ${removedCount} old deduction entries for payment row ${row.random_id}`
-                    );
+            // When fund class changes, allow backend to recalculate by clearing any
+            // user-locked percentage flags on related deduction breakeven rows
+            if (
+              document.doc.deduction_breakeven &&
+              Array.isArray(document.doc.deduction_breakeven) &&
+              row.random_id
+            ) {
+              document.doc.deduction_breakeven = document.doc.deduction_breakeven.map(
+                (deductionRow) => {
+                  if (deductionRow && deductionRow.random_id === row.random_id) {
+                    // Clear preservation markers so new percentages from API can apply
+                    delete deductionRow._userModifiedPercentage;
+                    delete deductionRow._lastPercentage;
                   }
+                  return deductionRow;
                 }
-              }
-
-              // Only trigger deduction breakeven for genuinely new fund class selections
-              // This ensures we don't add duplicates for the same fund class
-              console.log(
-                `TRIGGERING DEDUCTION BREAKEVEN: For payment row ${row.random_id} with fund class ${row.fund_class}`
               );
-              shouldTriggerSetDeductionBreakeven = true;
             }
+
+            // Trigger backend deduction logic for all contribution types including Pledge
+            shouldTriggerSetDeductionBreakeven = true;
 
             hasChanges = true;
           }
@@ -1994,18 +2073,10 @@ watch(
 watch(
   () => document.doc?.contribution_type,
   async (newContributionType, oldContributionType) => {
-    if (newContributionType === "Pledge") {
-      if (
-        document.doc.deduction_breakeven &&
-        document.doc.deduction_breakeven.length > 0
-      ) {
-        isUpdatingFromAPI = true;
-        document.doc.deduction_breakeven = [];
-        setTimeout(() => {
-          isUpdatingFromAPI = false;
-        }, 100);
-      }
-    } else if (newContributionType === "Donation" && oldContributionType === "Pledge") {
+    // Allow deduction breakeven for both Donation and Pledge types
+    // Only refresh deduction breakeven when switching between types
+    if (newContributionType && oldContributionType && newContributionType !== oldContributionType) {
+      // Refresh deduction breakeven when contribution type changes
       await setDeductionBreakevenFromAPI();
     }
   }
@@ -2208,6 +2279,7 @@ onMounted(async () => {
       schedulePopulateDeductionBreakeven();
     }, 2000);
   }
+  await refreshPaymentEntryAvailability();
 });
 
 watch(
@@ -2238,10 +2310,7 @@ async function populateDeductionBreakevenFromAPI() {
     return;
   }
 
-  if (document.doc.contribution_type === "Pledge") {
-    populateDeductionBreakevenFromAPI._inFlight = false;
-    return;
-  }
+  // Allow deduction breakeven for all contribution types, including Pledge
 
   document.doc.payment_detail.forEach((row, idx) => {
     if (row && !row.random_id) {
@@ -2309,8 +2378,31 @@ async function populateDeductionBreakevenFromAPI() {
 
     if (result.success) {
       document.doc.deduction_breakeven = result.deduction_breakeven;
+      
+      // Preserve user-entered fields when updating payment_detail
+      if (result.updated_payment_details && Array.isArray(result.updated_payment_details)) {
+        result.updated_payment_details.forEach((updatedRow, index) => {
+          const existingRow = document.doc.payment_detail[index];
+          if (existingRow && updatedRow) {
+            // Preserve important user-entered fields
+            const fieldsToPreserve = [
+              'mode_of_payment', 'account_paid_to', 'transaction_no_cheque_no', 
+              'cheque_reference_date', 'donor_id', 'donor_name', 'donor_type',
+              'contact_no', 'email', 'city', 'address', 'cnic', 'co_name',
+              'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor',
+              'area', 'co_city', 'co_country', 'co_designation', '_lastMOPId'
+            ];
+            
+            fieldsToPreserve.forEach(field => {
+              if (existingRow[field] !== undefined && existingRow[field] !== '') {
+                updatedRow[field] = existingRow[field];
+              }
+            });
+          }
+        });
+      }
+      
       document.doc.payment_detail = result.updated_payment_details;
-
       document.doc = { ...document.doc };
 
       if (result.deduction_breakeven && result.deduction_breakeven.length > 0) {
@@ -2333,9 +2425,7 @@ async function setDeductionBreakevenFromAPI() {
     return;
   }
 
-  if (document.doc.contribution_type === "Pledge") {
-    return;
-  }
+  // Allow deduction breakeven for all contribution types, including Pledge
   const zakatRowIds = new Set();
   document.doc.payment_detail.forEach((row) => {
     if (row.intention_id === "Zakat" && row.random_id) {
@@ -2410,6 +2500,30 @@ async function setDeductionBreakevenFromAPI() {
 
     if (result.success) {
       document.doc.deduction_breakeven = result.deduction_breakeven;
+      
+      // Preserve user-entered fields when updating payment_detail
+      if (result.updated_payment_details && Array.isArray(result.updated_payment_details)) {
+        result.updated_payment_details.forEach((updatedRow, index) => {
+          const existingRow = document.doc.payment_detail[index];
+          if (existingRow && updatedRow) {
+            // Preserve important user-entered fields
+            const fieldsToPreserve = [
+              'mode_of_payment', 'account_paid_to', 'transaction_no_cheque_no', 
+              'cheque_reference_date', 'donor_id', 'donor_name', 'donor_type',
+              'contact_no', 'email', 'city', 'address', 'cnic', 'co_name',
+              'co_contact_no', 'co_email', 'co_address', 'relationship_with_donor',
+              'area', 'co_city', 'co_country', 'co_designation', '_lastMOPId'
+            ];
+            
+            fieldsToPreserve.forEach(field => {
+              if (existingRow[field] !== undefined && existingRow[field] !== '') {
+                updatedRow[field] = existingRow[field];
+              }
+            });
+          }
+        });
+      }
+      
       document.doc.payment_detail = result.updated_payment_details;
 
       if (
@@ -2639,15 +2753,149 @@ document.triggerOnRowRemove = customTriggerOnRowRemove;
 const createDropdownOptions = computed(() => {
   const options = [];
 
-  if (document.doc && !document.doc.is_return) {
-    options.push({
-      label: "Return / Credit Note",
-      onClick: createReturnCreditNote,
-    });
+  const doc = document.doc;
+  if (!doc) return options;
+
+  const contribution = (doc.contribution_type || "").toLowerCase();
+  const donationType = (doc.donation_type || "").toLowerCase();
+
+  // Show Return / Credit Note ONLY when contribution_type is Donation and donation_type is Cash
+  if (contribution === "donation" && donationType === "cash" && !doc.is_return) {
+    options.push({ label: "Return / Credit Note", onClick: createReturnCreditNote });
+  }
+  // When contribution_type is Pledge and donation_type is Cash, show Payment Entry instead
+  else if (contribution === "pledge" && donationType === "cash") {
+    if (!hasPaymentEntry.value) {
+      options.push({ label: "Payment Entry", onClick: openPaymentEntryModal });
+    } else if (!doc.is_return) {
+      options.push({ label: "Return / Credit Note", onClick: createReturnCreditNote });
+    }
   }
 
   return options;
 });
+
+// Payment Entry Modal State
+const showPaymentEntryModal = ref(false);
+const paymentEntryForm = ref({
+  donor_id: "",
+  serial_no: "",
+  mode_of_payment: "",
+  account_paid_to: "",
+  cheque_reference_no: "",
+  paid_amount: 0,
+});
+const paymentReadonly = ref({
+  outstanding_amount: 0,
+  doubtful_debt_amount: 0,
+  remaining_amount: 0,
+});
+const hasPaymentEntry = ref(false);
+
+function formatCurrency(value) {
+  const num = Number(value || 0);
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: document.doc?.to_currency || document.doc?.currency || 'PKR' }).format(num);
+  } catch (e) {
+    return `${num}`;
+  }
+}
+
+async function refreshPaymentEntryAvailability() {
+  try {
+    if (!document.doc?.name) return;
+    const res = await call("akf_accounts.akf_accounts.doctype.donation.donation.verify_payment_entry", {
+      doctype: "Payment Entry Reference",
+      reference_name: document.doc.name,
+      fieldname: "name",
+    });
+    hasPaymentEntry.value = Array.isArray(res) ? res.length > 0 : !!res?.length;
+  } catch (e) {
+    // ignore
+  }
+}
+
+function openPaymentEntryModal() {
+  // Try to prefill donor and serial from first payment_detail row
+  const pd = (document.doc && Array.isArray(document.doc.payment_detail)) ? document.doc.payment_detail[0] : null;
+  paymentEntryForm.value = {
+    donor_id: pd?.donor || "",
+    serial_no: pd?.idx || pd?.serial_no || "",
+    mode_of_payment: "",
+    account_paid_to: "",
+    cheque_reference_no: "",
+    paid_amount: 0,
+  };
+  // Fetch readonly metrics for selected donor/row
+  fetchDonationPaymentMetrics();
+  showPaymentEntryModal.value = true;
+}
+
+async function fetchDonationPaymentMetrics() {
+  try {
+    const doc = document.doc;
+    if (!doc) return;
+    if (!paymentEntryForm.value.donor_id || !paymentEntryForm.value.serial_no) return;
+    const details = await call("akf_accounts.akf_accounts.doctype.donation.donation.get_donation_details", {
+      filters: JSON.stringify({ name: doc.name, donor_id: paymentEntryForm.value.donor_id, idx: paymentEntryForm.value.serial_no }),
+    });
+    const outstanding = Number(details?.outstanding_amount || 0);
+    const doubtful = Number(details?.doubtful_debt_amount || 0);
+    paymentReadonly.value.outstanding_amount = outstanding;
+    paymentReadonly.value.doubtful_debt_amount = doubtful;
+    paymentReadonly.value.remaining_amount = Math.max(outstanding - Number(paymentEntryForm.value.paid_amount || 0), 0);
+  } catch (e) {
+    // ignore errors
+  }
+}
+
+watch(() => paymentEntryForm.value.paid_amount, () => {
+  const outstanding = Number(paymentReadonly.value.outstanding_amount || 0);
+  paymentReadonly.value.remaining_amount = Math.max(outstanding - Number(paymentEntryForm.value.paid_amount || 0), 0);
+});
+
+async function handleModeOfPaymentChanged(value) {
+  paymentEntryForm.value.mode_of_payment = value;
+  try {
+    if (!value) return;
+    const mop = await call("frappe.client.get", { doctype: "Mode of Payment", name: value });
+    const accounts = mop?.accounts || [];
+    const forCompany = accounts.find((a) => a.company === document.doc.company);
+    if (forCompany?.default_account) {
+      paymentEntryForm.value.account_paid_to = forCompany.default_account;
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+async function submitPaymentEntry() {
+  try {
+    const doc = document.doc;
+    if (!doc) return;
+    const payloadDoc = JSON.stringify({ name: doc.name, company: doc.company, currency: doc.currency, to_currency: doc.to_currency, total_donation: doc.total_donation, outstanding_amount: doc.outstanding_amount });
+    const payloadValues = JSON.stringify({
+      donor_id: paymentEntryForm.value.donor_id,
+      serial_no: paymentEntryForm.value.serial_no,
+      mode_of_payment: paymentEntryForm.value.mode_of_payment,
+      account_paid_to: paymentEntryForm.value.account_paid_to,
+      cheque_reference_no: paymentEntryForm.value.cheque_reference_no,
+      cheque_reference_date: paymentEntryForm.value.cheque_reference_date,
+      paid_amount: paymentEntryForm.value.paid_amount,
+    });
+    const peName = await call("akf_accounts.akf_accounts.doctype.donation.donation.pledge_payment_entry", {
+      doc: payloadDoc,
+      values: payloadValues,
+    });
+    toast.success(__("Payment Entry created"));
+    showPaymentEntryModal.value = false;
+    await document.reload();
+    await refreshPaymentEntryAvailability();
+  } catch (e) {
+    console.error(e);
+    toast.error(e.message || __("Error creating Payment Entry"));
+  }
+}
 
 async function createReturnCreditNote() {
   try {
@@ -2663,6 +2911,39 @@ async function createReturnCreditNote() {
       toast.info(__("All donors already returned for this document"));
       return;
     }
+
+    // PRESERVE original payment detail fields before creating return
+    const originalPaymentDetails = [];
+    if (document.doc.payment_detail && Array.isArray(document.doc.payment_detail)) {
+      document.doc.payment_detail.forEach((row, index) => {
+        if (row) {
+          originalPaymentDetails[index] = {
+            mode_of_payment: row.mode_of_payment,
+            account_paid_to: row.account_paid_to,
+            transaction_no_cheque_no: row.transaction_no_cheque_no,
+            cheque_reference_date: row.cheque_reference_date,
+            donor_id: row.donor_id || row.donor,
+            donor_name: row.donor_name,
+            donor_type: row.donor_type,
+            contact_no: row.contact_no,
+            email: row.email,
+            city: row.city,
+            address: row.address,
+            cnic: row.cnic,
+            co_name: row.co_name,
+            co_contact_no: row.co_contact_no,
+            co_email: row.co_email,
+            co_address: row.co_address,
+            relationship_with_donor: row.relationship_with_donor,
+            area: row.area,
+            co_city: row.co_city,
+            co_country: row.co_country,
+            co_designation: row.co_designation,
+          };
+        }
+      });
+    }
+
     const mapped = await call(
       "akf_accounts.akf_accounts.doctype.donation.donation.make_donation_return",
       {
@@ -2673,6 +2954,33 @@ async function createReturnCreditNote() {
     const created = await call("frappe.client.insert", { doc: mapped }, { silent: true });
 
     if (created && created.name) {
+      // RESTORE preserved fields to the return document
+      if (originalPaymentDetails.length > 0 && created.payment_detail && Array.isArray(created.payment_detail)) {
+        let needsUpdate = false;
+        
+        created.payment_detail.forEach((row, index) => {
+          const originalRow = originalPaymentDetails[index];
+          if (row && originalRow) {
+            // Restore all preserved payment detail fields
+            Object.keys(originalRow).forEach(fieldName => {
+              if (originalRow[fieldName] !== undefined && originalRow[fieldName] !== null && originalRow[fieldName] !== '') {
+                if (row[fieldName] !== originalRow[fieldName]) {
+                  row[fieldName] = originalRow[fieldName];
+                  needsUpdate = true;
+                }
+              }
+            });
+          }
+        });
+
+        // Update the return document with preserved fields
+        if (needsUpdate) {
+          await call("frappe.client.save", { 
+            doc: created 
+          }, { silent: true });
+        }
+      }
+
       toast.success(__("Return / Credit Note created"));
       router.push({ name: "DonationDetail", params: { donationId: created.name } });
     } else {
@@ -2772,6 +3080,12 @@ async function submitDonation() {
     if (!(await validateAndShowErrors())) {
       return;
     }
+
+    // PRESERVE user modifications before submit (same as save function)
+  // Ensure user-edited deduction percentages are applied before submit
+  applyUserModifiedDeductionPercentages();
+  const preservedUserModifications = preserveUserModificationsBeforeSave();
+
     await new Promise((resolve, reject) => {
       document.save.submit(null, {
         onSuccess: () => resolve(),
@@ -2797,6 +3111,12 @@ async function submitDonation() {
       toast.success("Donation submitted successfully");
       try {
         await document.reload();
+        
+        // RESTORE user modifications after reload (same as save function)
+        setTimeout(() => {
+          restoreUserModificationsAfterSave(preservedUserModifications);
+        }, 1000); // Wait for reload to complete
+
       } catch (e) {
         setTimeout(() => {
           window.location.reload();
