@@ -172,6 +172,26 @@ const generateRandomId = (idx) => {
   return Math.floor(1000 + idx + Math.random() * 9000);
 };
 
+// Function to fetch the single unknown donor from the system
+async function fetchUnknownDonor() {
+  try {
+    const result = await call("frappe.client.get_list", {
+      doctype: "Donor",
+      filters: { donor_identity: "Unknown" },
+      fields: ["name"],
+      limit: 1,
+    });
+    
+    if (result && result.length > 0) {
+      return result[0].name;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching unknown donor:", error);
+    return null;
+  }
+}
+
 // // Function to add a new payment detail row with proper random_id generation
 // const addPaymentDetailRow = () => {
 //   const newRow = {
@@ -483,6 +503,16 @@ const filteredTabs = computed(() => {
                 enhancedField.depends_on = "donor_identity";
                 enhancedField.filters = getDonorFilters();
                 console.log("Configured donor field with query filtering for items");
+              } 
+
+              // In-Kind items table: make 'new' and 'used' editable, keep 'item_name' read-only
+              if (donation.doc.donation_type === "In Kind Donation") {
+                if (field.fieldname === "new" || field.fieldname === "used") {
+                  enhancedField.read_only = 0;
+                }
+                if (field.fieldname === "item_name") {
+                  enhancedField.read_only = 1;
+                }
               }
 
               // Configure fund_class fields in items table
@@ -610,6 +640,7 @@ const tabs = createResource({
               field.fieldtype = "Check";
               field.default = 0;
             }
+
           });
         });
       });
@@ -1471,6 +1502,18 @@ watch(
           // Ensure random_id is present (EXACT backend logic)
           if (row && !row.random_id) {
             row.random_id = generateRandomId(index + 1);
+
+            // AUTO-FETCH: For new rows, if donor_identity is "Unknown", auto-fetch the unknown donor
+            if (donation.doc.donor_identity === "Unknown" && !row.donor) {
+              const unknownDonorId = await fetchUnknownDonor();
+              if (unknownDonorId) {
+                row.donor = unknownDonorId;
+                row._lastDonorId = unknownDonorId;
+                // Fetch and populate donor details
+                handleDonorSelectionDirect(unknownDonorId, row);
+                shouldDoReactiveUpdate = true;
+              }
+            }
           }
 
           // EXACT backend trigger: donor_id change
@@ -2967,6 +3010,20 @@ watch(
   (newItems) => {
     if (!newItems || !Array.isArray(newItems)) return;
     newItems.forEach((row) => {
+      // Auto-populate item_name from selected item_code for In Kind Donation
+      if (donation.doc.donation_type === 'In Kind Donation' && row.item_code && !row.item_name) {
+        call('frappe.client.get_value', {
+          doctype: 'Item',
+          filters: { name: row.item_code },
+          fieldname: 'item_name',
+        }).then((r) => {
+          const name = r?.message?.item_name || r?.item_name || r?.value;
+          if (name) {
+            row.item_name = name;
+            donation.doc.items = [...donation.doc.items];
+          }
+        }).catch(() => {});
+      }
       if (row.fund_class && row.fund_class !== row._lastFundClass) {
         row._lastFundClass = row.fund_class;
         handleFundClassSelectionForItem(row.fund_class, row);

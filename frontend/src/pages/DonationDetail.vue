@@ -52,6 +52,11 @@
             </Button>
           </template>
         </Dropdown>
+        <Button
+          v-if="showReverseDonorButton"
+          label="Reverse Donor"
+          @click="openReverseDonorModal"
+        />
       </template>
     </LayoutHeader>
 
@@ -200,8 +205,24 @@
 
         <div class="pt-2 text-sm font-medium text-gray-700">{{ __('Accounts Detail') }}</div>
         <div class="grid grid-cols-2 gap-3">
-          <FormControl :label="__('Mode of Payment')" type="link" :options="{ doctype: 'Mode of Payment' }" :modelValue="paymentEntryForm.mode_of_payment" @change="handleModeOfPaymentChanged($event)" />
-          <FormControl :label="__('Account Paid To')" type="link" :options="{ doctype: 'Account' }" v-model="paymentEntryForm.account_paid_to" />
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">{{ __('Mode of Payment') }}</label>
+            <LinkField 
+              class="form-control" 
+              :doctype="'Mode of Payment'" 
+              v-model="paymentEntryForm.mode_of_payment"
+              :placeholder="__('Select Mode of Payment')"
+            />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">{{ __('Account Paid To') }}</label>
+            <LinkField 
+              class="form-control" 
+              :doctype="'Account'" 
+              v-model="paymentEntryForm.account_paid_to"
+              :placeholder="__('Select Account')"
+            />
+          </div>
         </div>
 
         <div class="pt-2 text-sm font-medium text-gray-700">{{ __('Transaction Detail') }}</div>
@@ -213,6 +234,36 @@
       <div class="flex justify-end gap-2 border-t px-4 py-3">
         <button class="rounded px-3 py-1.5 text-sm hover:bg-gray-100" @click="showPaymentEntryModal = false">{{ __('Cancel') }}</button>
         <Button variant="solid" :label="__('Create')" @click="submitPaymentEntry" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Reverse Donor Modal -->
+  <div v-if="showReverseDonorModal" class="fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-black/50" @click="showReverseDonorModal = false"></div>
+    <div class="relative z-10 w-[520px] rounded-lg bg-white shadow-xl">
+      <div class="flex items-center justify-between border-b px-4 py-3">
+        <div class="text-base font-medium">{{ __('Unknown to Known Donor') }}</div>
+        <button class="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100" @click="showReverseDonorModal = false">{{ __('Close') }}</button>
+      </div>
+      <div class="p-4 space-y-4">
+        <Link
+          :label="__('Donor (Known)')"
+          :doctype="'Donor'"
+          :filters="{ donor_name: ['not in', ['Unknown Donor', 'Merchant Known']] }"
+          v-model="reverseDonorForm.donor"
+        />
+        <FormControl 
+          :label="__('Payment Detail Serial No')" 
+          type="select" 
+          :options="availableSerialNumbers.map(num => ({ label: String(num), value: num }))" 
+          v-model="reverseDonorForm.serial_no"
+          :reqd="true"
+        />
+      </div>
+      <div class="flex justify-end gap-2 border-t px-4 py-3">
+        <button class="rounded px-3 py-1.5 text-sm hover:bg-gray-100" @click="showReverseDonorModal = false">{{ __('Cancel') }}</button>
+        <Button variant="solid" :label="__('Submit')" @click="submitReverseDonor" />
       </div>
     </div>
   </div>
@@ -377,6 +428,7 @@ import { useDocument } from "@/data/document";
 import ViewBreadcrumbs from "@/components/ViewBreadcrumbs.vue";
 import CreateDocumentModal from "@/components/Modals/CreateDocumentModal.vue";
 import DeleteLinkedDocModal from "@/components/DeleteLinkedDocModal.vue";
+import LinkField from "@/components/Controls/Link.vue";
 
 const { brand } = getSettings();
 const { user } = sessionStore();
@@ -1784,6 +1836,26 @@ const generateRandomId = (idx) => {
   return Math.floor(1000 + idx + Math.random() * 9000);
 };
 
+// Function to fetch the single unknown donor from the system
+async function fetchUnknownDonor() {
+  try {
+    const result = await call("frappe.client.get_list", {
+      doctype: "Donor",
+      filters: { donor_identity: "Unknown" },
+      fields: ["name"],
+      limit: 1,
+    });
+    
+    if (result && result.length > 0) {
+      return result[0].name;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching unknown donor:", error);
+    return null;
+  }
+}
+
 // CRITICAL FIX: Enhanced intention_id change handling to prevent infinite loops
 watch(
   () => document.doc?.payment_detail,
@@ -1815,6 +1887,18 @@ watch(
             // Assign a random_id immediately for newly added rows to keep linkages stable
             row.random_id = generateRandomId(index + 1);
             hasChanges = true;
+
+            // AUTO-FETCH: For new rows, if donor_identity is "Unknown", auto-fetch the unknown donor
+            if (document.doc.donor_identity === "Unknown" && !row.donor) {
+              const unknownDonorId = await fetchUnknownDonor();
+              if (unknownDonorId) {
+                row.donor = unknownDonorId;
+                row._lastDonorId = unknownDonorId;
+                // Fetch and populate donor details
+                await handleDonorSelectionDirect(unknownDonorId, row);
+                hasChanges = true;
+              }
+            }
           }
 
           // EXACT backend trigger: donor_id change
@@ -2775,6 +2859,17 @@ const createDropdownOptions = computed(() => {
   return options;
 });
 
+// Computed property for showing Reverse Donor button separately
+const showReverseDonorButton = computed(() => {
+  const doc = document.doc;
+  if (!doc) return false;
+
+  const donorIdentity = (doc.donor_identity || "").toLowerCase();
+  const contribution = (doc.contribution_type || "").toLowerCase();
+
+  return donorIdentity === "unknown" && doc.docstatus === 1 && contribution === "donation";
+});
+
 // Payment Entry Modal State
 const showPaymentEntryModal = ref(false);
 const paymentEntryForm = ref({
@@ -2854,34 +2949,42 @@ watch(() => paymentEntryForm.value.paid_amount, () => {
   paymentReadonly.value.remaining_amount = Math.max(outstanding - Number(paymentEntryForm.value.paid_amount || 0), 0);
 });
 
-async function handleModeOfPaymentChanged(value) {
-  paymentEntryForm.value.mode_of_payment = value;
-  try {
-    if (!value) return;
-    const mop = await call("frappe.client.get", { doctype: "Mode of Payment", name: value });
-    const accounts = mop?.accounts || [];
-    const forCompany = accounts.find((a) => a.company === document.doc.company);
-    if (forCompany?.default_account) {
-      paymentEntryForm.value.account_paid_to = forCompany.default_account;
+watch(
+  () => paymentEntryForm.value.mode_of_payment,
+  async (value) => {
+    try {
+      if (!value) return;
+      const mop = await call("frappe.client.get", { doctype: "Mode of Payment", name: value });
+      const accounts = mop?.accounts || [];
+      const forCompany = accounts.find((a) => a.company === document.doc.company);
+      if (forCompany?.default_account) {
+        paymentEntryForm.value.account_paid_to = forCompany.default_account;
+      }
+    } catch (e) {
+      // ignore
     }
-  } catch (e) {
-    // ignore
   }
-}
+);
 
 async function submitPaymentEntry() {
   try {
     const doc = document.doc;
     if (!doc) return;
+    const paidAmount = Number(paymentEntryForm.value.paid_amount || 0);
+    const serialNo = Number(paymentEntryForm.value.serial_no || 0);
+    if (!paidAmount || paidAmount <= 0) {
+      toast.error(__('Please enter a valid Paid Amount'));
+      return;
+    }
     const payloadDoc = JSON.stringify({ name: doc.name, company: doc.company, currency: doc.currency, to_currency: doc.to_currency, total_donation: doc.total_donation, outstanding_amount: doc.outstanding_amount });
     const payloadValues = JSON.stringify({
       donor_id: paymentEntryForm.value.donor_id,
-      serial_no: paymentEntryForm.value.serial_no,
+      serial_no: serialNo,
       mode_of_payment: paymentEntryForm.value.mode_of_payment,
       account_paid_to: paymentEntryForm.value.account_paid_to,
       cheque_reference_no: paymentEntryForm.value.cheque_reference_no,
       cheque_reference_date: paymentEntryForm.value.cheque_reference_date,
-      paid_amount: paymentEntryForm.value.paid_amount,
+      paid_amount: paidAmount,
     });
     const peName = await call("akf_accounts.akf_accounts.doctype.donation.donation.pledge_payment_entry", {
       doc: payloadDoc,
@@ -2893,7 +2996,75 @@ async function submitPaymentEntry() {
     await refreshPaymentEntryAvailability();
   } catch (e) {
     console.error(e);
-    toast.error(e.message || __("Error creating Payment Entry"));
+    // Extract friendly message from frappe error
+    const msg = e?.messages?.[0] || e?.message || (typeof e === 'string' ? e : null);
+    const friendly = msg && typeof msg === 'string' ? msg.replace(/Traceback[\s\S]*/,'').trim() : null;
+    toast.error(friendly || __('Error creating Payment Entry'));
+  }
+}
+
+// Reverse Donor Modal State
+const showReverseDonorModal = ref(false);
+const reverseDonorForm = ref({
+  donor: "",
+  serial_no: "",
+});
+const availableSerialNumbers = ref([]);
+
+async function openReverseDonorModal() {
+  try {
+    if (!document.doc?.name) return;
+    
+    // Fetch available serial numbers (payment details that can be reversed)
+    const idxList = await call("akf_accounts.akf_accounts.doctype.donation.donation.get_idx_list_unknown", {
+      donation_id: document.doc.name,
+    });
+    
+    if (!idxList || idxList.length === 0) {
+      toast.info(__("No payment details available for reversal"));
+      return;
+    }
+    
+    availableSerialNumbers.value = idxList;
+    reverseDonorForm.value = {
+      donor: "",
+      serial_no: idxList[0] || "",
+    };
+    
+    showReverseDonorModal.value = true;
+  } catch (e) {
+    console.error(e);
+    toast.error(__("Error loading payment details"));
+  }
+}
+
+async function submitReverseDonor() {
+  try {
+    if (!reverseDonorForm.value.donor) {
+      toast.error(__("Please select a donor"));
+      return;
+    }
+
+    if (!reverseDonorForm.value.serial_no) {
+      toast.error(__("Please select a serial number"));
+      return;
+    }
+
+    // Update current donation (Desk uses the same method)
+    await call("akf_accounts.akf_accounts.doctype.donation.donation.set_unknown_to_known", {
+      name: document.doc.name,
+      values: JSON.stringify({
+        donor: reverseDonorForm.value.donor,
+        serial_no: reverseDonorForm.value.serial_no,
+      }),
+    });
+
+    toast.success(__("Donor reversed to Known successfully"));
+    showReverseDonorModal.value = false;
+    await document.reload();
+  } catch (e) {
+    console.error(e);
+    toast.error(e.message || __("Error updating donor"));
   }
 }
 

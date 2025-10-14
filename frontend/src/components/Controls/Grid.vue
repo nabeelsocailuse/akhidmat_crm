@@ -193,7 +193,7 @@
                     <Checkbox
                       class="cursor-pointer duration-300"
                       v-model="row[field.fieldname]"
-                      :disabled="!gridSettings.editable_grid"
+                      :disabled="Boolean(field.read_only) || !canEditField(field)"
                       @change="(e) => fieldChange(e.target.checked, field, row)"
                     />
                   </div>
@@ -863,7 +863,7 @@ async function fieldChange(value, field, row) {
       row.intention_id = normalizedValue
       if (normalizedValue === 'Zakat') {
         if (parentDoc.value && parentDoc.value.deduction_breakeven) {
-          parentDoc.value.deduction_breakeven = []
+          parentDoc.value.deduction_breakeven = [] 
           toast.info('Deduction breakeven table cleared (Zakat intention)')
         }
       } else if (normalizedValue && normalizedValue !== 'Zakat') {
@@ -923,89 +923,103 @@ async function fieldChange(value, field, row) {
   }
 
   if (props.parentFieldname === 'items') {
-    if (field.fieldname === 'fund_class' && normalizedValue) {
-      try {
-        const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
-          fund_class: normalizedValue,
-          company: parentDoc.value?.company || 'Alkhidmat Foundation'
-        })
-        if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
-          if (fundClassDetails.service_area) row.service_area = fundClassDetails.service_area
-          if (fundClassDetails.subservice_area) row.subservice_area = fundClassDetails.subservice_area
-          if (fundClassDetails.product) row.product = fundClassDetails.product
-          if (fundClassDetails.cost_center) row.cost_center = fundClassDetails.cost_center
-          toast.success('Fund class details loaded successfully')
-        } else {
-          toast.warning('No fund class details found')
-        }
-      } catch {
-        toast.error('Error loading fund class details')
+    // Enforce mutual exclusivity for In-Kind item condition checkboxes
+    if (field.fieldname === 'new' || field.fieldname === 'used') {
+      if (field.fieldname === 'new') {
+        row.new = Boolean(normalizedValue)
+        if (row.new) row.used = false
+      } else if (field.fieldname === 'used') {
+        row.used = Boolean(normalizedValue)
+        if (row.used) row.new = false
       }
-      emit('fund-class-selected', { row, fundClass: normalizedValue, success: !!normalizedValue })
       forceReactiveUpdate()
-      triggerOnChange(field.fieldname, normalizedValue, row)
+      triggerOnChange(field.fieldname, Boolean(normalizedValue), row)
       return
     }
 
-    if (field.fieldname === 'donor' && normalizedValue) {
-      try {
-        const donorDetails = await call('frappe.client.get', { doctype: 'Donor', name: normalizedValue })
-        if (donorDetails) {
-          if (donorDetails.donor_name) row.donor_name = donorDetails.donor_name
-          if (donorDetails.donor_type) row.donor_type = donorDetails.donor_type
-          if (donorDetails.donor_desk) row.donor_desk = donorDetails.donor_desk
-          toast.success('Donor details loaded successfully')
-        } else {
-          toast.warning('No donor details found')
-        }
-      } catch {
-        toast.error('Error loading donor details')
-      }
-      emit('donor-selected', { row, donorId: normalizedValue, success: !!normalizedValue })
-      forceReactiveUpdate()
-      triggerOnChange(field.fieldname, normalizedValue, row)
-      return
-    }
+    // if (field.fieldname === 'fund_class' && normalizedValue) {
+  //     try {
+  //       const fundClassDetails = await call('crm.fcrm.doctype.donation.api.get_fund_class_details', {
+  //         fund_class: normalizedValue,
+  //         company: parentDoc.value?.company || 'Alkhidmat Foundation'
+  //       })
+  //       if (fundClassDetails && Object.keys(fundClassDetails).length > 0) {
+  //         if (fundClassDetails.service_area) row.service_area = fundClassDetails.service_area
+  //         if (fundClassDetails.subservice_area) row.subservice_area = fundClassDetails.subservice_area
+  //         if (fundClassDetails.product) row.product = fundClassDetails.product
+  //         if (fundClassDetails.cost_center) row.cost_center = fundClassDetails.cost_center
+  //         toast.success('Fund class details loaded successfully')
+  //       } else {
+  //         toast.warning('No fund class details found')
+  //       }
+  //     } catch {
+  //       toast.error('Error loading fund class details')
+  //     }
+  //     emit('fund-class-selected', { row, fundClass: normalizedValue, success: !!normalizedValue })
+  //     forceReactiveUpdate()
+  //     triggerOnChange(field.fieldname, normalizedValue, row)
+  //     return
+  //   }
 
-    if (field.fieldname === 'project' && normalizedValue) {
-      try {
-        const projectDetails = await call('frappe.client.get', { doctype: 'Project', name: normalizedValue })
-        if (projectDetails) {
-          if (projectDetails.cost_center) row.cost_center = projectDetails.cost_center
-          if (projectDetails.custom_service_area) row.service_area = projectDetails.custom_service_area
-          if (projectDetails.custom_subservice_area) row.subservice_area = projectDetails.custom_subservice_area
-          if (projectDetails.custom_product) row.product = projectDetails.custom_product
-          if (projectDetails.fund_class) row.fund_class = projectDetails.fund_class
-          toast.success('Project details loaded successfully')
-        } else {
-          toast.warning('No project details found')
-        }
-      } catch {
-        toast.error('Error loading project details')
-      }
-      forceReactiveUpdate()
-      triggerOnChange(field.fieldname, normalizedValue, row)
-      return
-    }
+  //   if (field.fieldname === 'donor' && normalizedValue) {
+  //     try {
+  //       const donorDetails = await call('frappe.client.get', { doctype: 'Donor', name: normalizedValue })
+  //       if (donorDetails) {
+  //         if (donorDetails.donor_name) row.donor_name = donorDetails.donor_name
+  //         if (donorDetails.donor_type) row.donor_type = donorDetails.donor_type
+  //         if (donorDetails.donor_desk) row.donor_desk = donorDetails.donor_desk
+  //         toast.success('Donor details loaded successfully')
+  //       } else {
+  //         toast.warning('No donor details found')
+  //       }
+  //     } catch {
+  //       toast.error('Error loading donor details')
+  //     }
+  //     emit('donor-selected', { row, donorId: normalizedValue, success: !!normalizedValue })
+  //     forceReactiveUpdate()
+  //     triggerOnChange(field.fieldname, normalizedValue, row)
+  //     return
+  //   }
 
-    if (field.fieldname === 'item_code' && normalizedValue) {
-      try {
-        const itemDetails = await call('frappe.client.get', { doctype: 'Item', name: normalizedValue })
-        if (itemDetails) {
-          if (itemDetails.item_name) row.item_name = itemDetails.item_name
-          if (itemDetails.valuation_rate) row.basic_rate = itemDetails.valuation_rate
-          toast.success('Item details loaded successfully')
-        } else {
-          toast.warning('No item details found')
-        }
-      } catch {
-        toast.error('Error loading item details')
-      }
-      forceReactiveUpdate()
-      triggerOnChange(field.fieldname, normalizedValue, row)
-      return
-    }
-  }
+  //   if (field.fieldname === 'project' && normalizedValue) {
+  //     try {
+  //       const projectDetails = await call('frappe.client.get', { doctype: 'Project', name: normalizedValue })
+  //       if (projectDetails) {
+  //         if (projectDetails.cost_center) row.cost_center = projectDetails.cost_center
+  //         if (projectDetails.custom_service_area) row.service_area = projectDetails.custom_service_area
+  //         if (projectDetails.custom_subservice_area) row.subservice_area = projectDetails.custom_subservice_area
+  //         if (projectDetails.custom_product) row.product = projectDetails.custom_product
+  //         if (projectDetails.fund_class) row.fund_class = projectDetails.fund_class
+  //         toast.success('Project details loaded successfully')
+  //       } else {
+  //         toast.warning('No project details found')
+  //       }
+  //     } catch {
+  //       toast.error('Error loading project details')
+  //     }
+  //     forceReactiveUpdate()
+  //     triggerOnChange(field.fieldname, normalizedValue, row)
+  //     return
+  //   }
+
+  //   if (field.fieldname === 'item_code' && normalizedValue) {
+  //     try {
+  //       const itemDetails = await call('frappe.client.get', { doctype: 'Item', name: normalizedValue })
+  //       if (itemDetails) {
+  //         if (itemDetails.item_name) row.item_name = itemDetails.item_name
+  //         if (itemDetails.valuation_rate) row.basic_rate = itemDetails.valuation_rate
+  //         toast.success('Item details loaded successfully')
+  //       } else {
+  //         toast.warning('No item details found')
+  //       }
+  //     } catch {
+  //       toast.error('Error loading item details')
+  //     }
+  //     forceReactiveUpdate()
+  //     triggerOnChange(field.fieldname, normalizedValue, row)
+  //     return
+  //   }
+  // }
 
   triggerOnChange(field.fieldname, normalizedValue, row)
 }
@@ -1194,6 +1208,7 @@ async function handleFetchFromForItems(rowIndex, fieldname, value) {
     console.error('❌ Error in handleFetchFromForItems:', error)
     toast.error(`Error loading ${fieldname} details`)
   }
+}
 }
 onMounted(() => {
 })

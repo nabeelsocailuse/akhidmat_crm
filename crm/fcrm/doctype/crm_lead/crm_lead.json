@@ -18,6 +18,11 @@
   "job_title",
   "source",
   "lead_owner",
+  "column_break_rjik",
+  "donor_identity",
+  "donor_type",
+  "department",
+  "donor_desk",
   "person_tab",
   "salutation",
   "first_name",
@@ -75,7 +80,7 @@
   {
    "fieldname": "first_name",
    "fieldtype": "Data",
-   "label": "First Name",
+   "label": "Lead Name",
    "reqd": 1
   },
   {
@@ -86,7 +91,7 @@
   {
    "fieldname": "last_name",
    "fieldtype": "Data",
-   "label": "Last Name"
+   "label": "Lead Last Name"
   },
   {
    "fieldname": "gender",
@@ -332,13 +337,41 @@
    "fieldtype": "Link",
    "label": "Country",
    "options": "Country"
+  },
+  {
+   "fieldname": "column_break_rjik",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "donor_identity",
+   "fieldtype": "Select",
+   "label": "Donor Identity",
+   "options": "\nKnown\nUnknown\nMerchant - Known\nMerchant - Unknown"
+  },
+  {
+   "fieldname": "donor_type",
+   "fieldtype": "Link",
+   "label": "Donor Type",
+   "options": "Donor Type"
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Department"
+  },
+  {
+   "fieldname": "donor_desk",
+   "fieldtype": "Link",
+   "label": "Donor Desk",
+   "options": "Donor Desk"
   }
  ],
  "grid_page_length": 50,
  "image_field": "image",
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-09-10 14:28:09.937484",
+ "modified": "2025-10-14 11:11:18.658440",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Lead",
