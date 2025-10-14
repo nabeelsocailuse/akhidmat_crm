@@ -1198,3 +1198,55 @@ async function handleFetchFromForItems(rowIndex, fieldname, value) {
 onMounted(() => {
 })
 </script>
+<style scoped>
+/* For Input fields */
+:deep(.grid-row input:not([type='checkbox'])),
+:deep(.grid-row textarea) {
+  border: none;
+  border-radius: 0;
+  height: 38px;
+}
+
+:deep(.grid-row input:focus),
+:deep(.grid-row input:hover),
+:deep(.grid-row textarea:focus),
+:deep(.grid-row textarea:hover) {
+  box-shadow: none;
+}
+
+:deep(.grid-row input:focus-within) :deep(.grid-row textarea:focus-within) {
+  border: 1px solid var(--outline-gray-2);
+}
+
+/* For select field */
+:deep(.grid-row select) {
+  border: none;
+  border-radius: 0;
+  height: 38px;
+}
+
+/* For Autocomplete */
+:deep(.grid-row button) {
+  border: none;
+  border-radius: 0;
+  background-color: var(--surface-white);
+  height: 38px;
+}
+
+:deep(.grid-row:last-child .grid-row-checkbox) {
+  border-bottom-left-radius: 7px;
+}
+
+:deep(.grid-row .edit-row button) {
+  border-bottom-right-radius: 7px;
+}
+
+:deep(.grid-row button:focus) :deep(.grid-row button:hover) {
+  box-shadow: none;
+  background-color: var(--surface-white);
+}
+
+:deep(.grid-row button:focus-within) {
+  border: 1px solid var(--outline-gray-2);
+}
+</style>
