@@ -345,13 +345,13 @@
   {
    "fieldname": "donor_identity",
    "fieldtype": "Select",
-   "label": "Donor Identity",
+   "label": "Lead Identity",
    "options": "\nKnown\nUnknown\nMerchant - Known\nMerchant - Unknown"
   },
   {
    "fieldname": "donor_type",
    "fieldtype": "Link",
-   "label": "Donor Type",
+   "label": "Lead Type",
    "options": "Donor Type"
   },
   {
@@ -363,7 +363,7 @@
   {
    "fieldname": "donor_desk",
    "fieldtype": "Link",
-   "label": "Donor Desk",
+   "label": "Lead Desk",
    "options": "Donor Desk"
   }
  ],
@@ -371,7 +371,7 @@
  "image_field": "image",
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-10-14 11:11:18.658440",
+ "modified": "2025-10-14 16:07:56.877516",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Lead",
