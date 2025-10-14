@@ -372,9 +372,11 @@ class CRMLead(Document):
 				"stateprovince": self.custom_state_province,
 				"contact_no": self.mobile_no,
 				"state": self.custom_state_province,
-				"donor_identity": self.donor_identity,
-				"donor_type": self.donor_type,
-				"donor_desk": self.donor_desk
+				"donor_identity": self.custom_lead_identity_,
+				"donor_type": self.custom_lead_type,
+				"donor_desk": self.custom_lead_desk,
+				"department": self.custom_department,
+
 			}
 		)
 

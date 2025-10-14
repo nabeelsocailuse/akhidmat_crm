@@ -2842,6 +2842,13 @@ const createDropdownOptions = computed(() => {
 
   const contribution = (doc.contribution_type || "").toLowerCase();
   const donationType = (doc.donation_type || "").toLowerCase();
+  const status = (doc.status || "").toLowerCase();
+
+  // If status is "partly paid", only show Payment Entry
+  if (status === "partly paid") {
+    options.push({ label: "Payment Entry", onClick: openPaymentEntryModal });
+    return options;
+  }
 
   // Show Return / Credit Note ONLY when contribution_type is Donation and donation_type is Cash
   if (contribution === "donation" && donationType === "cash" && !doc.is_return) {
