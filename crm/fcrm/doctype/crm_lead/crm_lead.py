@@ -376,6 +376,42 @@ class CRMLead(Document):
 				"donor_type": self.custom_lead_type,
 				"donor_desk": self.custom_lead_desk,
 				"department": self.custom_department,
+				# Corporate donor fileds
+				"company_type": self.custom_company_type,
+				"profession__business_category": self.custom_profession__business_category,
+				"company_name": self.custom_company_name,
+				"company_ownerceo_name": self.custom_company_ownerceo_name,
+				"company_ownerceo_conatct": self.custom_company_ownerceo_conatct,
+				"company_website": self.custom_company_website,
+				"company_email_address": self.custom_company_email_address,
+				"no_of_company__employees": self.custom_no_of_company__employees,
+				"company_turnover": self.custom_company_turnover,
+				"companys_interest_in_services": self.custom_companys_interest_in_services,
+				"representative_person_name": self.custom_representative_person_name,
+				"representative_designation": self.custom_representative_designation,
+				"representative_mobile": self.custom_representative_mobile,
+				"representative_email": self.custom_representative_email,
+				#organization donor
+				"org__category": self.custom_org__category,
+				"org_sector": self.custom_org_sector,
+				"org_name": self.custom_org_name,
+				"orgs_country": self.custom_orgs_country,
+				"org_email": self.custom_org_email,
+				"org_website": self.custom_org_website,
+				"org_contact": self.custom_org_contact,
+				"custom_org_head_of_board": self.custom_org_head_of_board,
+				"org_representative_name": self.custom_org_representative_name,
+				"org_representative_contact_number": self.custom_org_representative_contact_number,
+				"org_representative_email_address": self.custom_org_representative_email_address,
+				"org_representative_designation": self.custom_org_representative_designation,
+				#individual donor
+				"old_id":self.custom_old_id,
+				"nationality_type": self.custom_nationality_type,
+				"profession": self.custom_profession,
+				"designation": self.custom_designation,
+				"companyorg": self.custom_companyorg,
+				"phone_no": self.custom_phone_no_,
+				
 
 			}
 		)
