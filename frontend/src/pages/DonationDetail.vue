@@ -9,9 +9,9 @@
           v-if="document.doc.actions?.length"
           :actions="document.doc.actions"
         />
-        <!-- <Dropdown v-if="document.doc" :options="donationStatusOptions">
+        <Dropdown v-if="document.doc" :options="donationStatusOptions">
           <template #default="{ open }">
-            <Button :label="document.doc.status || 'Draft'">
+            <Button :label="document.doc.status || 'Draft'" class="cursor-default" :disabled="true">
               <template #prefix>
                 <IndicatorIcon :class="getDonationStatus(document.doc.status).color" />
               </template>
@@ -20,7 +20,7 @@
               </template>
             </Button>
           </template>
-        </Dropdown> -->
+        </Dropdown>
         <AssignTo v-model="assignees.data" :data="document.doc" doctype="Donation" />
         <Button label="Print" @click="printDonation" />
         <Button label="PDF" @click="openDonationPDF" />
@@ -930,7 +930,7 @@ async function validateDonationForm() {
           errors.push(`Fund Class for payment detail row ${rowNum} is required`);
         }
       }
-      if (document.doc.donation_type !== "In Kind Donation") {
+      if (document.doc.donation_type !== "In Kind Donation" && document.doc.contribution_type !== "Pledge") {
         if (!row.mode_of_payment || row.mode_of_payment.trim() === "") {
           errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
         }

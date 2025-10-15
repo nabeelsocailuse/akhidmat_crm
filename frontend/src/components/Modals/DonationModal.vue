@@ -1121,53 +1121,53 @@ function handleModalClose(idx) {
 // }
 
 // Get user-friendly field labels
-// function getFieldLabel(fieldName) {
-//   const fieldLabels = {
-//     // Main donation fields
-//     company: "Company",
-//     donor_identity: "Donor Identity",
-//     contribution_type: "Contribution Type",
-//     posting_date: "Posting Date",
-//     currency: "Currency",
-//     donation_cost_center: "Donation Cost Center",
+function getFieldLabel(fieldName) {
+  const fieldLabels = {
+    // Main donation fields
+    company: "Company",
+    donor_identity: "Donor Identity",
+    contribution_type: "Contribution Type",
+    posting_date: "Posting Date",
+    currency: "Currency",
+    donation_cost_center: "Donation Cost Center",
 
-//     // Payment detail fields
-//     equity_account: "Equity Account",
-//     fund_class: "Fund Class",
-//     donor: "Donor",
-//     donation_amount: "Donation Amount",
-//     mode_of_payment: "Mode of Payment",
-//     account_paid_to: "Account Paid To",
-//     receivable_account: "Receivable Account",
-//     receipt_number: "Receipt Number",
+    // Payment detail fields
+    equity_account: "Equity Account",
+    fund_class: "Fund Class",
+    donor: "Donor",
+    donation_amount: "Donation Amount",
+    mode_of_payment: "Mode of Payment",
+    account_paid_to: "Account Paid To",
+    receivable_account: "Receivable Account",
+    receipt_number: "Receipt Number",
 
-//     // Common field patterns
-//     pay_service_area: "Service Area",
-//     pay_subservice_area: "Subservice Area",
-//     pay_product: "Product",
-//     project_id: "Project",
+    // Common field patterns
+    pay_service_area: "Service Area",
+    pay_subservice_area: "Subservice Area",
+    pay_product: "Product",
+    project_id: "Project",
 
-//     // Default fallback
-//     default: "Required Field",
-//   };
+    // Default fallback
+    default: "Required Field",
+  };
 
-//   // Handle nested field names (e.g., payment_detail.equity_account)
-//   if (fieldName.includes(".")) {
-//     const parts = fieldName.split(".");
-//     const lastPart = parts[parts.length - 1];
-//     return fieldLabels[lastPart] || formatFieldName(lastPart);
-//   }
+  // Handle nested field names (e.g., payment_detail.equity_account)
+  if (fieldName.includes(".")) {
+    const parts = fieldName.split(".");
+    const lastPart = parts[parts.length - 1];
+    return fieldLabels[lastPart] || formatFieldName(lastPart);
+  }
 
-//   return fieldLabels[fieldName] || formatFieldName(fieldName);
-// }
+  return fieldLabels[fieldName] || formatFieldName(fieldName);
+}
 
 // Format field names to be more readable
-// function formatFieldName(fieldName) {
-//   return fieldName
-//     .replace(/_/g, " ")
-//     .replace(/\b\w/g, (l) => l.toUpperCase())
-//     .trim();
-// }
+function formatFieldName(fieldName) {
+  return fieldName
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (l) => l.toUpperCase())
+    .trim();
+}
 
 // 100% WORKING: Direct donor handling in DonationModal
 async function handleDonorSelectionDirect(donorId, row) {
@@ -2657,51 +2657,10 @@ async function prepareDonationForSubmission() {
   const doc = { ...donation.doc };
 
   if (doc.payment_detail && Array.isArray(doc.payment_detail)) {
-    const isPledge = (doc.contribution_type || "").toLowerCase() === "pledge";
-    const allowedKeys = new Set([
-      "name",
-      "idx",
-      "random_id",
-      "donor",
-      "donor_name",
-      "donor_type",
-      "donor_desk",
-      "donor_desk_id",
-      "relationship_with_donor",
-      "fund_class",
-      "donation_amount",
-      "mode_of_payment",
-      "account_paid_to",
-      "transaction_no_cheque_no",
-      "reference_date",
-      "equity_account",
-      "receivable_account",
-      "pay_service_area",
-      "pay_subservice_area",
-      "pay_product",
-      "transaction_type",
-      "intention",
-      "project_id",
-      "cost_center",
-      "currency",
-      "to_currency",
-      "posting_date",
-      "is_return",
-    ]);
-
-    doc.payment_detail = doc.payment_detail.map((row, i) => {
-      const newRow = {};
-      // ensure random_id exists
-      newRow.random_id = row.random_id || generateRandomId(i + 1);
-      // copy allowed keys only to avoid losing known fields on insert
-      Object.keys(row || {}).forEach((k) => {
-        if (allowedKeys.has(k)) newRow[k] = row[k];
-      });
-      // for pledge, backfill mode_of_payment from main form if user provided there
-      if (isPledge && !newRow.mode_of_payment && doc.mode_of_payment) {
-        newRow.mode_of_payment = doc.mode_of_payment;
+    doc.payment_detail.forEach((row) => {
+      if (!row.random_id) {
+        row.random_id = generateRandomId(doc.payment_detail.indexOf(row) + 1);
       }
-      return newRow;
     });
   }
 
