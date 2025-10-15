@@ -1121,53 +1121,53 @@ function handleModalClose(idx) {
 // }
 
 // Get user-friendly field labels
-function getFieldLabel(fieldName) {
-  const fieldLabels = {
-    // Main donation fields
-    company: "Company",
-    donor_identity: "Donor Identity",
-    contribution_type: "Contribution Type",
-    posting_date: "Posting Date",
-    currency: "Currency",
-    donation_cost_center: "Donation Cost Center",
+// function getFieldLabel(fieldName) {
+//   const fieldLabels = {
+//     // Main donation fields
+//     company: "Company",
+//     donor_identity: "Donor Identity",
+//     contribution_type: "Contribution Type",
+//     posting_date: "Posting Date",
+//     currency: "Currency",
+//     donation_cost_center: "Donation Cost Center",
 
-    // Payment detail fields
-    equity_account: "Equity Account",
-    fund_class: "Fund Class",
-    donor: "Donor",
-    donation_amount: "Donation Amount",
-    mode_of_payment: "Mode of Payment",
-    account_paid_to: "Account Paid To",
-    receivable_account: "Receivable Account",
-    receipt_number: "Receipt Number",
+//     // Payment detail fields
+//     equity_account: "Equity Account",
+//     fund_class: "Fund Class",
+//     donor: "Donor",
+//     donation_amount: "Donation Amount",
+//     mode_of_payment: "Mode of Payment",
+//     account_paid_to: "Account Paid To",
+//     receivable_account: "Receivable Account",
+//     receipt_number: "Receipt Number",
 
-    // Common field patterns
-    pay_service_area: "Service Area",
-    pay_subservice_area: "Subservice Area",
-    pay_product: "Product",
-    project_id: "Project",
+//     // Common field patterns
+//     pay_service_area: "Service Area",
+//     pay_subservice_area: "Subservice Area",
+//     pay_product: "Product",
+//     project_id: "Project",
 
-    // Default fallback
-    default: "Required Field",
-  };
+//     // Default fallback
+//     default: "Required Field",
+//   };
 
-  // Handle nested field names (e.g., payment_detail.equity_account)
-  if (fieldName.includes(".")) {
-    const parts = fieldName.split(".");
-    const lastPart = parts[parts.length - 1];
-    return fieldLabels[lastPart] || formatFieldName(lastPart);
-  }
+//   // Handle nested field names (e.g., payment_detail.equity_account)
+//   if (fieldName.includes(".")) {
+//     const parts = fieldName.split(".");
+//     const lastPart = parts[parts.length - 1];
+//     return fieldLabels[lastPart] || formatFieldName(lastPart);
+//   }
 
-  return fieldLabels[fieldName] || formatFieldName(fieldName);
-}
+//   return fieldLabels[fieldName] || formatFieldName(fieldName);
+// }
 
 // Format field names to be more readable
-function formatFieldName(fieldName) {
-  return fieldName
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (l) => l.toUpperCase())
-    .trim();
-}
+// function formatFieldName(fieldName) {
+//   return fieldName
+//     .replace(/_/g, " ")
+//     .replace(/\b\w/g, (l) => l.toUpperCase())
+//     .trim();
+// }
 
 // 100% WORKING: Direct donor handling in DonationModal
 async function handleDonorSelectionDirect(donorId, row) {
@@ -1215,64 +1215,29 @@ async function fetchFundClassDetails(fundClass) {
   }
 }
 
-// FIX: Update the updateFundClassFields function to ensure proper field mapping
-// function updateFundClassFields(row, fundClassDetails) {
-//   console.log("Updating row with Fund Class details:", fundClassDetails);
-//   console.log("Row before update:", { ...row });
+// Update Fund Class mapped fields in a payment_detail row
+function updateFundClassFields(row, fundClassDetails) {
+  // Map Fund Class fields to payment detail fields
+  const fieldMappings = {
+    service_area: "pay_service_area",
+    subservice_area: "pay_subservice_area",
+    product: "pay_product",
+    equity_account: "equity_account",
+    receivable_account: "receivable_account",
+    cost_center: "cost_center",
+  };
 
-//   // Map Fund Class fields to payment detail fields
-//   const fieldMappings = {
-//     service_area: "pay_service_area",
-//     subservice_area: "pay_subservice_area",
-//     product: "pay_product",
-//     equity_account: "equity_account",
-//     receivable_account: "receivable_account",
-//     cost_center: "cost_center",
-//   };
+  Object.entries(fieldMappings).forEach(([fundClassField, rowField]) => {
+    if (fundClassDetails && fundClassDetails[fundClassField] !== undefined) {
+      row[rowField] = fundClassDetails[fundClassField] || "";
+    }
+  });
 
-//   // Update each field with Fund Class data
-//   Object.entries(fieldMappings).forEach(([fundClassField, rowField]) => {
-//     if (fundClassDetails[fundClassField] !== undefined) {
-//       const oldValue = row[rowField];
-//       row[rowField] = fundClassDetails[fundClassField] || "";
-//       console.log(`Updated ${rowField}: ${oldValue} -> ${row[rowField]}`);
-
-//       // CRITICAL: Ensure the field is properly set in the row
-//       if (fundClassDetails[fundClassField]) {
-//         row[rowField] = fundClassDetails[fundClassField];
-//         console.log(`Set ${rowField} to: ${row[rowField]}`);
-//       }
-//     }
-//   });
-
-//   // CRITICAL: Ensure equity_account and receivable_account are set
-//   if (fundClassDetails.equity_account) {
-//     row.equity_account = fundClassDetails.equity_account;
-//     console.log("Set equity_account to:", row.equity_account);
-//   }
-
-//   if (fundClassDetails.receivable_account) {
-//     row.receivable_account = fundClassDetails.receivable_account;
-//     console.log("Set receivable_account to:", row.receivable_account);
-//   }
-
-//   console.log("Row after Fund Class update:", { ...row });
-
-//   // Force reactive update - CRITICAL for Vue to detect changes
-//   if (donation.doc.payment_detail) {
-//     console.log("Forcing reactive update of payment_detail after Fund Class update");
-//     donation.doc.payment_detail = [...donation.doc.payment_detail];
-//   }
-
-//   // CRITICAL: Log the final state to verify fields are set
-//   console.log("Final row state after Fund Class update:", {
-//     equity_account: row.equity_account,
-//     receivable_account: row.receivable_account,
-//     service_area: row.pay_service_area,
-//     subservice_area: row.pay_subservice_area,
-//     product: row.pay_product,
-//   });
-// }
+  // Force reactive update - CRITICAL for Vue to detect changes
+  if (donation.doc.payment_detail) {
+    donation.doc.payment_detail = [...donation.doc.payment_detail];
+  }
+}
 
 // function clearFundClassFields(row) {
 //   console.log("Clearing Fund Class fields for row");
@@ -1301,34 +1266,27 @@ const lastSelectedFundClassId = ref(null);
 // REPLACE pending single value with a FIFO queue to keep order of selections
 const pendingDeductionFundClassQueue = ref([]); // array of fund_class in order
 
-// 100% WORKING: Direct Fund Class handling in DonationModal
-// async function handleFundClassSelectionDirect(fundClassId, row) {
-//   console.log("Handling Fund Class selection directly:", { fundClassId, row });
+// Direct Fund Class handling for payment_detail rows
+async function handleFundClassSelectionDirect(fundClassId, row) {
+  if (!fundClassId) {
+    updateFundClassFields(row, { service_area: "", subservice_area: "", product: "", equity_account: "", receivable_account: "", cost_center: "" });
+    lastSelectedFundClassId.value = null;
+    return;
+  }
 
-//   if (!fundClassId) {
-//     clearFundClassFields(row);
-//     // Reset last selected when cleared
-//     lastSelectedFundClassId.value = null;
-//     return;
-//   }
+  lastSelectedFundClassId.value = fundClassId;
 
-//   // Track latest selected (queueing is handled in the payment_detail watcher)
-//   lastSelectedFundClassId.value = fundClassId;
-
-//   try {
-//     const fundClassDetails = await fetchFundClassDetails(fundClassId);
-//     if (fundClassDetails) {
-//       updateFundClassFields(row, fundClassDetails);
-//       console.log("Fund Class fields updated successfully");
-//     } else {
-//       console.log("No Fund Class details received");
-//       toast.error("Could not fetch Fund Class details");
-//     }
-//   } catch (error) {
-//     console.error("Error in direct Fund Class handling:", error);
-//     toast.error("Error loading Fund Class details");
-//   }
-// }
+  try {
+    const fundClassDetails = await fetchFundClassDetails(fundClassId);
+    if (fundClassDetails) {
+      updateFundClassFields(row, fundClassDetails);
+    } else {
+      toast.error("Could not fetch Fund Class details");
+    }
+  } catch (error) {
+    toast.error("Error loading Fund Class details");
+  }
+}
 
 // NEW: Mode of Payment to Account handling functionality
 // async function fetchPaymentModeAccount(modeOfPayment, company) {
@@ -1530,6 +1488,9 @@ watch(
             console.log(`Fund Class ID changed in row ${index}:`, row.fund_class);
             row._lastFundClassId = row.fund_class;
             row.fund_class = row.fund_class;
+
+            // Fetch and populate fund class details into the row
+            await handleFundClassSelectionDirect(row.fund_class, row);
 
             // Trigger backend deduction logic for both Donation and Pledge
             shouldTriggerSetDeductionBreakeven = true;

@@ -2941,13 +2941,44 @@ async function fetchDonationPaymentMetrics() {
     const details = await call("akf_accounts.akf_accounts.doctype.donation.donation.get_donation_details", {
       filters: JSON.stringify({ name: doc.name, donor_id: paymentEntryForm.value.donor_id, idx: paymentEntryForm.value.serial_no }),
     });
-    const outstanding = Number(details?.outstanding_amount || 0);
-    const doubtful = Number(details?.doubtful_debt_amount || 0);
+    // Backend returns values only for certain flows; provide robust fallback like backend UI
+    let outstanding = Number(details?.outstanding_amount ?? NaN);
+    let doubtful = Number(details?.doubtful_debt_amount ?? NaN);
+    if (Number.isNaN(outstanding)) {
+      // Fallbacks: prefer document's outstanding_amount if available
+      const docOutstanding = Number(doc.outstanding_amount ?? NaN);
+      if (!Number.isNaN(docOutstanding)) {
+        outstanding = docOutstanding;
+      } else {
+        // Compute based on backend logic: pledge uses total_donation; donation uses net amount
+        const totalDonation = Number(doc.total_donation || 0);
+        const totalDeduction = Number(doc.total_deduction || 0);
+        const netAmount = totalDonation - totalDeduction;
+        const isPledge = (doc.contribution_type || "").toLowerCase() === "pledge";
+        outstanding = isPledge ? totalDonation : netAmount;
+      }
+    }
+    if (Number.isNaN(doubtful)) {
+      doubtful = 0;
+    }
     paymentReadonly.value.outstanding_amount = outstanding;
     paymentReadonly.value.doubtful_debt_amount = doubtful;
     paymentReadonly.value.remaining_amount = Math.max(outstanding - Number(paymentEntryForm.value.paid_amount || 0), 0);
   } catch (e) {
     // ignore errors
+    // Still set fallbacks so UI shows expected values
+    const doc = document.doc;
+    if (doc) {
+      const docOutstanding = Number(doc.outstanding_amount ?? NaN);
+      const totalDonation = Number(doc.total_donation || 0);
+      const totalDeduction = Number(doc.total_deduction || 0);
+      const netAmount = totalDonation - totalDeduction;
+      const isPledge = (doc.contribution_type || "").toLowerCase() === "pledge";
+      const outstanding = !Number.isNaN(docOutstanding) ? docOutstanding : (isPledge ? totalDonation : netAmount);
+      paymentReadonly.value.outstanding_amount = outstanding;
+      paymentReadonly.value.doubtful_debt_amount = 0;
+      paymentReadonly.value.remaining_amount = Math.max(outstanding - Number(paymentEntryForm.value.paid_amount || 0), 0);
+    }
   }
 }
 
