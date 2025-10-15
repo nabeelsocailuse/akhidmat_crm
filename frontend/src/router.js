@@ -41,6 +41,11 @@ const routes = [
     component: lazy(() => import('@/pages/Dashboard.vue')),
   },
   {
+    path: '/lapsed-donor-dashboard',
+    name: 'Lapsed Donor Dashboard',
+    component: lazy(() => import('@/pages/LapsedDonorDashboard.vue')),
+  },
+  {
     alias: '/leads',
     path: '/leads/view/:viewType?',
     name: 'Leads',

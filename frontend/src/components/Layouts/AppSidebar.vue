@@ -220,6 +220,12 @@ const allViews = computed(() => {
       condition: () => isManager(),
     },
     {
+      label: 'Lapsed Donor Dashboard',
+      icon: LucideLayoutDashboard,
+      to: 'Lapsed Donor Dashboard',
+      condition: () => isManager(),
+    },
+    {
       label: 'Leads',
       icon: LeadsIcon,
       to: 'Leads',

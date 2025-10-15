@@ -9,7 +9,7 @@
           v-if="document.doc.actions?.length"
           :actions="document.doc.actions"
         />
-        <Dropdown v-if="document.doc" :options="donationStatusOptions">
+        <!-- <Dropdown v-if="document.doc" :options="donationStatusOptions">
           <template #default="{ open }">
             <Button :label="document.doc.status || 'Draft'">
               <template #prefix>
@@ -20,7 +20,7 @@
               </template>
             </Button>
           </template>
-        </Dropdown>
+        </Dropdown> -->
         <AssignTo v-model="assignees.data" :data="document.doc" doctype="Donation" />
         <Button label="Print" @click="printDonation" />
         <Button label="PDF" @click="openDonationPDF" />

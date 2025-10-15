@@ -2657,10 +2657,51 @@ async function prepareDonationForSubmission() {
   const doc = { ...donation.doc };
 
   if (doc.payment_detail && Array.isArray(doc.payment_detail)) {
-    doc.payment_detail.forEach((row) => {
-      if (!row.random_id) {
-        row.random_id = generateRandomId(doc.payment_detail.indexOf(row) + 1);
+    const isPledge = (doc.contribution_type || "").toLowerCase() === "pledge";
+    const allowedKeys = new Set([
+      "name",
+      "idx",
+      "random_id",
+      "donor",
+      "donor_name",
+      "donor_type",
+      "donor_desk",
+      "donor_desk_id",
+      "relationship_with_donor",
+      "fund_class",
+      "donation_amount",
+      "mode_of_payment",
+      "account_paid_to",
+      "transaction_no_cheque_no",
+      "reference_date",
+      "equity_account",
+      "receivable_account",
+      "pay_service_area",
+      "pay_subservice_area",
+      "pay_product",
+      "transaction_type",
+      "intention",
+      "project_id",
+      "cost_center",
+      "currency",
+      "to_currency",
+      "posting_date",
+      "is_return",
+    ]);
+
+    doc.payment_detail = doc.payment_detail.map((row, i) => {
+      const newRow = {};
+      // ensure random_id exists
+      newRow.random_id = row.random_id || generateRandomId(i + 1);
+      // copy allowed keys only to avoid losing known fields on insert
+      Object.keys(row || {}).forEach((k) => {
+        if (allowedKeys.has(k)) newRow[k] = row[k];
+      });
+      // for pledge, backfill mode_of_payment from main form if user provided there
+      if (isPledge && !newRow.mode_of_payment && doc.mode_of_payment) {
+        newRow.mode_of_payment = doc.mode_of_payment;
       }
+      return newRow;
     });
   }
 

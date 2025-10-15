@@ -15,7 +15,12 @@
 		"disable-workspaces-and-upgrade-frappeui": "yarn disable-workspaces && yarn upgrade-frappeui"
 	},
 	"dependencies": {
+		"chart.js": "^4.5.1",
+		"datatables.net": "^2.3.4",
+		"datatables.net-dt": "^2.3.4",
 		"imask": "^7.6.1",
-		"vanilla-masker": "^1.2.0"
+		"jquery": "^3.7.1",
+		"vanilla-masker": "^1.2.0",
+		"vue-chartjs": "^5.3.2"
 	}
 }
