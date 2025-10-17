@@ -615,6 +615,16 @@ const tabs = createResource({
               donation.doc.exchange_rate = 1;
             }
 
+            // Ensure inventory_flag in items table defaults to 'Donated' and is read-only
+            if (field.fieldname === "inventory_flag") {
+              try {
+                field.default = field.default || 'Donated';
+                field.read_only = 1;
+              } catch (e) {
+                // ignore
+              }
+            }
+
             // Handle posting_date and posting_time read-only state based on edit_posting_date_time
             if (
               field.fieldname === "posting_date" ||
@@ -2714,6 +2724,12 @@ async function prepareDonationForSubmission() {
     "Prepared donation document for submission with user modifications preserved:",
     doc
   );
+  // Ensure items have inventory_flag set to 'Donated'
+  if (doc.items && Array.isArray(doc.items)) {
+    doc.items.forEach((row) => {
+      if (row && !row.inventory_flag) row.inventory_flag = 'Donated';
+    });
+  }
   return doc;
 }
 
@@ -2990,6 +3006,64 @@ watch(
         handleFundClassSelectionForItem(row.fund_class, row);
       }
     });
+  },
+  { deep: true }
+);
+
+// Enforce mutual exclusivity between 'new' and 'used' checkboxes on items (including row-editor)
+watch(
+  () => donation.doc.items,
+  (newItems) => {
+    if (!newItems || !Array.isArray(newItems)) return;
+    let changed = false;
+    newItems.forEach((row) => {
+      if (!row) return;
+
+      // Use safe bracket notation because 'new' is a reserved word in some contexts
+      const isNew = typeof row['new'] !== 'undefined' ? !!row['new'] : false;
+      const isUsed = typeof row['used'] !== 'undefined' ? !!row['used'] : false;
+
+      if (typeof row._lastNew === 'undefined') row._lastNew = isNew;
+      if (typeof row._lastUsed === 'undefined') row._lastUsed = isUsed;
+
+      // If 'new' was toggled and became true, ensure 'used' is false
+      if (isNew && row._lastNew !== isNew) {
+        if (row['used']) {
+          row['used'] = false;
+          changed = true;
+        }
+        row._lastUsed = false;
+        row._lastNew = isNew;
+      }
+
+      // If 'used' was toggled and became true, ensure 'new' is false
+      if (isUsed && row._lastUsed !== isUsed) {
+        if (row['new']) {
+          row['new'] = false;
+          changed = true;
+        }
+        row._lastNew = false;
+        row._lastUsed = isUsed;
+      }
+    });
+    if (changed) donation.doc.items = [...donation.doc.items];
+  },
+  { deep: true }
+);
+
+// Ensure inventory_flag is always set to 'Donated' for items table
+watch(
+  () => donation.doc.items,
+  (newItems) => {
+    if (!newItems || !Array.isArray(newItems)) return;
+    let changed = false;
+    newItems.forEach((row) => {
+      if (row && row.inventory_flag !== 'Donated') {
+        row.inventory_flag = 'Donated';
+        changed = true;
+      }
+    });
+    if (changed) donation.doc.items = [...donation.doc.items];
   },
   { deep: true }
 );

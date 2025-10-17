@@ -6,25 +6,6 @@
 
     <!-- FILTERS -->
     <div class="flex flex-wrap gap-4 mb-8">
-      <!-- Year Filter -->
-      <!-- <select
-        v-model="selectedYear"
-        class="border rounded-lg p-2 shadow-sm focus:ring focus:ring-blue-300 w-48 block"
-      >
-        <option v-for="year in years" :key="year" :value="year">
-          {{ year }}
-        </option>
-      </select> -->
-
-      <!-- Region Filter -->
-      <!-- <select
-        v-model="selectedRegion"
-        class="border rounded-lg p-2 shadow-sm focus:ring focus:ring-blue-300 w-48 block"
-      >
-        <option value="">All Regions</option>
-        <option v-for="region in regions" :key="region">{{ region }}</option>
-      </select> -->
-
       <!-- Campaign Filter (linked to Doctype) -->
       <div class="relative">
         <Link
@@ -38,7 +19,7 @@
 
     <!-- STAT CARDS -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-      <!-- Total Donors -->
+      <!-- Total Active Donors -->
       <div
         class="bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-2xl p-6 shadow-lg transform hover:scale-105 transition-transform duration-300"
       >
@@ -68,7 +49,7 @@
         </div>
       </div>
 
-      <!-- Re-engaged Donors -->
+      <!-- Re-engagement Rate -->
       <div
         class="bg-gradient-to-br from-green-500 to-green-700 text-white rounded-2xl p-6 shadow-lg transform hover:scale-105 transition-transform duration-300"
       >
@@ -113,7 +94,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from "vue";
+import { ref, onMounted, nextTick, watch } from "vue";
 import Link from "@/components/Controls/Link.vue";
 import $ from "jquery";
 import "datatables.net-dt/css/dataTables.dataTables.css";
@@ -121,11 +102,7 @@ import DataTable from "datatables.net-dt";
 import { call } from "@/utils/api";
 
 // --- Filters ---
-// const selectedYear = ref("2025");
-// const selectedRegion = ref("");
 const selectedCampaign = ref("");
-// const years = [2023, 2024, 2025];
-// const regions = ["North", "South", "East", "West"];
 
 // --- Reactive Data ---
 const lapsedDonors = ref([]);
@@ -133,33 +110,36 @@ const totalActiveDonors = ref(0);
 const totalLapsedDonors = ref(0);
 const reEngagementRate = ref(0);
 
+// --- Main function ---
 async function loadLapsedDonorDashboard() {
   try {
-    const res = await call("crm.api.LapsedDonor.get_lapsed_donor_dashboard");
+    const res = await call("crm.api.LapsedDonor.get_lapsed_donor_dashboard", {
+      filters: {
+        campaign: selectedCampaign.value,
+      },
+    });
     totalActiveDonors.value = res?.total_active_donors || 0;
     totalLapsedDonors.value = res?.total_lapsed_donors || 0;
     reEngagementRate.value = res?.re_engagement_rate || 0;
     lapsedDonors.value = res?.lapsed_donors_list || [];
 
     await nextTick();
-
-    // Destroy previous DataTable (if exists)
     if ($.fn.dataTable.isDataTable("#lapsedDonorTable")) {
       $("#lapsedDonorTable").DataTable().destroy();
     }
-
-    // Initialize new DataTable instance
     new DataTable("#lapsedDonorTable");
   } catch (e) {
     console.error("Error loading lapsed donor dashboard:", e);
-    totalActiveDonors.value = 0;
-    totalLapsedDonors.value = 0;
-    reEngagementRate.value = 0;
-    lapsedDonors.value = [];
   }
 }
 
-// Initial load
+
+// --- Watch campaign filter ---
+watch(selectedCampaign, () => {
+  loadLapsedDonorDashboard();
+});
+
+// --- Initial load ---
 onMounted(loadLapsedDonorDashboard);
 </script>
 

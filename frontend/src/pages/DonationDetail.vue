@@ -189,8 +189,24 @@
       </div>
       <div class="p-4 space-y-4">
         <div class="grid grid-cols-2 gap-3">
-          <FormControl :label="__('Donor ID')" type="text" v-model="paymentEntryForm.donor_id" readonly />
-          <FormControl :label="__('Serial No.')" type="text" v-model="paymentEntryForm.serial_no" readonly />
+          <div>
+            <FormControl
+              :label="__('Donor')"
+              type="select"
+              :options="paymentEntryDonorOptions"
+              v-model="paymentEntryForm.donor_id"
+              :placeholder="__('Select Donor')"
+            />
+          </div>
+          <div>
+            <FormControl
+              :label="__('Serial No.')"
+              type="select"
+              :options="paymentEntrySerialOptions"
+              v-model="paymentEntryForm.serial_no"
+              :placeholder="__('Select Serial No.')"
+            />
+          </div>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
@@ -2887,6 +2903,8 @@ const paymentEntryForm = ref({
   cheque_reference_no: "",
   paid_amount: 0,
 });
+const paymentEntryDonorOptions = ref([]);
+const paymentEntrySerialOptions = ref([]);
 const paymentReadonly = ref({
   outstanding_amount: 0,
   doubtful_debt_amount: 0,
@@ -2918,67 +2936,75 @@ async function refreshPaymentEntryAvailability() {
 }
 
 function openPaymentEntryModal() {
-  // Try to prefill donor and serial from first payment_detail row
-  const pd = (document.doc && Array.isArray(document.doc.payment_detail)) ? document.doc.payment_detail[0] : null;
+  // Build donor and serial options from payment_detail without preselecting
+  const rows = (document.doc && Array.isArray(document.doc.payment_detail)) ? document.doc.payment_detail : [];
+  const donorsSeen = new Set();
+  paymentEntryDonorOptions.value = rows
+    .filter((r) => r?.donor)
+    .filter((r) => {
+      if (donorsSeen.has(r.donor)) return false;
+      donorsSeen.add(r.donor);
+      return true;
+    })
+    .map((r) => ({ label: r.donor, value: r.donor }));
+
+  // Do not pre-populate serials until donor is chosen
+  paymentEntrySerialOptions.value = [];
+
   paymentEntryForm.value = {
-    donor_id: pd?.donor || "",
-    serial_no: pd?.idx || pd?.serial_no || "",
+    donor_id: "",
+    serial_no: "",
     mode_of_payment: "",
     account_paid_to: "",
     cheque_reference_no: "",
     paid_amount: 0,
   };
-  // Fetch readonly metrics for selected donor/row
-  fetchDonationPaymentMetrics();
+  paymentReadonly.value.outstanding_amount = 0;
+  paymentReadonly.value.doubtful_debt_amount = 0;
+  paymentReadonly.value.remaining_amount = 0;
   showPaymentEntryModal.value = true;
 }
+
+watch(() => paymentEntryForm.value.donor_id, () => {
+  // Reset serial on donor change and metrics until serial is chosen
+  paymentEntryForm.value.serial_no = "";
+  paymentReadonly.value.outstanding_amount = 0;
+  paymentReadonly.value.doubtful_debt_amount = 0;
+  paymentReadonly.value.remaining_amount = 0;
+
+  // Filter serials to only those rows for selected donor
+  const rows = (document.doc && Array.isArray(document.doc.payment_detail)) ? document.doc.payment_detail : [];
+  const filtered = rows.filter((r) => r?.donor === paymentEntryForm.value.donor_id);
+  paymentEntrySerialOptions.value = filtered
+    .map((r) => ({ label: String(r.idx || r.serial_no || ""), value: String(r.idx || r.serial_no || "") }))
+    .filter((o) => !!o.value);
+});
+
+watch(() => paymentEntryForm.value.serial_no, () => {
+  // When both donor and serial selected, fetch metrics
+  fetchDonationPaymentMetrics();
+});
 
 async function fetchDonationPaymentMetrics() {
   try {
     const doc = document.doc;
     if (!doc) return;
     if (!paymentEntryForm.value.donor_id || !paymentEntryForm.value.serial_no) return;
-    const details = await call("akf_accounts.akf_accounts.doctype.donation.donation.get_donation_details", {
-      filters: JSON.stringify({ name: doc.name, donor_id: paymentEntryForm.value.donor_id, idx: paymentEntryForm.value.serial_no }),
+    const details = await call("akf_accounts.akf_accounts.doctype.donation.donation.get_outstanding", {
+      filters: JSON.stringify({ name: doc.name, donor_id: paymentEntryForm.value.donor_id, idx: Number(paymentEntryForm.value.serial_no) }),
     });
-    // Backend returns values only for certain flows; provide robust fallback like backend UI
-    let outstanding = Number(details?.outstanding_amount ?? NaN);
-    let doubtful = Number(details?.doubtful_debt_amount ?? NaN);
-    if (Number.isNaN(outstanding)) {
-      // Fallbacks: prefer document's outstanding_amount if available
-      const docOutstanding = Number(doc.outstanding_amount ?? NaN);
-      if (!Number.isNaN(docOutstanding)) {
-        outstanding = docOutstanding;
-      } else {
-        // Compute based on backend logic: pledge uses total_donation; donation uses net amount
-        const totalDonation = Number(doc.total_donation || 0);
-        const totalDeduction = Number(doc.total_deduction || 0);
-        const netAmount = totalDonation - totalDeduction;
-        const isPledge = (doc.contribution_type || "").toLowerCase() === "pledge";
-        outstanding = isPledge ? totalDonation : netAmount;
-      }
-    }
-    if (Number.isNaN(doubtful)) {
-      doubtful = 0;
-    }
-    paymentReadonly.value.outstanding_amount = outstanding;
-    paymentReadonly.value.doubtful_debt_amount = doubtful;
-    paymentReadonly.value.remaining_amount = Math.max(outstanding - Number(paymentEntryForm.value.paid_amount || 0), 0);
+    // Use backend per-donor, per-serial amounts only; avoid cross-donor fallbacks
+    const outstanding = Number(details?.outstanding_amount);
+    const doubtful = Number(details?.doubtful_debt_amount);
+    paymentReadonly.value.outstanding_amount = Number.isFinite(outstanding) ? outstanding : 0;
+    paymentReadonly.value.doubtful_debt_amount = Number.isFinite(doubtful) ? doubtful : 0;
+    paymentReadonly.value.remaining_amount = Math.max(paymentReadonly.value.outstanding_amount - Number(paymentEntryForm.value.paid_amount || 0), 0);
   } catch (e) {
     // ignore errors
-    // Still set fallbacks so UI shows expected values
-    const doc = document.doc;
-    if (doc) {
-      const docOutstanding = Number(doc.outstanding_amount ?? NaN);
-      const totalDonation = Number(doc.total_donation || 0);
-      const totalDeduction = Number(doc.total_deduction || 0);
-      const netAmount = totalDonation - totalDeduction;
-      const isPledge = (doc.contribution_type || "").toLowerCase() === "pledge";
-      const outstanding = !Number.isNaN(docOutstanding) ? docOutstanding : (isPledge ? totalDonation : netAmount);
-      paymentReadonly.value.outstanding_amount = outstanding;
-      paymentReadonly.value.doubtful_debt_amount = 0;
-      paymentReadonly.value.remaining_amount = Math.max(outstanding - Number(paymentEntryForm.value.paid_amount || 0), 0);
-    }
+    // On error, default to zero to avoid misrepresenting amounts across donors
+    paymentReadonly.value.outstanding_amount = 0;
+    paymentReadonly.value.doubtful_debt_amount = 0;
+    paymentReadonly.value.remaining_amount = 0;
   }
 }
 
