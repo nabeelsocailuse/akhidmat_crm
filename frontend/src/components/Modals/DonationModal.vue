@@ -3106,21 +3106,18 @@ watch(
       // If the row does not have a warehouse, set it to the main warehouse
       if (!row.warehouse || (typeof row.warehouse === 'string' && row.warehouse.trim() === '')) {
         row.warehouse = mainWarehouse;
-        row._warehouseAutoSet = true; // tracking flag for debugging
+        row._warehouseAutoSet = true; 
         changed = true;
       }
     });
 
     if (changed) {
-      // Force reactive update so UI reflects the warehouse immediately
       donation.doc.items = [...donation.doc.items];
     }
   },
   { deep: true }
 );
 
-// PROPAGATE: When the main warehouse value changes, populate it into any existing
-// item rows that don't already have a warehouse set.
 watch(
   () => donation.doc.warehouse,
   (newWarehouse, oldWarehouse) => {

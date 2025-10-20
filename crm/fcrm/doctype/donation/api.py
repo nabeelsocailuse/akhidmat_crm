@@ -1196,6 +1196,66 @@ def get_donation_validation_summary(payment_details, company, contribution_type,
         return {"success": False, "message": f"Error in validation summary: {str(e)}"}
 
 @frappe.whitelist()
+def get_payment_entry_donors(donation_id):
+    """
+    Get donors available for payment entry (only unpaid donors).
+    This replicates the backend get_donors_list functionality.
+    """
+    try:
+        if not donation_id:
+            return {"success": False, "message": "Donation ID is required"}
+        
+        # Use the backend get_donors_list function
+        result = frappe.db.sql(f""" 
+            Select 
+                COALESCE(donor_id, donor) as donor_id, idx, (outstanding_amount-doubtful_debt_amount) as remaining_amount
+            From 
+                `tabPayment Detail` 
+            Where
+                outstanding_amount>0 and parent='{donation_id}'
+                and (donor_id IS NOT NULL OR donor IS NOT NULL)
+            Having 
+                remaining_amount > 0
+        """, as_dict=True)
+        
+        donors_list = []
+        idx_list = {}
+        
+        if result:
+            # Get unique donors
+            donors_seen = set()
+            for row in result:
+                donor_id = row.get('donor_id')
+                idx = row.get('idx')
+                remaining_amount = row.get('remaining_amount', 0)
+                
+                if donor_id and donor_id not in donors_seen:
+                    donors_list.append({
+                        'donor_id': donor_id,
+                        'remaining_amount': remaining_amount
+                    })
+                    donors_seen.add(donor_id)
+                
+                # Build idx list for each donor
+                if donor_id not in idx_list:
+                    idx_list[donor_id] = []
+                idx_list[donor_id].append(idx)
+        
+        # Sort idx lists
+        for donor in idx_list:
+            idx_list[donor] = sorted(idx_list[donor])
+        
+        return {
+            "success": True,
+            "donors_list": sorted(donors_list, key=lambda x: x['donor_id']),
+            "idx_list": idx_list
+        }
+        
+    except Exception as e:
+        frappe.log_error(f"Error in get_payment_entry_donors: {str(e)}", "Payment Entry Donors Error")
+        return {"success": False, "message": f"Error getting payment entry donors: {str(e)}"}
+
+@frappe.whitelist()
 def get_payment_mode_account(mode_of_payment, company):
     """
     Get the default account for a mode of payment.

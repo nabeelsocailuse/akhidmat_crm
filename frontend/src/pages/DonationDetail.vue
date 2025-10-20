@@ -28,7 +28,7 @@
           v-if="
             document.doc &&
             document.doc.docstatus === 0 &&
-            document.doc.status === 'Draft'
+            (document.doc.status === 'Draft' || document.doc.unknown_to_known === 1)
           "
           label="Submit"
           variant="solid"
@@ -40,6 +40,7 @@
             document.doc.docstatus === 1 &&
             !document.doc.is_return &&
             (document.doc.status || '').toLowerCase() !== 'credit note issued' &&
+            (document.doc.status || '').toLowerCase() !== 'unknown to known' &&
             (document.doc.donation_type || '').toLowerCase() !== 'in kind donation'
           "
           :options="createDropdownOptions"
@@ -263,7 +264,8 @@
         <button class="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100" @click="showReverseDonorModal = false">{{ __('Close') }}</button>
       </div>
       <div class="p-4 space-y-4">
-        <Link
+        <LinkField
+          class="form-control"
           :label="__('Donor (Known)')"
           :doctype="'Donor'"
           :filters="{ donor_name: ['not in', ['Unknown Donor', 'Merchant Known']] }"
@@ -2860,6 +2862,9 @@ const createDropdownOptions = computed(() => {
   const donationType = (doc.donation_type || "").toLowerCase();
   const status = (doc.status || "").toLowerCase();
 
+  // Do not show Create options for Unknown To Known mapped returns
+  if (status === 'unknown to known') return options;
+
   // If status is "partly paid", only show Payment Entry
   if (status === "partly paid") {
     options.push({ label: "Payment Entry", onClick: openPaymentEntryModal });
@@ -3114,18 +3119,41 @@ async function submitReverseDonor() {
       return;
     }
 
-    // Update current donation (Desk uses the same method)
-    await call("akf_accounts.akf_accounts.doctype.donation.donation.set_unknown_to_known", {
-      name: document.doc.name,
-      values: JSON.stringify({
+    // Create a mapped return document (Unknown -> Known) and open it
+    // This uses the same server-side mapping used by Desk: unknown_to_known.convert_unknown_to_known
+    const mapped = await call(
+      "akf_accounts.akf_accounts.doctype.donation.unknown_to_known.convert_unknown_to_known",
+      {
+        source_name: document.doc.name,
         donor: reverseDonorForm.value.donor,
         serial_no: reverseDonorForm.value.serial_no,
-      }),
-    });
+        args: JSON.stringify({ donor: reverseDonorForm.value.donor, serial_no: reverseDonorForm.value.serial_no }),
+      },
+      { silent: true }
+    );
 
-    toast.success(__("Donor reversed to Known successfully"));
-    showReverseDonorModal.value = false;
-    await document.reload();
+    const created = await call("frappe.client.insert", { doc: mapped }, { silent: true });
+    if (created && created.name) {
+      // Attempt to update the original donation's payment detail to mark it reversed so
+      // the Reverse Donor button disappears. This mirrors the expected accounting update
+      // flow (best-effort; if it fails we still navigate to the created document).
+      try {
+        await call("akf_accounts.akf_accounts.doctype.donation.donation.set_unknown_to_known", {
+          name: document.doc.name,
+          values: JSON.stringify({ donor: reverseDonorForm.value.donor, serial_no: reverseDonorForm.value.serial_no }),
+        });
+      } catch (e) {
+        // Log but don't block navigation
+        console.error('Failed to update original donation after reversal', e);
+      }
+
+      toast.success(__("Donor reversed to Known successfully"));
+      showReverseDonorModal.value = false;
+      // Navigate to the newly created return document so user can review/submit
+      router.push({ name: "DonationDetail", params: { donationId: created.name } });
+    } else {
+      toast.error(__("Failed to reverse donor"));
+    }
   } catch (e) {
     console.error(e);
     toast.error(e.message || __("Error updating donor"));
