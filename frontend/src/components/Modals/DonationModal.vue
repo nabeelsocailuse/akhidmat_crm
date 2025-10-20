@@ -3194,6 +3194,86 @@ function updateCalculationFields() {
   });
 }
 
+// --- Currency / Exchange rate helpers (replicates DonationDetail behaviour) ---
+import { ref as vueRefLocal } from "vue";
+const companyCurrency = vueRefLocal(null);
+
+async function getCompanyCurrency() {
+  try {
+    if (companyCurrency.value) return companyCurrency.value;
+    if (!donation.doc?.company) return null;
+    const res = await call("frappe.client.get_value", {
+      doctype: "Company",
+      filters: { name: donation.doc.company },
+      fieldname: "default_currency",
+    });
+    const val = res?.default_currency || res?.message?.default_currency || null;
+    companyCurrency.value = val;
+    return val;
+  } catch (e) {
+    console.error("Error fetching company currency:", e);
+    return null;
+  }
+}
+
+let _exchangeRateTimeout = null;
+async function setExchangeRate() {
+  // Debounce rapid changes
+  if (_exchangeRateTimeout) clearTimeout(_exchangeRateTimeout);
+  _exchangeRateTimeout = setTimeout(async () => {
+    try {
+      if (!donation.doc || !donation.doc.currency) return;
+      const company_curr = await getCompanyCurrency();
+      // If we don't know company currency, skip
+      if (!company_curr) return;
+
+      // If currencies are same, set to 1
+      if (donation.doc.currency === company_curr) {
+        donation.doc.exchange_rate = 1;
+        return;
+      }
+
+      // Call backend util to get exchange rate
+      const res = await call("erpnext.setup.utils.get_exchange_rate", {
+        transaction_date: donation.doc.posting_date,
+        from_currency: donation.doc.currency,
+        to_currency: company_curr,
+      });
+
+      if (typeof res === "number" || typeof res === "string") {
+        donation.doc.exchange_rate = Number(res) || donation.doc.exchange_rate || 1;
+      } else if (res && res.message) {
+        donation.doc.exchange_rate = Number(res.message) || donation.doc.exchange_rate || 1;
+      }
+    } catch (e) {
+      console.error("Failed to fetch exchange rate:", e);
+    }
+  }, 150);
+}
+
+// Watch currency and posting_date to keep exchange_rate in sync
+watch(
+  () => [donation.doc?.currency, donation.doc?.posting_date],
+  (vals) => {
+    // only when donation object exists
+    if (!donation.doc) return;
+    setExchangeRate();
+  }
+);
+
+// Helper to format currency values inside the modal (used by any inline displays)
+function formatCurrency(value) {
+  const num = Number(value || 0);
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: donation.doc?.to_currency || donation.doc?.currency || "PKR",
+    }).format(num);
+  } catch (e) {
+    return `${num}`;
+  }
+}
+
 // ADD: Watcher to update calculations when payment_detail changes
 watch(
   () => donation.doc.payment_detail,
