@@ -1,4 +1,5 @@
 import frappe
+from frappe.utils import nowdate
 
 @frappe.whitelist()
 def get_lapsed_donor_dashboard(filters=None):
@@ -56,6 +57,7 @@ def get_lapsed_donor_dashboard(filters=None):
         SELECT 
             d.name AS donor_id,
             d.donor_name,
+            d.email,
             MAX(dn.due_date) AS last_donation_date,
             SUM(pd.donation_amount) AS total_donations
         FROM 
@@ -67,10 +69,11 @@ def get_lapsed_donor_dashboard(filters=None):
         WHERE 
             d.status = 'Active' AND dn.docstatus = 1 {conditions}
         GROUP BY 
-            d.name, d.donor_name
+            d.name, d.donor_name, d.email
         HAVING 
             last_donation_date < (CURDATE() - INTERVAL 365 DAY)
     """, as_dict=True)
+
 
     return {
         "total_active_donors": total_active_donors,
@@ -78,3 +81,46 @@ def get_lapsed_donor_dashboard(filters=None):
         "re_engagement_rate": re_engagement_rate,
         "lapsed_donors_list": lapsed_donors_list or []
     }
+
+
+
+
+@frappe.whitelist()
+def send_lapsed_donor_emails(group_name):
+    """Send email to all members of a given email group using the default outgoing account."""
+    if not group_name:
+        frappe.throw("Email group name is required")
+
+    members = frappe.get_all(
+        "Email Group Member",
+        filters={"email_group": group_name},
+        fields=["email"]
+    )
+
+    if not members:
+        frappe.throw("No members found in the specified email group.")
+
+    emails = [m.email for m in members if m.email]
+
+    subject = "We Miss You at AKF - Let's Reconnect!"
+    message = """
+        <p>Dear Donor,</p>
+        <p>We noticed it’s been a while since your last contribution. 
+        Your support has always made a real difference, and we’d love to have you back!</p>
+        <p>Click below to renew your support.</p>
+        <p><a href='https://akf.org/donate' 
+              style='background:#007bff;color:#fff;padding:10px 20px;text-decoration:none;border-radius:5px;'>Donate Again</a></p>
+        <p>Warm regards,<br>The AKF Team</p>
+    """
+
+    frappe.sendmail(
+        recipients=emails,
+        subject=subject,
+        message=message,
+        now=False,  
+        reference_doctype="Email Group",
+        reference_name=group_name
+    )
+
+    return {"message": f"{len(emails)} emails queued successfully."}
+

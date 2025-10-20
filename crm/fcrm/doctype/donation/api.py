@@ -171,10 +171,17 @@ def set_deduction_breakeven(payment_details, company, contribution_type, donatio
         
         def reset_mode_of_payment(row):
             if contribution_type == "Pledge":
-                row['mode_of_payment'] = None
-                row['account_paid_to'] = None
-                row['transaction_no_cheque_no'] = ""
-                row['reference_date'] = None
+                # Only reset if no explicit mode of payment is set by user
+                # This preserves user-entered payment details for Bank Draft, etc.
+                if not row.get('mode_of_payment'):
+                    row['mode_of_payment'] = None
+                    row['account_paid_to'] = None
+                    row['transaction_no_cheque_no'] = ""
+                    row['reference_date'] = None
+                # If mode_of_payment is set (like Bank Draft), preserve the payment details
+                # but still clear account_paid_to if not set
+                elif not row.get('account_paid_to'):
+                    row['account_paid_to'] = None
             # Note: Merchant logic removed as it's not in the current backend
         
         def get_deduction_details(row, deduction_breakeven):
@@ -768,10 +775,17 @@ def reset_mode_of_payment(row, contribution_type):
     """Reset mode of payment based on contribution type"""
     try:
         if contribution_type == "Pledge":
-            row['mode_of_payment'] = None
-            row['account_paid_to'] = None
-            row['transaction_no_cheque_no'] = ""
-            row['reference_date'] = None
+            # Only reset if no explicit mode of payment is set by user
+            # This preserves user-entered payment details for Bank Draft, etc.
+            if not row.get('mode_of_payment'):
+                row['mode_of_payment'] = None
+                row['account_paid_to'] = None
+                row['transaction_no_cheque_no'] = ""
+                row['reference_date'] = None
+            # If mode_of_payment is set (like Bank Draft), preserve the payment details
+            # but still clear account_paid_to if not set
+            elif not row.get('account_paid_to'):
+                row['account_paid_to'] = None
     except Exception:
         pass
 

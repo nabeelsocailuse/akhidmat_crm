@@ -3085,6 +3085,62 @@ watch(
   },
   { deep: true }
 );
+
+// AUTO-FILL: When donation_type is In Kind Donation and a main warehouse is selected,
+// ensure newly created item rows inherit that warehouse immediately.
+watch(
+  () => donation.doc.items,
+  (newItems, oldItems) => {
+    if (!newItems || !Array.isArray(newItems)) return;
+
+    // Only apply for In Kind Donation
+    if (donation.doc.donation_type !== 'In Kind Donation') return;
+
+    const mainWarehouse = donation.doc.warehouse;
+    if (!mainWarehouse) return;
+
+    let changed = false;
+
+    newItems.forEach((row) => {
+      if (!row) return;
+      // If the row does not have a warehouse, set it to the main warehouse
+      if (!row.warehouse || (typeof row.warehouse === 'string' && row.warehouse.trim() === '')) {
+        row.warehouse = mainWarehouse;
+        row._warehouseAutoSet = true; // tracking flag for debugging
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      // Force reactive update so UI reflects the warehouse immediately
+      donation.doc.items = [...donation.doc.items];
+    }
+  },
+  { deep: true }
+);
+
+// PROPAGATE: When the main warehouse value changes, populate it into any existing
+// item rows that don't already have a warehouse set.
+watch(
+  () => donation.doc.warehouse,
+  (newWarehouse, oldWarehouse) => {
+    if (donation.doc.donation_type !== 'In Kind Donation') return;
+    if (!newWarehouse) return;
+    if (!donation.doc.items || !Array.isArray(donation.doc.items)) return;
+
+    let changed = false;
+    donation.doc.items.forEach((row) => {
+      if (!row) return;
+      if (!row.warehouse || (typeof row.warehouse === 'string' && row.warehouse.trim() === '')) {
+        row.warehouse = newWarehouse;
+        row._warehouseAutoSet = true;
+        changed = true;
+      }
+    });
+
+    if (changed) donation.doc.items = [...donation.doc.items];
+  }
+);
 const totalDonation = computed(() => {
   if (!donation.doc.payment_detail || !Array.isArray(donation.doc.payment_detail)) {
     return 0;
@@ -3167,12 +3223,10 @@ watch(
   }
 );
 
-// ADD: Function to validate percentage against min/max limits
 function validatePercentageLimits(row, rowIndex) {
   const rowNum = rowIndex + 1;
   const percentage = parseFloat(row.percentage);
 
-  // Check if percentage is a valid number
   if (isNaN(percentage)) {
     return {
       isValid: false,
@@ -3180,7 +3234,6 @@ function validatePercentageLimits(row, rowIndex) {
     };
   }
 
-  // Check if percentage is negative
   if (percentage < 0) {
     return {
       isValid: false,
@@ -3188,7 +3241,6 @@ function validatePercentageLimits(row, rowIndex) {
     };
   }
 
-  // Check if percentage exceeds 100%
   if (percentage > 100) {
     return {
       isValid: false,
@@ -3196,7 +3248,6 @@ function validatePercentageLimits(row, rowIndex) {
     };
   }
 
-  // Check min/max percentage limits if they exist
   if (
     row.min_percent !== null &&
     row.min_percent !== undefined &&
@@ -3229,12 +3280,10 @@ function validatePercentageLimits(row, rowIndex) {
   return { isValid: true };
 }
 
-// ADD: Function to calculate deduction amount based on percentage and donation amount
 function calculateDeductionAmount(row) {
   const percentage = parseFloat(row.percentage);
   const donationAmount = parseFloat(row.donation_amount);
 
-  // Validate inputs
   if (isNaN(percentage) || isNaN(donationAmount)) {
     console.log("Cannot calculate amount: invalid percentage or donation amount");
     return null;
@@ -3245,7 +3294,6 @@ function calculateDeductionAmount(row) {
     return null;
   }
 
-  // Calculate amount: (percentage / 100) * donation_amount
   const calculatedAmount = (percentage / 100) * donationAmount;
 
   console.log(
@@ -3255,52 +3303,20 @@ function calculateDeductionAmount(row) {
   return calculatedAmount;
 }
 
-// ADD: Function to store original backend values when deduction breakeven is first populated
-// function storeOriginalDeductionValues() {
-//   if (
-//     donation.doc.deduction_breakeven &&
-//     Array.isArray(donation.doc.deduction_breakeven)
-//   ) {
-//     donation.doc.deduction_breakeven.forEach((row, index) => {
-//       if (row) {
-//         // Store original values when first populated from backend
-//         if (row._originalPercentage === undefined) {
-//           row._originalPercentage = row.percentage;
-//           row._originalMinPercent = row.min_percent;
-//           row._originalMaxPercent = row.max_percent;
-//           row._originalAmount = row.amount;
-//           row._originalBaseAmount = row.base_amount;
-//           console.log(`Stored original values for deduction row ${index}:`, {
-//             percentage: row._originalPercentage,
-//             min_percent: row._originalMinPercent,
-//             max_percent: row._originalMaxPercent,
-//             amount: row._originalAmount,
-//             base_amount: row._originalBaseAmount,
-//           });
-//         }
-//       }
-//     });
-//   }
-// }
 
-// BULLETPROOF FIX: Enhanced triggerOnRowRemove to sync deletion between payment_detail and deduction_breakeven
 const originalTriggerOnRowRemove = donation.triggerOnRowRemove;
 
-// Create custom triggerOnRowRemove that handles payment_detail to deduction_breakeven sync
 const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
   console.log("Custom triggerOnRowRemove called in DonationModal:", {
     selectedRows,
     remainingRows,
   });
 
-  // Check if this is a payment_detail table deletion
   if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
     console.log("Payment detail table deletion detected in DonationModal");
 
-    // Get the random_ids of deleted payment detail rows
     const deletedRandomIds = new Set();
     selectedRows.forEach((rowName) => {
-      // Find the deleted row in the original payment_detail array
       const deletedRow = donation.doc.payment_detail.find((row) => row.name === rowName);
       if (deletedRow && deletedRow.random_id) {
         deletedRandomIds.add(deletedRow.random_id);
@@ -3310,7 +3326,6 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
       }
     });
 
-    // Delete corresponding rows in deduction_breakeven table
     if (
       deletedRandomIds.size > 0 &&
       donation.doc.deduction_breakeven &&
@@ -3318,7 +3333,6 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
     ) {
       const originalDeductionLength = donation.doc.deduction_breakeven.length;
 
-      // Filter out deduction_breakeven rows that match the deleted payment_detail random_ids
       donation.doc.deduction_breakeven = donation.doc.deduction_breakeven.filter(
         (deductionRow) => {
           const shouldKeep = !deletedRandomIds.has(deductionRow.random_id);
@@ -3344,56 +3358,12 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
     }
   }
 
-  // Call the original triggerOnRowRemove for normal functionality
   if (originalTriggerOnRowRemove) {
     originalTriggerOnRowRemove(selectedRows, remainingRows);
   }
 };
 
-// Override the triggerOnRowRemove in the donation context
 donation.triggerOnRowRemove = customTriggerOnRowRemove;
 
-// function getFieldFilters(field) {
-//   // Apply filter to link_doctype field in links/timeline_links child tables
-//   // Only allow Donor, CRM Lead, Contact doctypes
-//   if (
-//     (parentFieldname === "links" || parentFieldname === "timeline_links") &&
-//     field.fieldname === "link_doctype" &&
-//     field.fieldtype === "Link" &&
-//     field.options === "DocType"
-//   ) {
-//     return { name: ["in", ["Donor", "CRM Lead", "Contact"]] };
-//   }
-
-//   // Apply warehouse-specific filters for donation form
-//   if (
-//     field.fieldname === "warehouse" &&
-//     field.fieldtype === "Link" &&
-//     field.options === "Warehouse" &&
-//     doctype === "Donation"
-//   ) {
-//     return {
-//       is_group: 0,
-//       is_rejected_warehouse: 0,
-//       company: data.value?.company || "Alkhidmat Foundation Pakistan",
-//     };
-//   }
-
-//   // Return existing filters if available
-//   if (field.filters) {
-//     return field.filters;
-//   }
-
-//   // Parse link_filters if available
-//   if (field.link_filters) {
-//     try {
-//       const parsedFilters = JSON.parse(field.link_filters);
-//       return parsedFilters;
-//     } catch (e) {
-//       return {};
-//     }
-//   }
-
-//   return {};
-// }
 </script>
+ 
