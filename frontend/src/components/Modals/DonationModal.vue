@@ -104,6 +104,10 @@ import { useRouter } from "vue-router";
 import { Dialog, Button, ErrorMessage, toast } from "frappe-ui";
 import { createResource } from "@/utils/resource";
 import { call } from "@/utils/api";
+import {
+  formatCurrency as formatCurrencyUtil,
+  formatNumber as formatNumberUtil,
+} from "@/utils/numberFormat";
 import FeatherIcon from "@/components/Icons/FeatherIcon.vue";
 import QuickEntryModal from "@/components/Modals/QuickEntryModal.vue";
 import FieldLayout from "@/components/FieldLayout/FieldLayout.vue";
@@ -165,7 +169,7 @@ function openQuickEntryModal() {
   });
 }
 
-const { document: donation, triggerOnBeforeCreate } = useDocument("Donation");
+const { document: donation } = useDocument("Donation");
 
 // Function to generate random ID for payment detail rows (same logic as backend)
 const generateRandomId = (idx) => {
@@ -181,7 +185,7 @@ async function fetchUnknownDonor() {
       fields: ["name"],
       limit: 1,
     });
-    
+
     if (result && result.length > 0) {
       return result[0].name;
     }
@@ -231,7 +235,7 @@ async function fetchUnknownDonor() {
 //       newRow._lastMOPId2 = donation.doc.mode_of_payment;
 //       console.log(`New row inheriting mode_of_payment: ${donation.doc.mode_of_payment}`);
 //     }
-    
+
 //     if (donation.doc.account_paid_to) {
 //       newRow.account_paid_to = donation.doc.account_paid_to;
 //       console.log(`New row inheriting account_paid_to: ${donation.doc.account_paid_to}`);
@@ -492,9 +496,7 @@ const filteredTabs = computed(() => {
                 enhancedField.get_query = createDonorQueryFunction();
                 enhancedField.depends_on = "donor_identity";
                 enhancedField.filters = getDonorFilters();
-                console.log(
-                  "Configured donor field with query filtering and depends_on"
-                );
+                console.log("Configured donor field with query filtering and depends_on");
               }
 
               // Configure donor fields in items table
@@ -503,7 +505,7 @@ const filteredTabs = computed(() => {
                 enhancedField.depends_on = "donor_identity";
                 enhancedField.filters = getDonorFilters();
                 console.log("Configured donor field with query filtering for items");
-              } 
+              }
 
               // In-Kind items table: make 'new' and 'used' editable, keep 'item_name' read-only
               if (donation.doc.donation_type === "In Kind Donation") {
@@ -551,9 +553,8 @@ const filteredTabs = computed(() => {
               }
 
               if (field.fieldname === "contribution_type") {
-                enhancedField.depends_on = "eval:doc.donation_type == 'Cash'"
+                enhancedField.depends_on = "eval:doc.donation_type == 'Cash'";
               }
-
 
               return enhancedField;
             });
@@ -618,7 +619,7 @@ const tabs = createResource({
             // Ensure inventory_flag in items table defaults to 'Donated' and is read-only
             if (field.fieldname === "inventory_flag") {
               try {
-                field.default = field.default || 'Donated';
+                field.default = field.default || "Donated";
                 field.read_only = 1;
               } catch (e) {
                 // ignore
@@ -650,78 +651,78 @@ const tabs = createResource({
               field.fieldtype = "Check";
               field.default = 0;
             }
-
           });
         });
       });
     });
   },
-// Replace the existing onSuccess with this async version
-onSuccess: async (data) => {
-  // Ensure required fields are set
-  if (!donation.doc.status) {
-    donation.doc.status = 'Draft'
-  }
-
-  if (!donation.doc.company) {
-    try {
-      const res = await call('frappe.client.get_value', {
-        doctype: 'Global Defaults',
-        fieldname: 'default_company',
-        filters: {} 
-      })
-
-      let companyName =
-        (res && res.default_company) ||
-        (res && res.message && (res.message.default_company || res.message.value)) ||
-        null
-
-      // Fallback: fetch full Global Defaults doc (reliable)
-      if (!companyName) { 
-        const g = await call('frappe.client.get', {
-          doctype: 'Global Defaults',
-          name: 'Global Defaults'
-        })
-        companyName = (g && (g.default_company || g.message?.default_company)) || null
-      }
-
-      if (companyName) {
-        donation.doc.company = companyName
-        console.log('Set default company from Global Defaults:', companyName)
-      } else {
-        console.warn('Global Defaults.default_company not found; leaving company blank.')
-      }
-    } catch (err) {
-      console.error('Error fetching Global Defaults default_company:', err)
-      // don't crash — simply continue with other defaults
+  // Replace the existing onSuccess with this async version
+  onSuccess: async (data) => {
+    // Ensure required fields are set
+    if (!donation.doc.status) {
+      donation.doc.status = "Draft";
     }
-  }
 
-  if (!donation.doc.donor_identity) {
-    donation.doc.donor_identity = 'Known'
-  }
+    if (!donation.doc.company) {
+      try {
+        const res = await call("frappe.client.get_value", {
+          doctype: "Global Defaults",
+          fieldname: "default_company",
+          filters: {},
+        });
 
-  if (!donation.doc.donation_type) {
-    donation.doc.donation_type = 'Cash'  // Default to 'Cash'
-  }
+        let companyName =
+          (res && res.default_company) ||
+          (res && res.message && (res.message.default_company || res.message.value)) ||
+          null;
 
-  // Ensure due_date, currency, and exchange_rate are set
-  if (!donation.doc.due_date) {
-    donation.doc.due_date = new Date().toISOString().slice(0, 10)
-  }
+        // Fallback: fetch full Global Defaults doc (reliable)
+        if (!companyName) {
+          const g = await call("frappe.client.get", {
+            doctype: "Global Defaults",
+            name: "Global Defaults",
+          });
+          companyName = (g && (g.default_company || g.message?.default_company)) || null;
+        }
 
-  if (!donation.doc.currency) {
-    donation.doc.currency = 'PKR'
-  }
+        if (companyName) {
+          donation.doc.company = companyName;
+          console.log("Set default company from Global Defaults:", companyName);
+        } else {
+          console.warn(
+            "Global Defaults.default_company not found; leaving company blank."
+          );
+        }
+      } catch (err) {
+        console.error("Error fetching Global Defaults default_company:", err);
+        // don't crash — simply continue with other defaults
+      }
+    }
 
-  if (!donation.doc.exchange_rate) {
-    donation.doc.exchange_rate = 1
-  }
+    if (!donation.doc.donor_identity) {
+      donation.doc.donor_identity = "Known";
+    }
 
-  // Initialize posting_date and posting_time
-  initializeDonation()
-}
+    if (!donation.doc.donation_type) {
+      donation.doc.donation_type = "Cash"; // Default to 'Cash'
+    }
 
+    // Ensure due_date, currency, and exchange_rate are set
+    if (!donation.doc.due_date) {
+      donation.doc.due_date = new Date().toISOString().slice(0, 10);
+    }
+
+    if (!donation.doc.currency) {
+      donation.doc.currency = "PKR";
+    }
+
+    if (!donation.doc.exchange_rate) {
+      donation.doc.exchange_rate = 1;
+    }
+
+    // Initialize posting_date and posting_time
+    initializeDonation();
+  },
 });
 
 const createDonation = createResource({
@@ -1069,10 +1070,10 @@ function handleModalClose(idx) {
 //   if (err.messages && Array.isArray(err.messages)) {
 //     err.messages.forEach((msg) => {
 //       const patterns = [
-//         /\[([^,]+),\s*([^\]]+)\]:\s*([^,\s]+)/, 
-//         /MandatoryError.*?:\s*([^,\n]+)/, 
-//         /Field\s+([^,\s]+)\s+is\s+mandatory/, 
-//         /([^,\s]+)\s+is\s+required/, 
+//         /\[([^,]+),\s*([^\]]+)\]:\s*([^,\s]+)/,
+//         /MandatoryError.*?:\s*([^,\n]+)/,
+//         /Field\s+([^,\s]+)\s+is\s+mandatory/,
+//         /([^,\s]+)\s+is\s+required/,
 //       ];
 
 //       for (const pattern of patterns) {
@@ -1215,7 +1216,7 @@ async function fetchFundClassDetails(fundClass) {
       fund_class: fundClass,
       company: donation.doc.company || "Alkhidmat Foundation Pakistan",
     });
-    
+
     console.log("Fund Class details received:", result);
     return result;
   } catch (error) {
@@ -1279,7 +1280,14 @@ const pendingDeductionFundClassQueue = ref([]); // array of fund_class in order
 // Direct Fund Class handling for payment_detail rows
 async function handleFundClassSelectionDirect(fundClassId, row) {
   if (!fundClassId) {
-    updateFundClassFields(row, { service_area: "", subservice_area: "", product: "", equity_account: "", receivable_account: "", cost_center: "" });
+    updateFundClassFields(row, {
+      service_area: "",
+      subservice_area: "",
+      product: "",
+      equity_account: "",
+      receivable_account: "",
+      cost_center: "",
+    });
     lastSelectedFundClassId.value = null;
     return;
   }
@@ -1648,7 +1656,7 @@ watch(
             );
             row.account_paid_to = "";
             toast.error(`Error loading account for mode of payment: ${error.message}`);
-          } 
+          }
         }
       }
     } finally {
@@ -1812,7 +1820,7 @@ async function setDeductionBreakevenFromAPI() {
         fund_class_id: r?.fund_class_id,
         donation_amount: r?.donation_amount,
       }));
-      console.log('[DBG] set_deduction_breakeven payload.payment_details:', debugPayment);
+      console.log("[DBG] set_deduction_breakeven payload.payment_details:", debugPayment);
     } catch (_) {}
     const result = await call("crm.fcrm.doctype.donation.api.set_deduction_breakeven", {
       payment_details: donation.doc.payment_detail,
@@ -1835,8 +1843,8 @@ async function setDeductionBreakevenFromAPI() {
           if (!row) return;
           const key = row.random_id || `idx_${index}`;
           preservedPaymentDetailByRandomId[key] = {
-            mode_of_payment: row.mode_of_payment || '',
-            account_paid_to: row.account_paid_to || '',
+            mode_of_payment: row.mode_of_payment || "",
+            account_paid_to: row.account_paid_to || "",
           };
           if (row.mode_of_payment || row.account_paid_to) {
             console.log(
@@ -2006,6 +2014,9 @@ async function setDeductionBreakevenFromAPI() {
       await nextTick();
       donation.doc = { ...donation.doc };
 
+      // Ensure calculations reflect new exchange rate and rebuilt rows
+      updateCalculationFields();
+
       console.log("Deduction breakeven table rebuilt successfully via backend API");
     } else {
       console.error("Backend API failed to set deduction breakeven:", result.message);
@@ -2033,8 +2044,8 @@ watch(
       newContributionType
     );
 
-  // Do not clear deduction breakeven for Pledge; always allow and recompute
-  await setDeductionBreakevenFromAPI();
+    // Do not clear deduction breakeven for Pledge; always allow and recompute
+    await setDeductionBreakevenFromAPI();
   }
 );
 
@@ -2099,7 +2110,7 @@ watch(
       if (result && result.success && result.account) {
         console.log("✅ Main form account fetched successfully:", result.account);
         donation.doc.account_paid_to = result.account;
-        
+
         // Also update all child table rows with the same mode_of_payment and account_paid_to
         if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
           donation.doc.payment_detail.forEach((row, index) => {
@@ -2108,14 +2119,18 @@ watch(
             // Reset the tracking IDs to prevent duplicate API calls
             row._lastMOPId = newModeOfPayment;
             row._lastMOPId2 = newModeOfPayment;
-            console.log(`Updated child table row ${index} with mode_of_payment: ${newModeOfPayment} and account_paid_to: ${result.account}`);
+            console.log(
+              `Updated child table row ${index} with mode_of_payment: ${newModeOfPayment} and account_paid_to: ${result.account}`
+            );
           });
-          
+
           // Force reactive update to ensure UI reflects changes
           donation.doc.payment_detail = [...donation.doc.payment_detail];
         }
-        
-        toast.success(`Account Paid To auto-filled: ${result.account} (Main form and child table updated)`);
+
+        toast.success(
+          `Account Paid To auto-filled: ${result.account} (Main form and child table updated)`
+        );
       } else {
         console.log("❌ No account found for main form");
         donation.doc.account_paid_to = "";
@@ -2157,9 +2172,11 @@ watch(
     if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
       donation.doc.payment_detail.forEach((row, index) => {
         row.account_paid_to = newAccountPaidTo;
-        console.log(`Updated child table row ${index} with account_paid_to: ${newAccountPaidTo}`);
+        console.log(
+          `Updated child table row ${index} with account_paid_to: ${newAccountPaidTo}`
+        );
       });
-      
+
       // Force reactive update to ensure UI reflects changes
       donation.doc.payment_detail = [...donation.doc.payment_detail];
     }
@@ -2186,16 +2203,20 @@ function autoPopulateRowWithMainFormValues(row) {
     // Set tracking IDs to prevent duplicate API calls
     row._lastMOPId = donation.doc.mode_of_payment;
     row._lastMOPId2 = donation.doc.mode_of_payment;
-    console.log(`Auto-populated row with mode_of_payment: ${donation.doc.mode_of_payment}`);
+    console.log(
+      `Auto-populated row with mode_of_payment: ${donation.doc.mode_of_payment}`
+    );
     hasChanges = true;
   }
-  
+
   if (donation.doc.account_paid_to && !row.account_paid_to) {
     row.account_paid_to = donation.doc.account_paid_to;
-    console.log(`Auto-populated row with account_paid_to: ${donation.doc.account_paid_to}`);
+    console.log(
+      `Auto-populated row with account_paid_to: ${donation.doc.account_paid_to}`
+    );
     hasChanges = true;
   }
-  
+
   // Force reactive update to ensure UI reflects changes
   if (hasChanges && donation.doc.payment_detail) {
     donation.doc.payment_detail = [...donation.doc.payment_detail];
@@ -2419,14 +2440,13 @@ function validateDonationForm() {
     }
   });
 
-
   // Additional business logic required fields
   if (!donation.doc.donor_identity || donation.doc.donor_identity.trim() === "") {
     errors.push("Donor Identity is required");
   }
 
-    if (
-    donation.doc.donation_type !== "In Kind Donation" && 
+  if (
+    donation.doc.donation_type !== "In Kind Donation" &&
     (!donation.doc.contribution_type || donation.doc.contribution_type.trim() === "")
   ) {
     errors.push("Contribution Type is required");
@@ -2434,7 +2454,7 @@ function validateDonationForm() {
   if (donation.doc.donation_type === "In Kind Donation") {
     if (!donation.doc.warehouse || donation.doc.warehouse.trim() === "") {
       errors.push("Warehouse is required");
-    } 
+    }
     if (!donation.doc.items || donation.doc.items.length === 0) {
       errors.push("At least one item is required");
     }
@@ -2452,7 +2472,7 @@ function validateDonationForm() {
   if (
     donation.doc.donation_type !== "In Kind Donation" &&
     (!donation.doc.donation_cost_center ||
-    donation.doc.donation_cost_center.trim() === "")
+      donation.doc.donation_cost_center.trim() === "")
   ) {
     errors.push("Donation Cost Center is required");
   }
@@ -2461,8 +2481,8 @@ function validateDonationForm() {
   if (
     donation.doc.donation_type !== "In Kind Donation" &&
     (!donation.doc.payment_detail ||
-    !Array.isArray(donation.doc.payment_detail) ||
-    donation.doc.payment_detail.length === 0)
+      !Array.isArray(donation.doc.payment_detail) ||
+      donation.doc.payment_detail.length === 0)
   ) {
     errors.push("At least one payment detail is required");
   } else {
@@ -2470,51 +2490,53 @@ function validateDonationForm() {
       const rowNum = index + 1;
 
       // Mandatory fields from JSON schema
-          if (donation.doc.donation_type !== "In Kind Donation") {
-      if (!row.donation_amount || Number(row.donation_amount) <= 0) {
-        errors.push(`Donation Amount for payment detail row ${rowNum} is required and must be greater than 0`);
-      }
-    }
       if (donation.doc.donation_type !== "In Kind Donation") {
-      if (!row.intention || row.intention.trim() === "") {
-        errors.push(`Intention for payment detail row ${rowNum} is required`);
-      }
-    }
-    if (donation.doc.donation_type !== "In Kind Donation") {
-      if (!row.equity_account || row.equity_account.trim() === "") {
-        errors.push(`Equity Account for payment detail row ${rowNum} is required`);
-      }
-    }
-
-    if (donation.doc.donation_type !== "In Kind Donation") {
-      if (!row.receivable_account || row.receivable_account.trim() === "") {
-        errors.push(`Receivable Account for payment detail row ${rowNum} is required`);
-      }
-    }
-      if (donation.doc.donation_type !== "In Kind Donation") {
-      if (!row.donor || row.donor.trim() === "") {
-        errors.push(`Donor for payment detail row ${rowNum} is required`);
-      }
-    }
-
-    if (donation.doc.donation_type !== "In Kind Donation") {
-      if (!row.fund_class || row.fund_class.trim() === "") {
-        errors.push(`Fund Class for payment detail row ${rowNum} is required`);
-      }
-    }
-
-      if (donation.doc.donation_type !== "In Kind Donation") {
-      if (donation.doc.contribution_type !== "Pledge") {
-        if (!row.mode_of_payment || row.mode_of_payment.trim() === "") {
-          errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
+        if (!row.donation_amount || Number(row.donation_amount) <= 0) {
+          errors.push(
+            `Donation Amount for payment detail row ${rowNum} is required and must be greater than 0`
+          );
         }
       }
-    }
       if (donation.doc.donation_type !== "In Kind Donation") {
-      if (!row.transaction_type || row.transaction_type.trim() === "") {
-        errors.push(`Transaction Type  for payment detail row ${rowNum} is required`);
+        if (!row.intention || row.intention.trim() === "") {
+          errors.push(`Intention for payment detail row ${rowNum} is required`);
+        }
       }
-    }
+      if (donation.doc.donation_type !== "In Kind Donation") {
+        if (!row.equity_account || row.equity_account.trim() === "") {
+          errors.push(`Equity Account for payment detail row ${rowNum} is required`);
+        }
+      }
+
+      if (donation.doc.donation_type !== "In Kind Donation") {
+        if (!row.receivable_account || row.receivable_account.trim() === "") {
+          errors.push(`Receivable Account for payment detail row ${rowNum} is required`);
+        }
+      }
+      if (donation.doc.donation_type !== "In Kind Donation") {
+        if (!row.donor || row.donor.trim() === "") {
+          errors.push(`Donor for payment detail row ${rowNum} is required`);
+        }
+      }
+
+      if (donation.doc.donation_type !== "In Kind Donation") {
+        if (!row.fund_class || row.fund_class.trim() === "") {
+          errors.push(`Fund Class for payment detail row ${rowNum} is required`);
+        }
+      }
+
+      if (donation.doc.donation_type !== "In Kind Donation") {
+        if (donation.doc.contribution_type !== "Pledge") {
+          if (!row.mode_of_payment || row.mode_of_payment.trim() === "") {
+            errors.push(`Mode of Payment for payment detail row ${rowNum} is required`);
+          }
+        }
+      }
+      if (donation.doc.donation_type !== "In Kind Donation") {
+        if (!row.transaction_type || row.transaction_type.trim() === "") {
+          errors.push(`Transaction Type  for payment detail row ${rowNum} is required`);
+        }
+      }
       if (
         row.mode_of_payment &&
         ["bank", "Cheque", "Bank Draft"].includes(row.mode_of_payment)
@@ -2727,7 +2749,7 @@ async function prepareDonationForSubmission() {
   // Ensure items have inventory_flag set to 'Donated'
   if (doc.items && Array.isArray(doc.items)) {
     doc.items.forEach((row) => {
-      if (row && !row.inventory_flag) row.inventory_flag = 'Donated';
+      if (row && !row.inventory_flag) row.inventory_flag = "Donated";
     });
   }
   return doc;
@@ -2748,7 +2770,7 @@ async function applyDonorFilteringToForm() {
     console.log(
       "FieldLayout re-rendered for new donor identity:",
       donation.doc.donor_identity
-  );
+    );
   });
 }
 
@@ -2765,7 +2787,7 @@ function handleAddDeductionRow() {
     deduction_amount: 0,
     currency: donation.doc.currency || "PKR",
     to_currency: donation.doc.to_currency || donation.doc.currency,
-    posting_date: donation.doc.posting_date,  
+    posting_date: donation.doc.posting_date,
     is_return: donation.doc.is_return || false,
   };
   donation.doc.deduction_breakeven.push(newRow);
@@ -2778,7 +2800,12 @@ function handleFundClassSelected(event) {
   const { row, fundClass, success } = event;
 
   if (success && fundClass && row) {
-    console.log("Processing fund class selection for row:", row, "with fund class ID:", fundClass);
+    console.log(
+      "Processing fund class selection for row:",
+      row,
+      "with fund class ID:",
+      fundClass
+    );
 
     // Check if the fundClassId already exists in deduction_breakeven
     const existingEntry = donation.doc.deduction_breakeven.find(
@@ -2866,7 +2893,7 @@ function handleFundClassSelected(event) {
 //   }
 
 //   if (
-//     fieldName === "donation_cost_center" && 
+//     fieldName === "donation_cost_center" &&
 //     donation.doc.donation_type !== "In Kind Donation" &&
 //     (!value || value.trim() === "")
 //   ) {
@@ -2941,7 +2968,6 @@ function handleFundClassSelected(event) {
 //   return errors;
 // }
 
-
 async function handleDonorSelectionForItem(donorId, row) {
   if (!donorId) {
     clearDonorFields(row);
@@ -2988,18 +3014,24 @@ watch(
     if (!newItems || !Array.isArray(newItems)) return;
     newItems.forEach((row) => {
       // Auto-populate item_name from selected item_code for In Kind Donation
-      if (donation.doc.donation_type === 'In Kind Donation' && row.item_code && !row.item_name) {
-        call('frappe.client.get_value', {
-          doctype: 'Item',
+      if (
+        donation.doc.donation_type === "In Kind Donation" &&
+        row.item_code &&
+        !row.item_name
+      ) {
+        call("frappe.client.get_value", {
+          doctype: "Item",
           filters: { name: row.item_code },
-          fieldname: 'item_name',
-        }).then((r) => {
-          const name = r?.message?.item_name || r?.item_name || r?.value;
-          if (name) {
-            row.item_name = name;
-            donation.doc.items = [...donation.doc.items];
-          }
-        }).catch(() => {});
+          fieldname: "item_name",
+        })
+          .then((r) => {
+            const name = r?.message?.item_name || r?.item_name || r?.value;
+            if (name) {
+              row.item_name = name;
+              donation.doc.items = [...donation.doc.items];
+            }
+          })
+          .catch(() => {});
       }
       if (row.fund_class && row.fund_class !== row._lastFundClass) {
         row._lastFundClass = row.fund_class;
@@ -3020,16 +3052,16 @@ watch(
       if (!row) return;
 
       // Use safe bracket notation because 'new' is a reserved word in some contexts
-      const isNew = typeof row['new'] !== 'undefined' ? !!row['new'] : false;
-      const isUsed = typeof row['used'] !== 'undefined' ? !!row['used'] : false;
+      const isNew = typeof row["new"] !== "undefined" ? !!row["new"] : false;
+      const isUsed = typeof row["used"] !== "undefined" ? !!row["used"] : false;
 
-      if (typeof row._lastNew === 'undefined') row._lastNew = isNew;
-      if (typeof row._lastUsed === 'undefined') row._lastUsed = isUsed;
+      if (typeof row._lastNew === "undefined") row._lastNew = isNew;
+      if (typeof row._lastUsed === "undefined") row._lastUsed = isUsed;
 
       // If 'new' was toggled and became true, ensure 'used' is false
       if (isNew && row._lastNew !== isNew) {
-        if (row['used']) {
-          row['used'] = false;
+        if (row["used"]) {
+          row["used"] = false;
           changed = true;
         }
         row._lastUsed = false;
@@ -3038,8 +3070,8 @@ watch(
 
       // If 'used' was toggled and became true, ensure 'new' is false
       if (isUsed && row._lastUsed !== isUsed) {
-        if (row['new']) {
-          row['new'] = false;
+        if (row["new"]) {
+          row["new"] = false;
           changed = true;
         }
         row._lastNew = false;
@@ -3058,8 +3090,8 @@ watch(
     if (!newItems || !Array.isArray(newItems)) return;
     let changed = false;
     newItems.forEach((row) => {
-      if (row && row.inventory_flag !== 'Donated') {
-        row.inventory_flag = 'Donated';
+      if (row && row.inventory_flag !== "Donated") {
+        row.inventory_flag = "Donated";
         changed = true;
       }
     });
@@ -3094,7 +3126,7 @@ watch(
     if (!newItems || !Array.isArray(newItems)) return;
 
     // Only apply for In Kind Donation
-    if (donation.doc.donation_type !== 'In Kind Donation') return;
+    if (donation.doc.donation_type !== "In Kind Donation") return;
 
     const mainWarehouse = donation.doc.warehouse;
     if (!mainWarehouse) return;
@@ -3104,9 +3136,12 @@ watch(
     newItems.forEach((row) => {
       if (!row) return;
       // If the row does not have a warehouse, set it to the main warehouse
-      if (!row.warehouse || (typeof row.warehouse === 'string' && row.warehouse.trim() === '')) {
+      if (
+        !row.warehouse ||
+        (typeof row.warehouse === "string" && row.warehouse.trim() === "")
+      ) {
         row.warehouse = mainWarehouse;
-        row._warehouseAutoSet = true; 
+        row._warehouseAutoSet = true;
         changed = true;
       }
     });
@@ -3121,14 +3156,17 @@ watch(
 watch(
   () => donation.doc.warehouse,
   (newWarehouse, oldWarehouse) => {
-    if (donation.doc.donation_type !== 'In Kind Donation') return;
+    if (donation.doc.donation_type !== "In Kind Donation") return;
     if (!newWarehouse) return;
     if (!donation.doc.items || !Array.isArray(donation.doc.items)) return;
 
     let changed = false;
     donation.doc.items.forEach((row) => {
       if (!row) return;
-      if (!row.warehouse || (typeof row.warehouse === 'string' && row.warehouse.trim() === '')) {
+      if (
+        !row.warehouse ||
+        (typeof row.warehouse === "string" && row.warehouse.trim() === "")
+      ) {
         row.warehouse = newWarehouse;
         row._warehouseAutoSet = true;
         changed = true;
@@ -3177,20 +3215,65 @@ const outstandingAmount = computed(() => {
 
 // ADD: Function to update calculation fields in the document
 function updateCalculationFields() {
-  // Update the document with calculated values
-  donation.doc.base_total_donation = totalDonation.value;
-  donation.doc.base_total_deduction = totalDeduction.value;
-  donation.doc.base_net_amount = netAmount.value;
-  donation.doc.base_outstanding_amount = outstandingAmount.value;
-  donation.doc.base_outstanding_amount = outstandingAmount.value;
-  donation.doc.outstanding_amount = outstandingAmount.value;
+  // Recompute per-row base values for payment_detail
+  if (donation.doc.payment_detail && Array.isArray(donation.doc.payment_detail)) {
+    donation.doc.payment_detail.forEach((row) => {
+      // ensure numeric
+      row.donation_amount = Number(row.donation_amount || 0);
+      row.deduction_amount = Number(row.deduction_amount || 0);
+      row.net_amount = Number(row.donation_amount - row.deduction_amount || 0);
+
+      // base conversions follow backend apply_currecny_exchange
+      row.base_donation_amount = applyCurrencyExchange(row.donation_amount);
+      row.base_deduction_amount = applyCurrencyExchange(row.deduction_amount);
+      row.base_net_amount = applyCurrencyExchange(row.net_amount);
+
+      // outstanding per row: for pledge use donation_amount else net_amount
+      row.outstanding_amount =
+        donation.doc.contribution_type === "Pledge"
+          ? row.donation_amount
+          : row.net_amount;
+      row.base_outstanding_amount = applyCurrencyExchange(row.outstanding_amount);
+    });
+  }
+
+  // Recompute deduction_breakeven base amounts from amount
+  if (
+    donation.doc.deduction_breakeven &&
+    Array.isArray(donation.doc.deduction_breakeven)
+  ) {
+    donation.doc.deduction_breakeven.forEach((drow) => {
+      drow.amount = Number(drow.amount || 0);
+      // backend computes base_amount via apply_currecny_exchange
+      drow.base_amount = applyCurrencyExchange(drow.amount);
+    });
+  }
+
+  // Update totals
+  donation.doc.total_donation = totalDonation.value;
+  donation.doc.total_deduction = totalDeduction.value;
+  donation.doc.net_amount = netAmount.value;
+
+  // Outstanding mirrors backend calculate_total: outstanding_amount = total_donation
+  donation.doc.outstanding_amount = donation.doc.total_donation;
+
+  // Base totals
+  donation.doc.base_total_donation = applyCurrencyExchange(donation.doc.total_donation);
+  donation.doc.base_total_deduction = applyCurrencyExchange(donation.doc.total_deduction);
+  donation.doc.base_net_amount = applyCurrencyExchange(donation.doc.net_amount);
+  donation.doc.base_outstanding_amount = applyCurrencyExchange(
+    donation.doc.outstanding_amount
+  );
 
   console.log("Calculation fields updated:", {
+    total_donation: donation.doc.total_donation,
+    total_deduction: donation.doc.total_deduction,
+    net_amount: donation.doc.net_amount,
+    outstanding_amount: donation.doc.outstanding_amount,
     base_total_donation: donation.doc.base_total_donation,
     base_total_deduction: donation.doc.base_total_deduction,
     base_net_amount: donation.doc.base_net_amount,
     base_outstanding_amount: donation.doc.base_outstanding_amount,
-    outstanding_amount: donation.doc.outstanding_amount,
   });
 }
 
@@ -3230,6 +3313,8 @@ async function setExchangeRate() {
       // If currencies are same, set to 1
       if (donation.doc.currency === company_curr) {
         donation.doc.exchange_rate = 1;
+        // Update base calculations when exchange rate changes
+        updateCalculationFields();
         return;
       }
 
@@ -3243,12 +3328,37 @@ async function setExchangeRate() {
       if (typeof res === "number" || typeof res === "string") {
         donation.doc.exchange_rate = Number(res) || donation.doc.exchange_rate || 1;
       } else if (res && res.message) {
-        donation.doc.exchange_rate = Number(res.message) || donation.doc.exchange_rate || 1;
+        donation.doc.exchange_rate =
+          Number(res.message) || donation.doc.exchange_rate || 1;
       }
+
+      // After updating exchange rate, recalc base amounts so UI reflects backend logic
+      updateCalculationFields();
     } catch (e) {
       console.error("Failed to fetch exchange rate:", e);
     }
   }, 150);
+}
+
+// Helper to apply currency exchange exactly like backend Donation.apply_currecny_exchange
+function applyCurrencyExchange(amount) {
+  const amt = Number(amount || 0);
+  try {
+    // determine target currency: prefer donation.doc.to_currency, fallback to companyCurrency
+    const targetCurrency =
+      donation.doc.to_currency || companyCurrency.value || donation.doc.currency;
+    if (!donation.doc.currency) return amt;
+    if (donation.doc.currency !== targetCurrency) {
+      if (donation.doc.exchange_rate && donation.doc.exchange_rate > 0) {
+        return amt * donation.doc.exchange_rate;
+      }
+      return amt * 1;
+    } else {
+      return amt;
+    }
+  } catch (e) {
+    return amt;
+  }
 }
 
 // Watch currency and posting_date to keep exchange_rate in sync
@@ -3261,16 +3371,60 @@ watch(
   }
 );
 
+// Fetch backend currency symbol when currency or to_currency changes
+watch(
+  () => [donation.doc?.currency, donation.doc?.to_currency],
+  (vals) => {
+    const curr = donation.doc?.to_currency || donation.doc?.currency;
+    if (!curr) return;
+    // fire-and-forget, cache inside fetchBackendCurrencySymbol
+    fetchBackendCurrencySymbol(curr);
+  },
+  { immediate: true }
+);
+
 // Helper to format currency values inside the modal (used by any inline displays)
-function formatCurrency(value) {
-  const num = Number(value || 0);
+// Cache for backend currency symbols (prefer backend Currency.symbol over Intl)
+const currencySymbols = vueRefLocal({});
+
+async function fetchBackendCurrencySymbol(code) {
+  if (!code) return null;
+  if (currencySymbols.value[code] !== undefined) return currencySymbols.value[code];
+
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: donation.doc?.to_currency || donation.doc?.currency || "PKR",
-    }).format(num);
+    const res = await call("frappe.client.get_value", {
+      doctype: "Currency",
+      filters: { name: code },
+      fieldname: ["symbol"],
+    });
+
+    // frappe.client.get_value can return { message: { symbol: '₨' } }
+    const symbol = res?.symbol || res?.message?.symbol || null;
+    currencySymbols.value[code] = symbol || null;
+    return currencySymbols.value[code];
   } catch (e) {
-    return `${num}`;
+    console.error("Error fetching Currency.symbol from backend for", code, e);
+    currencySymbols.value[code] = null;
+    return null;
+  }
+}
+
+// Delegate to shared numberFormat utility but prefer backend symbol when available
+function formatCurrency(value) {
+  try {
+    const currency = donation.doc?.to_currency || donation.doc?.currency || "PKR";
+
+    const backendSymbol = currencySymbols.value[currency];
+    if (backendSymbol) {
+      // Use formatNumber util to format numeric part and prefix backend symbol
+      const formatted = formatNumberUtil(value, null, undefined);
+      return backendSymbol + " " + formatted;
+    }
+
+    // Fallback to util which will try Intl.NumberFormat to get symbol
+    return formatCurrencyUtil(value, null, currency);
+  } catch (e) {
+    return String(Number(value || 0));
   }
 }
 
@@ -3380,7 +3534,6 @@ function calculateDeductionAmount(row) {
   return calculatedAmount;
 }
 
-
 const originalTriggerOnRowRemove = donation.triggerOnRowRemove;
 
 const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
@@ -3441,6 +3594,4 @@ const customTriggerOnRowRemove = (selectedRows, remainingRows) => {
 };
 
 donation.triggerOnRowRemove = customTriggerOnRowRemove;
-
 </script>
- 

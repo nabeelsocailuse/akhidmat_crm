@@ -1,9 +1,39 @@
 import { createResource } from 'frappe-ui'
 import { formatCurrency, formatNumber } from '@/utils/numberFormat.js'
 import { reactive } from 'vue'
+import { call } from '@/utils/api'
 
 const doctypeMeta = reactive({})
 const userSettings = reactive({})
+// Shared cache for backend Currency.symbol values. Keyed by currency code.
+const currencySymbols = reactive({})
+
+async function fetchBackendCurrencySymbol(code) {
+  if (!code) return null
+  // If symbol already cached (including explicit null/false), return it
+  if (Object.prototype.hasOwnProperty.call(currencySymbols, code)) {
+    return currencySymbols[code]
+  }
+
+  // mark as fetching (null) to avoid duplicate calls
+  currencySymbols[code] = null
+  try {
+    const res = await call('frappe.client.get_value', {
+      doctype: 'Currency',
+      filters: { name: code },
+      fieldname: 'symbol',
+    })
+
+    const symbol = res?.message?.symbol || res?.symbol || null
+    // store symbol (may be null)
+    currencySymbols[code] = symbol || false
+    return currencySymbols[code]
+  } catch (e) {
+    // on error, store false to avoid retry storms
+    currencySymbols[code] = false
+    return null
+  }
+}
 
 export function getMeta(doctype) {
   const meta = createResource({
@@ -67,7 +97,23 @@ export function getMeta(doctype) {
       }
     }
 
-    return formatCurrency(doc[fieldname], '', currency, precision)
+    const value = doc[fieldname]
+
+    // If we have a cached backend symbol, prefer it
+    const cached = currencySymbols[currency]
+    if (cached && typeof cached === 'string') {
+      // Use formatNumber for numeric formatting and prefix with backend symbol
+      return `${cached} ${formatNumber(value, '', precision)}`
+    }
+
+    // If not cached yet (undefined), fetch in background and fall back to util
+    if (cached === undefined) {
+      // fire-and-forget
+      fetchBackendCurrencySymbol(currency).catch(() => {})
+    }
+
+    // Fallback: use existing util which relies on Intl
+    return formatCurrency(value, '', currency, precision)
   }
 
   function getGridSettings() {
