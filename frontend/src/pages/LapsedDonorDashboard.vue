@@ -27,7 +27,7 @@
           <option value="24">24</option>
         </select>
       <button @click="handleSendEmails" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
-        <i class="fas fa-envelope mr-2"></i> Send Lapsed Donor Emails
+        <i class="fas fa-envelope mr-2"></i> Create Email Group
       </button>
     </div>
 
@@ -36,7 +36,7 @@
       <div class="fixed inset-0 bg-black opacity-40" @click="closeModal"></div>
       <div class="bg-white rounded-lg shadow-xl z-10 w-full max-w-md p-6">
         <h3 class="text-lg font-semibold mb-3">Create Email Group</h3>
-        <p class="text-sm text-gray-600 mb-4">Enter a name for the email group (e.g. "Lapsed Donors October").</p>
+        <p class="text-sm text-gray-600 mb-4">Enter a name for the email group.</p>
 
         <input
           v-model="groupInput"
@@ -280,6 +280,18 @@ async function createEmailGroup() {
   try {
     creating.value = true;
 
+    // Extract donor emails from lapsedDonors data first
+    const donorEmails = lapsedDonors.value
+      .filter(donor => donor.email && donor.email.trim()) // Filter out empty emails
+      .map(donor => donor.email.trim());
+
+    // Check if there are any donor emails before proceeding
+    if (donorEmails.length === 0) {
+      modalError.value = `No donor emails were found in the lapsed donor list. The email group "${title}" was not created.`;
+      creating.value = false;
+      return;
+    }
+
     // check for existing group with same title
     const existing = await call("frappe.client.get_list", {
       doctype: "Email Group",
@@ -294,6 +306,7 @@ async function createEmailGroup() {
       return;
     }
 
+    // Create the email group
     const group = await call("frappe.client.insert", {
       doc: {
         doctype: "Email Group",
@@ -302,12 +315,29 @@ async function createEmailGroup() {
       },
     });
 
-  console.log(`✅ Created email group: ${title}`, group);
-  // allow modal to close (closeModal prevents close while creating === true)
-  creating.value = false;
-  closeModal();
-  // show success toast
-  successMessage.value = `Email group "${title}" created.`;
+    console.log(`✅ Created email group: ${title}`, group);
+
+    // Add donor emails as subscribers to the email group
+    try {
+      await call("frappe.email.doctype.email_group.email_group.add_subscribers", {
+        name: group.name,
+        email_list: donorEmails
+      });
+      console.log(`✅ Added ${donorEmails.length} donor emails to email group`);
+    } catch (addErr) {
+      console.error("Error adding subscribers:", addErr);
+      modalError.value = "Email group created but failed to add donor emails.";
+      creating.value = false;
+      return;
+    }
+
+    // allow modal to close (closeModal prevents close while creating === true)
+    creating.value = false;
+    closeModal();
+    
+    // show success toast with count of added donors
+    successMessage.value = `Email group "${title}" created with ${donorEmails.length} donor emails.`;
+    
     if (successTimer) clearTimeout(successTimer);
     successTimer = setTimeout(() => {
       successMessage.value = "";
