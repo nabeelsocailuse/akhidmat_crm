@@ -28,7 +28,13 @@
             </div>
           </div>
           <div>
-            <FieldLayout v-if="tabs.data" :tabs="tabs.data" :data="lead.doc" />
+            <FieldLayout 
+              v-if="tabs.data" 
+              :tabs="tabs.data" 
+              :data="lead.doc" 
+              :doctype="'CRM Lead'"
+              @field-change="onFieldChange"
+            />
             <ErrorMessage class="mt-4" v-if="error" :message="__(error)" />
             <ErrorMessage
               class="mt-4"
@@ -65,6 +71,7 @@ import { isMobileView } from '@/composables/settings'
 import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
 import { capture } from '@/telemetry'
 import { createResource } from '@/utils/resource'
+import { createListResource } from 'frappe-ui'
 import { call } from '@/utils/api'
 import { useOnboarding } from 'frappe-ui/frappe'
 import { useDocument } from '@/data/document'
@@ -102,6 +109,51 @@ const setFieldValue = (fieldName, value) => {
   }
 }
 
+const donorDeskResource = createListResource({
+  doctype: "Donor Desk",
+  filters: computed(() =>
+    lead.doc?.custom_department ? { department: lead.doc.custom_department } : {}
+  ),
+  fields: ["name", "desk_name", "department"],
+  auto: false,
+});
+
+const donorDeskOptions = computed(() => {
+  if (
+    !lead.doc?.custom_department ||
+    !donorDeskResource.data ||
+    donorDeskResource.data.length === 0
+  )
+    return [];
+  return donorDeskResource.data.map((desk) => ({
+    label: desk.desk_name || desk.name,
+    value: desk.name,
+  }));
+});
+
+function configureCustomLeadDeskField(field) {
+  if (!field || field.fieldname !== "custom_lead_desk") return;
+  field.options = "Donor Desk";
+  field.fieldtype = "Link";
+  field.get_query = () => {
+    const department = lead.doc?.custom_department;
+    return {
+      doctype: "Donor Desk",
+      filters: department ? { department } : { department: ["!=", undefined] },
+    };
+  };
+  field.depends_on = "custom_department";
+  field.placeholder = lead.doc?.custom_department
+    ? "Select Lead Desk"
+    : "Please select a department first";
+  field.description = lead.doc?.custom_department
+    ? ""
+    : "Please select a department to see available lead desks";
+  field.read_only = !lead.doc?.custom_department;
+  field.hidden = false;
+  if (!lead.doc[field.fieldname]) lead.doc[field.fieldname] = "";
+}
+
 const leadStatuses = computed(() => {
   let statuses = statusOptions('lead')
   if (!lead.doc.status) {
@@ -115,23 +167,41 @@ const tabs = createResource({
   cache: ['QuickEntry', 'CRM Lead'],
   params: { doctype: 'CRM Lead', type: 'Quick Entry' },
   auto: true,
-  transform: (_tabs) => {
-    return _tabs.forEach((tab) => {
-      tab.sections.forEach((section) => {
-        section.columns.forEach((column) => {
-          column.fields.forEach((field) => {
-            if (field.fieldname == 'status') {
-              field.fieldtype = 'Select'
-              field.options = leadStatuses.value
-              field.prefix = getLeadStatus(lead.doc.status).color
+  transform: (raw) =>
+    raw?.forEach((tab) => {
+      tab.sections?.forEach((section) => {
+        section.columns?.forEach((column) => {
+          column.fields?.forEach((field) => {
+            if (field && typeof field === "object") {
+              if (field.fieldtype === "Table") lead.doc[field.fieldname] = [];
+              field.hidden = false;
+              if (field.read_only !== true) field.read_only = false;
+              if (field.fieldname === "status") {
+                field.fieldtype = 'Select'
+                field.options = leadStatuses.value
+                field.prefix = getLeadStatus(lead.doc.status).color
+              }
             }
-            if (field.fieldtype === 'Table') {
-              lead.doc[field.fieldname] = []
-            }
-          })
-        })
-      })
-    })
+          });
+        });
+      });
+    }),
+  onSuccess(data) {
+    if (data && data.length) {
+      data.forEach((tab) => {
+        tab.sections?.forEach((section) => {
+          section.columns?.forEach((column) => {
+            column.fields?.forEach((field) => {
+              if (field && typeof field === "object") {
+                if (field.fieldname === "custom_lead_desk") configureCustomLeadDeskField(field);
+                field.hidden = false;
+                if (field.read_only !== true) field.read_only = false;
+              }
+            });
+          });
+        });
+      });
+    }
   },
 })
 
@@ -357,26 +427,22 @@ watch(() => lead.doc?.country, async (newCountry, oldCountry) => {
   if (!newCountry) return
   if (oldCountry && oldCountry !== newCountry) {
     lead.doc.mobile_no = ''
-    // Clear fields based on lead type on country change
-    if (lead.doc.custom_lead_type === 'Corporate Donors') {
-      if (lead.doc.custom_company_ownerceo_conatct) lead.doc.custom_company_ownerceo_conatct = ''
-      if (lead.doc.company_ownerceo_conatct) lead.doc.company_ownerceo_conatct = ''
-      if (lead.doc.custom_representative_mobile) lead.doc.custom_representative_mobile = ''
-    }
-    if (lead.doc.custom_lead_type === 'Individual') {
-      if (lead.doc.custom_phone_no) lead.doc.custom_phone_no = ''
-    }
+    // Clear all phone fields on country change
+    if (lead.doc.custom_company_ownerceo_conatct) lead.doc.custom_company_ownerceo_conatct = ''
+    if (lead.doc.company_ownerceo_conatct) lead.doc.company_ownerceo_conatct = ''
+    if (lead.doc.custom_representative_mobile) lead.doc.custom_representative_mobile = ''
+    if (lead.doc.custom_phone_no) lead.doc.custom_phone_no = ''
   }
   setTimeout(() => {
-    const fields = ['mobile_no']
-    // Apply masks based on lead type
-    if (lead.doc?.custom_lead_type === 'Corporate Donors') {
-      fields.push('custom_company_ownerceo_conatct', 'company_ownerceo_conatct', 'custom_representative_mobile')
-    }
-    if (lead.doc?.custom_lead_type === 'Individual') {
-      fields.push('custom_phone_no')
-    }
-    applyPhoneMasksForCountry(newCountry, setFieldValue, fields)
+    // Apply masks to all possible phone fields regardless of lead type
+    const allPhoneFields = [
+      'mobile_no',
+      'custom_company_ownerceo_conatct', 
+      'company_ownerceo_conatct', 
+      'custom_representative_mobile',
+      'custom_phone_no'
+    ]
+    applyPhoneMasksForCountry(newCountry, setFieldValue, allPhoneFields)
   }, 300)
 })
 
@@ -398,18 +464,15 @@ watch(() => lead.doc?.custom_lead_type, (newType) => {
   if (!lead.doc?.country) return
   
   setTimeout(() => {
-    const fields = []
-    
-    if (newType === 'Corporate Donors') {
-      fields.push('custom_company_ownerceo_conatct', 'company_ownerceo_conatct', 'custom_representative_mobile')
-    }
-    if (newType === 'Individual') {
-      fields.push('custom_phone_no')
-    }
-    
-    if (fields.length > 0) {
-      applyPhoneMasksForCountry(lead.doc.country, setFieldValue, fields)
-    }
+    // Apply masks to all possible phone fields regardless of lead type
+    const allPhoneFields = [
+      'mobile_no',
+      'custom_company_ownerceo_conatct', 
+      'company_ownerceo_conatct', 
+      'custom_representative_mobile',
+      'custom_phone_no'
+    ]
+    applyPhoneMasksForCountry(lead.doc.country, setFieldValue, allPhoneFields)
   }, 300)
 })
 
@@ -490,6 +553,47 @@ watch(() => lead.doc?.custom_org_representative_contact_number, async (newValue)
   }
 })
 
+function onFieldChange(fieldname, value) {
+  if (fieldname === "custom_department") {
+    lead.doc.custom_lead_desk = "";
+    if (value) donorDeskResource.reload();
+  }
+}
+
+watch(
+  () => lead.doc?.custom_department,
+  (n, o) => {
+    if (n !== o) {
+      lead.doc.custom_lead_desk = "";
+      if (n) donorDeskResource.reload();
+    }
+  }
+);
+
+watch(
+  () => donorDeskOptions.value,
+  (opts) => {
+    if (!opts || opts.length === 0) lead.doc.custom_lead_desk = "";
+  }
+);
+
+watch(
+  () => donorDeskResource.data,
+  (newData) => {
+    if (!newData || !tabs.data) return;
+    tabs.data.forEach((tab) => {
+      tab.sections?.forEach((section) => {
+        section.columns?.forEach((column) => {
+          column.fields?.forEach((field) => {
+            if (field && field.fieldname === "custom_lead_desk") configureCustomLeadDeskField(field);
+          });
+        });
+      });
+    });
+  },
+  { deep: true }
+);
+
 onMounted(() => {
   if (lead.doc?.country) {
     setTimeout(() => {
@@ -525,10 +629,17 @@ onMounted(() => {
   if (!lead.doc?.custom_identification_type) {
     lead.doc.custom_identification_type = 'CNIC'
   }
-  // Apply CEO contact mask initially if Corporate Donors
-  if (lead.doc?.custom_lead_type === 'Corporate Donors' && lead.doc?.country) {
+  // Apply phone masks to all fields if country is set
+  if (lead.doc?.country) {
     setTimeout(() => {
-      applyPhoneMasksForCountry(lead.doc.country, setFieldValue, ['custom_company_ownerceo_conatct', 'company_ownerceo_conatct'])
+      const allPhoneFields = [
+        'mobile_no',
+        'custom_company_ownerceo_conatct', 
+        'company_ownerceo_conatct', 
+        'custom_representative_mobile',
+        'custom_phone_no'
+      ]
+      applyPhoneMasksForCountry(lead.doc.country, setFieldValue, allPhoneFields)
     }, 500)
   }
   if (lead.doc?.custom_identification_type) {
@@ -559,14 +670,14 @@ watch(() => show.value, (isVisible) => {
   }
   if (isVisible && lead.doc?.country) {
     setTimeout(() => {
-      const fields = ['mobile_no']
-      if (lead.doc?.custom_lead_type === 'Corporate Donors') {
-        fields.push('custom_company_ownerceo_conatct', 'company_ownerceo_conatct', 'custom_representative_mobile')
-      }
-      if (lead.doc?.custom_lead_type === 'Individual') {
-        fields.push('custom_phone_no')
-      }
-      applyPhoneMasksForCountry(lead.doc.country, setFieldValue, fields)
+      const allPhoneFields = [
+        'mobile_no',
+        'custom_company_ownerceo_conatct', 
+        'company_ownerceo_conatct', 
+        'custom_representative_mobile',
+        'custom_phone_no'
+      ]
+      applyPhoneMasksForCountry(lead.doc.country, setFieldValue, allPhoneFields)
     }, 400)
   }
   if (isVisible && lead.doc?.custom_lead_type === 'Organization' && lead.doc?.custom_orgs_country) {

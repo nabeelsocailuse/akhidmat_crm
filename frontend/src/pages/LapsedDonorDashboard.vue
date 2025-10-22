@@ -58,27 +58,34 @@
     </div>
 
     <!-- Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
       <div class="card-blue">
         <div class="card-content">
-          <p>Total Active Donors</p>
-          <h2>{{ totalActiveDonors }}</h2>
+          <div class="card-header">
+            <p class="card-label">Total Active Donors</p>
+            <div class="card-icon-wrapper">
+              <i class="fas fa-users card-icon"></i>
+            </div>
+          </div>
+          <h2 class="card-value">{{ totalActiveDonors.toLocaleString() }}</h2>
+          <div class="card-footer">
+            <span class="card-description">Currently active donors</span>
+          </div>
         </div>
-        <i class="fas fa-users"></i>
       </div>
       <div class="card-red">
         <div class="card-content">
-          <p>Lapsed Donors</p>
-          <h2>{{ totalLapsedDonors }}</h2>
+          <div class="card-header">
+            <p class="card-label">Lapsed Donors</p>
+            <div class="card-icon-wrapper">
+              <i class="fas fa-user-times card-icon"></i>
+            </div>
+          </div>
+          <h2 class="card-value">{{ totalLapsedDonors.toLocaleString() }}</h2>
+          <div class="card-footer">
+            <span class="card-description">Donors who haven't donated recently</span>
+          </div>
         </div>
-        <i class="fas fa-user-times"></i>
-      </div>
-      <div class="card-green">
-        <div class="card-content">
-          <p>Re-engagement Rate</p>
-          <h2>{{ reEngagementRate }}%</h2>
-        </div>
-        <i class="fas fa-sync-alt"></i>
       </div>
     </div>
 
@@ -118,7 +125,6 @@ const selectedTimePeriod = ref("12");
 const lapsedDonors = ref([]);
 const totalActiveDonors = ref(0);
 const totalLapsedDonors = ref(0);
-const reEngagementRate = ref(0);
 let dataTable = null;
 
 // modal state for creating email group
@@ -216,7 +222,6 @@ async function loadLapsedDonorDashboard() {
 
     totalActiveDonors.value = res?.total_active_donors || 0;
     totalLapsedDonors.value = res?.total_lapsed_donors || 0;
-    reEngagementRate.value = res?.re_engagement_rate || 0;
     lapsedDonors.value = res?.lapsed_donors_list || [];
 
     const rows = buildRows(lapsedDonors.value);
@@ -374,32 +379,111 @@ body {
 }
 
 .card-blue {
-  background: linear-gradient(to bottom right, #3b82f6, #1e40af);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 1.5rem;
+  padding: 0.75rem 1rem; /* much smaller padding */
   border-radius: 1rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.3);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-blue::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+  pointer-events: none;
+}
+
+.card-blue:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
 }
 
 .card-red {
-  background: linear-gradient(to bottom right, #ef4444, #b91c1c);
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
   color: white;
-  padding: 1.5rem;
+  padding: 0.75rem 1rem;
   border-radius: 1rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  box-shadow: 0 6px 16px rgba(240, 147, 251, 0.3);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
 
-.card-green {
-  background: linear-gradient(to bottom right, #10b981, #047857);
-  color: white;
-  padding: 1.5rem;
-  border-radius: 1rem;
+.card-red::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+  pointer-events: none;
+}
+
+.card-red:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(240, 147, 251, 0.4);
+}
+
+.card-content {
+  position: relative;
+  z-index: 1;
+}
+
+.card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 0.25rem; /* less space between header and value */
+}
+
+.card-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  opacity: 0.9;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.card-icon-wrapper {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  width: 2rem; /* smaller icon circle */
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+}
+
+.card-icon {
+  font-size: 1rem;
+  opacity: 0.9;
+}
+
+.card-value {
+  font-size: 1.5rem; /* smaller value font */
+  font-weight: 700;
+  margin: 0;
+  line-height: 1;
+}
+
+.card-footer {
+  margin-top: 0.25rem; /* less gap below */
+}
+
+.card-description {
+  font-size: 0.7rem;
+  opacity: 0.8;
+  font-weight: 400;
 }
 </style>
+

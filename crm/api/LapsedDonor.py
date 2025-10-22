@@ -54,24 +54,6 @@ def get_lapsed_donor_dashboard(filters=None):
     """, as_dict=True)
     total_lapsed_donors = (total_lapsed_row[0].total_lapsed_donors if total_lapsed_row else 0) or 0
 
-    re_engagement_rate_row = frappe.db.sql(f"""
-        SELECT 
-            ROUND(
-                (COUNT(DISTINCT CASE 
-                    WHEN dn.due_date >= (CURDATE() - INTERVAL {interval} DAY) THEN pd.donor
-                END) / COUNT(DISTINCT d.name)) * 100, 2
-            ) AS re_engagement_rate
-        FROM 
-            `tabDonor` AS d
-        LEFT JOIN 
-            `tabPayment Detail` AS pd ON pd.donor = d.name
-        LEFT JOIN 
-            `tabDonation` AS dn ON dn.name = pd.parent
-        WHERE 
-            d.status = 'Active' AND dn.docstatus = 1 {conditions}
-    """, as_dict=True)
-    re_engagement_rate = (re_engagement_rate_row[0].re_engagement_rate if re_engagement_rate_row else 0) or 0
-
     lapsed_donors_list = frappe.db.sql(f"""
         SELECT 
             d.name AS donor_id,
@@ -96,7 +78,6 @@ def get_lapsed_donor_dashboard(filters=None):
     return {
         "total_active_donors": total_active_donors,
         "total_lapsed_donors": total_lapsed_donors,
-        "re_engagement_rate": re_engagement_rate,
         "lapsed_donors_list": lapsed_donors_list or []
     }
 

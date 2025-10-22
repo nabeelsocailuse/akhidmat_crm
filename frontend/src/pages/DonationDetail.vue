@@ -3418,14 +3418,83 @@
         toast.error("Failed to submit donation");
       }
     } catch (error) {
-      if (error.message && error.message.includes("TimestampMismatchError")) {
+      // Helper to convert HTML server messages to plain text
+      const htmlToText = (input) => {
+        if (!input) return "";
+        let str = String(input);
+        str = str.replace(/<br\s*\/?>/gi, "\n");
+        str = str.replace(/<[^>]+>/g, "");
+        str = str
+          .replace(/&nbsp;/g, " ")
+          .replace(/&amp;/g, "&")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'");
+        str = str
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+          .join("\n");
+        return str;
+      };
+
+      const extractFrappeServerMessage = (err) => {
+        try {
+          if (!err) return null;
+
+          // Sometimes server sends structured _server_messages JSON
+          const server = err._server_messages || (err.response && err.response._server_messages) || err.exc && err.exc._server_messages;
+          if (server && typeof server === "string") {
+            try {
+              const parsed = JSON.parse(server);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                const first = parsed[0];
+                if (first && typeof first === "object") {
+                  const title = first.title ? htmlToText(first.title) : "";
+                  const message = first.message ? htmlToText(first.message) : "";
+                  const text = [title, message].filter(Boolean).join("\n");
+                  if (text) return text;
+                }
+              }
+            } catch (_) {
+              // fallthrough
+            }
+          }
+
+          // If messages array exists (common), prefer it
+          if (Array.isArray(err.messages) && err.messages.length) {
+            const text = htmlToText(err.messages.join("\n"));
+            if (text) {
+              // If server intended a 'Return entries already exist.' title but only returned Row #... in messages,
+              // prefix the title to make it clear to the user.
+              if (/^Row\s*#\d+/i.test(text) && !/Return entries already exist\./i.test(text)) {
+                return `Return entries already exist.\n${text}`;
+              }
+              return text;
+            }
+          }
+
+          // Fallback to err.message / err.exc
+          const raw = err.message || err.exc || err;
+          return htmlToText(raw);
+        } catch (e) {
+          return null;
+        }
+      };
+
+      // Handle timestamp mismatch separately
+      if (error && (error.message && error.message.includes("TimestampMismatchError"))) {
         toast.error(
           "Document was modified by another user. Please refresh the page and try again."
         );
         await document.reload();
-      } else {
-        toast.error(`Failed to submit donation: ${error.message || error}`);
+        return;
       }
+
+      const pretty = extractFrappeServerMessage(error) || (error && (error.message || String(error))) || "Failed to submit donation";
+      // Ensure message is concise for toast
+      toast.error(pretty);
     }
   }
 
