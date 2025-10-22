@@ -4,6 +4,7 @@
 frappe.ui.form.on("CRM Lead", {
 	refresh(frm) {
 		frm.add_web_link(`/crm/leads/${frm.doc.name}`, __("Open in Portal"));
+		set_queries.applying(frm);
 	},
 	update_total: function (frm) {
 		let total = 0;
@@ -66,7 +67,21 @@ frappe.ui.form.on("CRM Products", {
 				"net_amount",
 				d.amount - discount_amount
 			);
-		}
-		frm.trigger("update_total");
 	}
+	frm.trigger("update_total");
+}
 });
+
+set_queries = {
+	applying: function (frm) {
+		set_queries.custom_lead_desk_func(frm);
+	},
+	custom_lead_desk_func: function (frm) {
+		frm.set_query("custom_lead_desk", function () {
+			let ffilters = frm.doc.custom_department == undefined ? { department: ["!=", undefined] } : { department: frm.doc.custom_department };
+			return {
+				filters: ffilters
+			};
+		});
+	}
+}

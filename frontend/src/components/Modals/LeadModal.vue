@@ -179,6 +179,55 @@ async function createNewLead() {
     }
   }
 
+  // Validate CEO contact for Corporate Donors
+  if (lead.doc.custom_lead_type === 'Corporate Donors' && lead.doc.country) {
+    const ceoContact = lead.doc.custom_company_ownerceo_conatct || lead.doc.company_ownerceo_conatct
+    if (ceoContact) {
+      const ceoValidation = await validatePhoneNumber(ceoContact, lead.doc.country)
+      if (!ceoValidation.isValid) {
+        error.value = ceoValidation.message || __('Invalid Company Owner/CEO Contact')
+        return
+      }
+    }
+    
+    // Validate representative mobile for Corporate Donors
+    if (lead.doc.custom_representative_mobile) {
+      const repValidation = await validatePhoneNumber(lead.doc.custom_representative_mobile, lead.doc.country)
+      if (!repValidation.isValid) {
+        error.value = repValidation.message || __('Invalid Representative Mobile')
+        return
+      }
+    }
+  }
+
+  // Validate phone_no for Individual lead type
+  if (lead.doc.custom_lead_type === 'Individual' && lead.doc.custom_phone_no && lead.doc.country) {
+    const phoneValidation = await validatePhoneNumber(lead.doc.custom_phone_no, lead.doc.country)
+    if (!phoneValidation.isValid) {
+      error.value = phoneValidation.message || __('Invalid Phone Number')
+      return
+    }
+  }
+
+  // Validate org contact fields for Organization lead type
+  if (lead.doc.custom_lead_type === 'Organization' && lead.doc.custom_orgs_country) {
+    if (lead.doc.custom_org_contact) {
+      const orgContactValidation = await validatePhoneNumber(lead.doc.custom_org_contact, lead.doc.custom_orgs_country)
+      if (!orgContactValidation.isValid) {
+        error.value = orgContactValidation.message || __('Invalid Organization Contact')
+        return
+      }
+    }
+    
+    if (lead.doc.custom_org_representative_contact_number) {
+      const orgRepValidation = await validatePhoneNumber(lead.doc.custom_org_representative_contact_number, lead.doc.custom_orgs_country)
+      if (!orgRepValidation.isValid) {
+        error.value = orgRepValidation.message || __('Invalid Organization Representative Contact')
+        return
+      }
+    }
+  }
+
   if (lead.doc.website && !lead.doc.website.startsWith('http')) {
     lead.doc.website = 'https://' + lead.doc.website
   }
@@ -218,6 +267,22 @@ async function createNewLead() {
         }
         if (lead.doc.email && !lead.doc.email.includes('@')) {
           error.value = __('Invalid Email')
+          return error.value
+        }
+        if (lead.doc.custom_org_representative_email_address && !lead.doc.custom_org_representative_email_address.includes('@')) {
+          error.value = __('Invalid Organization Representative Email Address')
+          return error.value
+        }
+        if (lead.doc.custom_org_email && !lead.doc.custom_org_email.includes('@')) {
+          error.value = __('Invalid ORG Email')
+          return error.value
+        }
+        if (lead.doc.custom_company_email_address && !lead.doc.custom_company_email_address.includes('@')) {
+          error.value = __('Invalid Company Email Address ')
+          return error.value
+        }
+        if (lead.doc.custom_representative_email && !lead.doc.custom_representative_email.includes('@')) {
+          error.value = __('Invalid Representative Email ')
           return error.value
         }
         if (!lead.doc.status) {
@@ -292,9 +357,59 @@ watch(() => lead.doc?.country, async (newCountry, oldCountry) => {
   if (!newCountry) return
   if (oldCountry && oldCountry !== newCountry) {
     lead.doc.mobile_no = ''
+    // Clear fields based on lead type on country change
+    if (lead.doc.custom_lead_type === 'Corporate Donors') {
+      if (lead.doc.custom_company_ownerceo_conatct) lead.doc.custom_company_ownerceo_conatct = ''
+      if (lead.doc.company_ownerceo_conatct) lead.doc.company_ownerceo_conatct = ''
+      if (lead.doc.custom_representative_mobile) lead.doc.custom_representative_mobile = ''
+    }
+    if (lead.doc.custom_lead_type === 'Individual') {
+      if (lead.doc.custom_phone_no) lead.doc.custom_phone_no = ''
+    }
   }
   setTimeout(() => {
-    applyPhoneMasksForCountry(newCountry, setFieldValue, ['mobile_no'])
+    const fields = ['mobile_no']
+    // Apply masks based on lead type
+    if (lead.doc?.custom_lead_type === 'Corporate Donors') {
+      fields.push('custom_company_ownerceo_conatct', 'company_ownerceo_conatct', 'custom_representative_mobile')
+    }
+    if (lead.doc?.custom_lead_type === 'Individual') {
+      fields.push('custom_phone_no')
+    }
+    applyPhoneMasksForCountry(newCountry, setFieldValue, fields)
+  }, 300)
+})
+
+// Watch custom_orgs_country for Organization lead type
+watch(() => lead.doc?.custom_orgs_country, async (newCountry, oldCountry) => {
+  if (!newCountry || lead.doc?.custom_lead_type !== 'Organization') return
+  if (oldCountry && oldCountry !== newCountry) {
+    // Clear org contact fields on country change
+    if (lead.doc.custom_org_contact) lead.doc.custom_org_contact = ''
+    if (lead.doc.custom_org_representative_contact_number) lead.doc.custom_org_representative_contact_number = ''
+  }
+  setTimeout(() => {
+    applyPhoneMasksForCountry(newCountry, setFieldValue, ['custom_org_contact', 'custom_org_representative_contact_number'])
+  }, 300)
+})
+
+// Watch custom_lead_type to apply/remove masking dynamically
+watch(() => lead.doc?.custom_lead_type, (newType) => {
+  if (!lead.doc?.country) return
+  
+  setTimeout(() => {
+    const fields = []
+    
+    if (newType === 'Corporate Donors') {
+      fields.push('custom_company_ownerceo_conatct', 'company_ownerceo_conatct', 'custom_representative_mobile')
+    }
+    if (newType === 'Individual') {
+      fields.push('custom_phone_no')
+    }
+    
+    if (fields.length > 0) {
+      applyPhoneMasksForCountry(lead.doc.country, setFieldValue, fields)
+    }
   }, 300)
 })
 
@@ -309,10 +424,90 @@ watch(() => lead.doc?.mobile_no, async (newValue) => {
   }
 })
 
+// Watch CEO contact field when Corporate Donors to validate with same logic
+watch(() => lead.doc?.custom_company_ownerceo_conatct || lead.doc?.company_ownerceo_conatct, async (newValue) => {
+  if (lead.doc?.custom_lead_type !== 'Corporate Donors') return
+  if (newValue && lead.doc?.country) {
+    const validation = await validatePhoneNumber(newValue, lead.doc.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('custom_company_ownerceo_conatct', false, validation.message)
+      showPhoneValidationFeedback('company_ownerceo_conatct', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('custom_company_ownerceo_conatct', true, '')
+      showPhoneValidationFeedback('company_ownerceo_conatct', true, '')
+    }
+  }
+})
+
+// Watch custom_representative_mobile for Corporate Donors
+watch(() => lead.doc?.custom_representative_mobile, async (newValue) => {
+  if (lead.doc?.custom_lead_type !== 'Corporate Donors') return
+  if (newValue && lead.doc?.country) {
+    const validation = await validatePhoneNumber(newValue, lead.doc.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('custom_representative_mobile', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('custom_representative_mobile', true, '')
+    }
+  }
+})
+
+// Watch custom_phone_no for Individual lead type
+watch(() => lead.doc?.custom_phone_no, async (newValue) => {
+  if (lead.doc?.custom_lead_type !== 'Individual') return
+  if (newValue && lead.doc?.country) {
+    const validation = await validatePhoneNumber(newValue, lead.doc.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('custom_phone_no', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('custom_phone_no', true, '')
+    }
+  }
+})
+
+// Watch org contact fields for Organization lead type
+watch(() => lead.doc?.custom_org_contact, async (newValue) => {
+  if (lead.doc?.custom_lead_type !== 'Organization') return
+  if (newValue && lead.doc?.custom_orgs_country) {
+    const validation = await validatePhoneNumber(newValue, lead.doc.custom_orgs_country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('custom_org_contact', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('custom_org_contact', true, '')
+    }
+  }
+})
+
+watch(() => lead.doc?.custom_org_representative_contact_number, async (newValue) => {
+  if (lead.doc?.custom_lead_type !== 'Organization') return
+  if (newValue && lead.doc?.custom_orgs_country) {
+    const validation = await validatePhoneNumber(newValue, lead.doc.custom_orgs_country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('custom_org_representative_contact_number', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('custom_org_representative_contact_number', true, '')
+    }
+  }
+})
+
 onMounted(() => {
   if (lead.doc?.country) {
     setTimeout(() => {
-      applyPhoneMasksForCountry(lead.doc.country, setFieldValue, ['mobile_no'])
+      const fields = ['mobile_no']
+      if (lead.doc?.custom_lead_type === 'Corporate Donors') {
+        fields.push('custom_company_ownerceo_conatct', 'company_ownerceo_conatct', 'custom_representative_mobile')
+      }
+      if (lead.doc?.custom_lead_type === 'Individual') {
+        fields.push('custom_phone_no')
+      }
+      applyPhoneMasksForCountry(lead.doc.country, setFieldValue, fields)
+    }, 500)
+  }
+  
+  // Apply org country masks if Organization lead type
+  if (lead.doc?.custom_lead_type === 'Organization' && lead.doc?.custom_orgs_country) {
+    setTimeout(() => {
+      applyPhoneMasksForCountry(lead.doc.custom_orgs_country, setFieldValue, ['custom_org_contact', 'custom_org_representative_contact_number'])
     }, 500)
   }
 })
@@ -329,6 +524,12 @@ onMounted(() => {
   }
   if (!lead.doc?.custom_identification_type) {
     lead.doc.custom_identification_type = 'CNIC'
+  }
+  // Apply CEO contact mask initially if Corporate Donors
+  if (lead.doc?.custom_lead_type === 'Corporate Donors' && lead.doc?.country) {
+    setTimeout(() => {
+      applyPhoneMasksForCountry(lead.doc.country, setFieldValue, ['custom_company_ownerceo_conatct', 'company_ownerceo_conatct'])
+    }, 500)
   }
   if (lead.doc?.custom_identification_type) {
     setTimeout(() => {
@@ -355,6 +556,23 @@ watch(() => show.value, (isVisible) => {
     setTimeout(() => {
       applyCnicMaskToInput('custom_identification_value', lead.doc.custom_identification_type, setFieldValue)
     }, 300)
+  }
+  if (isVisible && lead.doc?.country) {
+    setTimeout(() => {
+      const fields = ['mobile_no']
+      if (lead.doc?.custom_lead_type === 'Corporate Donors') {
+        fields.push('custom_company_ownerceo_conatct', 'company_ownerceo_conatct', 'custom_representative_mobile')
+      }
+      if (lead.doc?.custom_lead_type === 'Individual') {
+        fields.push('custom_phone_no')
+      }
+      applyPhoneMasksForCountry(lead.doc.country, setFieldValue, fields)
+    }, 400)
+  }
+  if (isVisible && lead.doc?.custom_lead_type === 'Organization' && lead.doc?.custom_orgs_country) {
+    setTimeout(() => {
+      applyPhoneMasksForCountry(lead.doc.custom_orgs_country, setFieldValue, ['custom_org_contact', 'custom_org_representative_contact_number'])
+    }, 500)
   }
 })
 
