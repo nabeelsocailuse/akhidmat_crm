@@ -202,16 +202,53 @@ function getCurrencySymbol(currencyCode) {
     // Use the user's locale when available so Intl returns the localized currency symbol
     // (e.g., 'Rs' / '₹') instead of forcing the currency code like 'PKR'.
     const locale = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : undefined;
-    const formatter = new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: currencyCode,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    })
-    // Extract the currency symbol from the formatted string
-    const parts = formatter.formatToParts(1)
-    const symbol = parts.find((part) => part.type === 'currency')
-    return symbol ? symbol.value : null
+    const tryFormatter = (loc) => {
+      try {
+        const f = new Intl.NumberFormat(loc, {
+          style: 'currency',
+          currency: currencyCode,
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        })
+        const parts = f.formatToParts(1)
+        const part = parts.find((p) => p.type === 'currency')
+        return part ? part.value : null
+      } catch (e) {
+        return null
+      }
+    }
+
+    // 1) Try user's locale
+    let symbol = tryFormatter(locale)
+
+    // 2) If result looks like the currency code (e.g., 'AED') or null, try a region-specific locale
+    if (!symbol || symbol.toUpperCase() === currencyCode.toUpperCase()) {
+      // Try some sensible fallbacks for known currencies
+      const localeFallbacks = {
+        AED: 'ar-AE',
+        SAR: 'ar-SA',
+        PKR: 'en-PK',
+        INR: 'en-IN',
+        USD: 'en-US',
+      }
+      const fallbackLocale = localeFallbacks[currencyCode] || 'en'
+      symbol = tryFormatter(fallbackLocale)
+    }
+
+    // 3) Final fallback: small map of common currency symbols
+    if (!symbol || symbol.toUpperCase() === currencyCode.toUpperCase()) {
+      const symbolMap = {
+        AED: 'د.إ',
+        USD: '$',
+        EUR: '€',
+        PKR: '₨',
+        INR: '₹',
+        GBP: '£',
+      }
+      symbol = symbolMap[currencyCode] || null
+    }
+
+    return symbol
   } catch (error) {
     console.error(`Invalid currency code: ${currencyCode}`)
     return null
