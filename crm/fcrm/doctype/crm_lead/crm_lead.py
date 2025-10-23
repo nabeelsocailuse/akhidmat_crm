@@ -6,6 +6,7 @@ from frappe import _
 from frappe.desk.form.assign_to import add as assign
 from frappe.model.document import Document
 from frappe.utils import has_gravatar, validate_email_address
+import re
 
 from crm.fcrm.doctype.crm_service_level_agreement.utils import get_sla
 from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
@@ -19,6 +20,8 @@ class CRMLead(Document):
 
 	def validate(self):
 		self.set_full_name()
+		# Validate first name contains only letters and spaces
+		self.validate_first_name()
 		self.set_lead_name()
 		self.set_title()
 		self.validate_email()
@@ -74,6 +77,18 @@ class CRMLead(Document):
 
 			if self.is_new() or not self.image:
 				self.image = has_gravatar(self.email)
+
+	def validate_first_name(self):
+		"""
+		Ensure first_name contains only letters and spaces.
+		"""
+		if getattr(self, 'first_name', None):
+			name_pattern = re.compile(r"^[A-Za-z\s]+$")
+			if not name_pattern.match(self.first_name):
+				frappe.throw(
+					_("First Name should only contain letters and spaces."),
+					title=_("Invalid First Name"),
+				)
 
 	def assign_agent(self, agent):
 		if not agent:

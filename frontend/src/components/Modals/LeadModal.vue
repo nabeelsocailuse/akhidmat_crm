@@ -432,6 +432,7 @@ watch(() => lead.doc?.country, async (newCountry, oldCountry) => {
     if (lead.doc.company_ownerceo_conatct) lead.doc.company_ownerceo_conatct = ''
     if (lead.doc.custom_representative_mobile) lead.doc.custom_representative_mobile = ''
     if (lead.doc.custom_phone_no) lead.doc.custom_phone_no = ''
+    if (lead.doc.custom_phone_no_) lead.doc.custom_phone_no_ = ''
   }
   setTimeout(() => {
     // Apply masks to all possible phone fields regardless of lead type
@@ -440,7 +441,8 @@ watch(() => lead.doc?.country, async (newCountry, oldCountry) => {
       'custom_company_ownerceo_conatct', 
       'company_ownerceo_conatct', 
       'custom_representative_mobile',
-      'custom_phone_no'
+      'custom_phone_no',
+      'custom_phone_no_'
     ]
     applyPhoneMasksForCountry(newCountry, setFieldValue, allPhoneFields)
   }, 300)
@@ -470,7 +472,8 @@ watch(() => lead.doc?.custom_lead_type, (newType) => {
       'custom_company_ownerceo_conatct', 
       'company_ownerceo_conatct', 
       'custom_representative_mobile',
-      'custom_phone_no'
+      'custom_phone_no',
+      'custom_phone_no_'
     ]
     applyPhoneMasksForCountry(lead.doc.country, setFieldValue, allPhoneFields)
   }, 300)
@@ -524,6 +527,19 @@ watch(() => lead.doc?.custom_phone_no, async (newValue) => {
       showPhoneValidationFeedback('custom_phone_no', false, validation.message)
     } else {
       showPhoneValidationFeedback('custom_phone_no', true, '')
+    }
+  }
+})
+
+// Watch custom_phone_no_ for Individual lead type
+watch(() => lead.doc?.custom_phone_no_, async (newValue) => {
+  if (lead.doc?.custom_lead_type !== 'Individual') return
+  if (newValue && lead.doc?.country) {
+    const validation = await validatePhoneNumber(newValue, lead.doc.country)
+    if (!validation.isValid) {
+      showPhoneValidationFeedback('custom_phone_no_', false, validation.message)
+    } else {
+      showPhoneValidationFeedback('custom_phone_no_', true, '')
     }
   }
 })
@@ -637,7 +653,8 @@ onMounted(() => {
         'custom_company_ownerceo_conatct', 
         'company_ownerceo_conatct', 
         'custom_representative_mobile',
-        'custom_phone_no'
+        'custom_phone_no',
+      'custom_phone_no_'
       ]
       applyPhoneMasksForCountry(lead.doc.country, setFieldValue, allPhoneFields)
     }, 500)
@@ -675,7 +692,8 @@ watch(() => show.value, (isVisible) => {
         'custom_company_ownerceo_conatct', 
         'company_ownerceo_conatct', 
         'custom_representative_mobile',
-        'custom_phone_no'
+        'custom_phone_no',
+      'custom_phone_no_'
       ]
       applyPhoneMasksForCountry(lead.doc.country, setFieldValue, allPhoneFields)
     }, 400)

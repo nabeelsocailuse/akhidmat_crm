@@ -211,13 +211,13 @@
           </div>
 
           <div class="grid grid-cols-2 gap-3">
-            <FormControl :label="__('Outstanding Amount')" type="text" :modelValue="formatCurrency(paymentReadonly.outstanding_amount)" readonly />
+            <FormControl :label="__('Outstanding Amount')" type="text" :modelValue="formatCurrency(paymentReadonly.outstanding_amount, null, (document.doc && document.doc.currency) || 'USD')" readonly />
             <FormControl :label="__('Paid Amount')" type="number" v-model="paymentEntryForm.paid_amount" />
           </div>
 
           <div class="grid grid-cols-2 gap-3">
-            <FormControl :label="__('Doubtful Debt Amount')" type="text" :modelValue="formatCurrency(paymentReadonly.doubtful_debt_amount)" readonly />
-            <FormControl :label="__('Remaining Amount')" type="text" :modelValue="formatCurrency(paymentReadonly.remaining_amount)" readonly />
+            <FormControl :label="__('Doubtful Debt Amount')" type="text" :modelValue="formatCurrency(paymentReadonly.doubtful_debt_amount, null, (document.doc && document.doc.currency) || 'USD')" readonly />
+            <FormControl :label="__('Remaining Amount')" type="text" :modelValue="formatCurrency(paymentReadonly.remaining_amount, null, (document.doc && document.doc.currency) || 'USD')" readonly />
           </div>
 
           <div class="pt-2 text-sm font-medium text-gray-700">{{ __('Accounts Detail') }}</div>
@@ -388,6 +388,7 @@
   // import EditIcon from "@/components/Icons/EditIcon.vue";
   import { getMeta } from "@/stores/meta";
   import { ref, computed, onMounted, watch } from "vue";
+  import { formatCurrency } from "@/utils/numberFormat.js";
   import { useRoute, useRouter } from "vue-router";
   import { useActiveTabManager } from "@/composables/useActiveTabManager";
   import { createResource } from "frappe-ui";
@@ -2918,14 +2919,6 @@
   });
   const hasPaymentEntry = ref(false);
 
-  function formatCurrency(value) {
-    const num = Number(value || 0);
-    try {
-      return new Intl.NumberFormat(undefined, { style: 'currency', currency: document.doc?.to_currency || document.doc?.currency || 'PKR' }).format(num);
-    } catch (e) {
-      return `${num}`;
-    }
-  }
 
   async function refreshPaymentEntryAvailability() {
     try {

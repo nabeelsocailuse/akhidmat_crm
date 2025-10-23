@@ -666,7 +666,7 @@ export function useDonorFieldValidation() {
     
     await new Promise(resolve => setTimeout(resolve, 500))
     
-    let fields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'phone_no', 'mobile_no', 'org_representative_contact_number', 'org_contact', 'company_ownerceo_conatct', 'custom_company_ownerceo_conatct', 'custom_representative_mobile', 'custom_phone_no', 'custom_org_contact', 'custom_org_representative_contact_number']
+    let fields = ['contact_no', 'co_contact_no', 'company_contact_number', 'organization_contact_person', 'representative_mobile', 'phone_no', 'mobile_no', 'org_representative_contact_number', 'org_contact', 'company_ownerceo_conatct', 'custom_company_ownerceo_conatct', 'custom_representative_mobile', 'custom_phone_no', 'custom_phone_no_', 'custom_org_contact', 'custom_org_representative_contact_number']
     
     if (fieldFilter && Array.isArray(fieldFilter)) {
       fields = fields.filter(field => fieldFilter.includes(field))

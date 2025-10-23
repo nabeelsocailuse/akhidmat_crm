@@ -199,7 +199,10 @@ function getNumberFormat(format = null) {
 
 function getCurrencySymbol(currencyCode) {
   try {
-    const formatter = new Intl.NumberFormat('en-US', {
+    // Use the user's locale when available so Intl returns the localized currency symbol
+    // (e.g., 'Rs' / '₹') instead of forcing the currency code like 'PKR'.
+    const locale = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : undefined;
+    const formatter = new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: currencyCode,
       minimumFractionDigits: 0,
