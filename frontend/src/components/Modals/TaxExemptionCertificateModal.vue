@@ -31,7 +31,12 @@
 
           <!-- Body -->
           <div>
-            <FieldLayout v-if="tabs.data" :tabs="tabs.data" :data="certificate.doc" />
+            <FieldLayout 
+              v-if="tabs.data" 
+              :tabs="tabs.data" 
+              :data="certificate.doc"
+              @field-change="handleFieldChange"
+            />
             <ErrorMessage class="mt-4" v-if="error" :message="__(error)" />
           </div>
         </AppStyling>
@@ -64,11 +69,11 @@ import { isMobileView } from '@/composables/settings'
 import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
 import { createResource, call } from 'frappe-ui'
 import { useDocument } from '@/data/document'
-import { computed, ref, nextTick, watch} from 'vue'
+import { computed, ref, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-const props = defineProps({
-  defaults: Object,
-})
+// import { format } from 'date-fns' 
+
+const props = defineProps({ defaults: Object })
 
 const { user } = sessionStore()
 const { getUser, isManager } = usersStore()
@@ -80,12 +85,6 @@ const error = ref(null)
 const isCertificateCreating = ref(false)
 
 const { document: certificate, triggerOnBeforeCreate } = useDocument('Tax Exemption Certificate')
-
-const setFieldValue = (fieldName, value) => {
-  if (certificate.doc) {
-    certificate.doc[fieldName] = value
-  }
-}
 
 const certificateStatuses = computed(() => {
   let statuses = statusOptions('certificate')
@@ -120,9 +119,7 @@ const tabs = createResource({
   },
 })
 
-const createCertificate = createResource({
-  url: 'frappe.client.insert',
-})
+const createCertificate = createResource({ url: 'frappe.client.insert' })
 
 async function fetchAndSetDonorDetails(donorId) {
   if (!donorId) {
@@ -130,6 +127,7 @@ async function fetchAndSetDonorDetails(donorId) {
       certificate.doc.donor_name = ''
       certificate.doc.donor_cnic__ntn = ''
       certificate.doc.donor_address = ''
+      certificate.doc.total_donation = 0
     }
     return
   }
@@ -144,18 +142,65 @@ async function fetchAndSetDonorDetails(donorId) {
       certificate.doc.donor_address = donor.address || ''
     }
   } catch (e) {
-    // ignore
+    console.error(e)
   }
 }
 
-// Watch donor to auto-fill related fields
+async function handleFieldChange(fieldName, value) {
+  // Handle donor field change explicitly
+  if (fieldName === 'donor' && value) {
+    await fetchAndSetDonorDetails(value)
+  }
+}
+
+// Watch donor changes and fetch donor details
 watch(
-  () => certificate.doc && certificate.doc.donor,
+  () => certificate.doc?.donor,
   async (newDonor, oldDonor) => {
+    if (!certificate.doc) return
+
+    // Fetch donor details when donor changes
     if (newDonor !== oldDonor) {
       await fetchAndSetDonorDetails(newDonor)
     }
-  }
+  },
+  { immediate: true }
+)
+
+// Watch fiscal year or donor changes to fetch total donation
+watch(
+  () => [certificate.doc?.donor, certificate.doc?.fiscal_year],
+  async ([newDonor, newFiscalYear]) => {
+    if (!certificate.doc) return
+
+    // Reset total donation
+    certificate.doc.total_donation = 0
+    error.value = null
+
+    if (!newDonor || !newFiscalYear) return
+
+    try {
+      const r = await call(
+        'akfp_crm.akfp_crm.doctype.tax_exemption_certificate.tax_exemption_certificate.get_total_donation',
+        {
+          donor: newDonor,
+          fiscal_year: newFiscalYear,
+        }
+      )
+
+      if (r && r.total_donation !== undefined) {
+        certificate.doc.total_donation = r.total_donation || 0
+        if (r.message) {
+          error.value = r.message
+          nextTick(() => frappe.msgprint(r.message))
+        }
+      }
+    } catch (e) {
+      console.error(e)
+      error.value = 'Error fetching total donation'
+    }
+  },
+  { immediate: true }
 )
 
 async function createNewCertificate() {
@@ -166,9 +211,7 @@ async function createNewCertificate() {
   await triggerOnBeforeCreate?.()
 
   createCertificate.submit(
-    {
-      doc: { doctype: 'Tax Exemption Certificate', ...certificate.doc },
-    },
+    { doc: { doctype: 'Tax Exemption Certificate', ...certificate.doc } },
     {
       validate() {
         error.value = null
@@ -199,18 +242,29 @@ async function createNewCertificate() {
   )
 }
 
-// Open the quick entry/edit modal
 function openQuickEntryModal() {
   showQuickEntryModal.value = true
   quickEntryProps.value = { doctype: 'Tax Exemption Certificate' }
   nextTick(() => (show.value = false))
 }
 
-// Initialize certificate document
+// Initialize document
 if (!certificate.doc) {
   certificate.doc = {}
   Object.assign(certificate.doc, props.defaults)
 }
+
+// Set date_of_issue to today in YYYY-MM-DD format
+nextTick(() => {
+  if (certificate.doc && !certificate.doc.date_of_issue) {
+    const today = new Date()
+    const yyyy = today.getFullYear()
+    const mm = String(today.getMonth() + 1).padStart(2, '0') // Months are 0-based
+    const dd = String(today.getDate()).padStart(2, '0')
+    certificate.doc.date_of_issue = `${yyyy}-${mm}-${dd}`
+  }
+})
+
 </script>
 
 <style>
