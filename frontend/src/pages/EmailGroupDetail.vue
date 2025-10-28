@@ -645,7 +645,12 @@ async function confirmAddSubscribers(close) {
     const newTotal = res?.message ?? res
     setTotalSubscribers(newTotal)
     const added = Math.max(0, Number(newTotal) - previousTotal)
-    toast.success(__(`${added} subscribers added`))
+    if (added === 0) {
+      // No new subscribers were actually added. Most likely they already exist in the group.
+      toast.info(__('No new subscribers were added — the provided email(s) may already exist in this group'))
+    } else {
+      toast.success(__(`${added} subscribers added`))
+    }
     close()
     showAddDialog.value = false
   } catch (err) {
@@ -668,7 +673,11 @@ async function confirmImportSubscribers(close) {
     const newTotal = r?.message ?? r
     setTotalSubscribers(newTotal)
     const added = Math.max(0, Number(newTotal) - previousTotal)
-    toast.success(__(`${added} subscribers added`))
+    if (added === 0) {
+      toast.info(__('No new subscribers were added — the imported email(s) may already exist in this group'))
+    } else {
+      toast.success(__(`${added} subscribers added`))
+    }
     close()
     showImportDialog.value = false
   } catch (err) {

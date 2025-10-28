@@ -2,7 +2,7 @@
   <ListView
     :class="$attrs.class"
     :columns="columns"
-    :rows="rows"
+    :rows="processedRows"
     :options="{
       getRowRoute: (row) => {
         if (!row || !row.name) {
@@ -43,7 +43,7 @@
       </ListHeaderItem>
     </AppStyling>
 
-    <ListRows :rows="rows" v-slot="{ idx, column, item, row }" doctype="Donation">
+  <ListRows :rows="processedRows" v-slot="{ idx, column, item, row }" doctype="Donation">
       <div v-if="column.key === '_assign'" class="flex items-center">
         <MultipleAvatar
           :avatars="item"
@@ -196,6 +196,41 @@ watch(pageLengthCount, (val, old_value) => {
 });
 
 const listBulkActionsRef = ref(null);
+
+const statusColorMap = {
+  Draft: 'text-gray-500',
+  Unpaid: 'text-orange-500',
+  Paid: 'text-green-500',
+  'Partly Return': 'text-yellow-500',
+  Return: 'text-gray-500',
+  'Credit Note Issued': 'text-gray-500',
+  'Unpaid and Discounted': 'text-orange-500',
+  'Partly Paid and Discounted': 'text-yellow-500',
+  'Overdue and Discounted': 'text-red-500',
+  Overdue: 'text-red-500',
+  'Partly Paid': 'text-yellow-500',
+  'Internal Transfer': 'text-gray-600',
+  'Unknown To Known': 'text-green-500',
+};
+
+const processedRows = computed(() => {
+  try {
+    return (props.rows || []).map((r) => {
+      // determine color from either existing row.color or status mapping
+      const statusKey = r && typeof r.status === 'object' ? r.status.label : r?.status;
+      const color = r?.color || statusColorMap[statusKey] || 'text-gray-500';
+
+      // ensure the status cell is an object with label and color so ListRows' `item` has `color`
+      const statusCell = r?.status && typeof r.status === 'object'
+        ? { ...r.status, color }
+        : { label: r?.status || '', color };
+
+      return { ...r, status: statusCell, color };
+    });
+  } catch (error) {
+    return props.rows || [];
+  }
+});
 
 defineExpose({
   customListActions: computed(() => listBulkActionsRef.value?.customListActions),
