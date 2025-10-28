@@ -134,9 +134,16 @@ function parseRows(rows, columns = []) {
 
   const displayFields = [
     "name",
+    "net_amount",
+    "base_net_amount",
+    "base_total_donation",
+    "total_donation",
+    "currency",
     "donor_identity",
     "company",
-  "contribution_type",
+    "due_date",
+    "donation_type",
+    "contribution_type",
     "status",
     "amount",
     "posting_date",
@@ -204,27 +211,10 @@ const handleDonationDeleted = () => {
   }
 };
 
-const handleFilterUpdate = (filters) => {
-  currentFilters.value = filters;
-  if (viewControls.value && viewControls.value.reload) {
-    viewControls.value.reload();
-  }
-};
-
 const handleViewControlsFilterUpdate = (filters) => {
   currentFilters.value = filters;
 };
 
-const handleFilterComponentUpdate = (filters) => {
-  currentFilters.value = filters;
-  if (viewControls.value) {
-    setTimeout(() => {
-      if (viewControls.value.reload) {
-        viewControls.value.reload();
-      }
-    }, 100);
-  }
-};
 
 const route = useRoute();
 
