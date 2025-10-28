@@ -2896,7 +2896,29 @@
     const donorIdentity = (doc.donor_identity || "").toLowerCase();
     const contribution = (doc.contribution_type || "").toLowerCase();
 
-    return donorIdentity === "unknown" && doc.docstatus === 1 && contribution === "donation";
+    // Only show the Reverse Donor button when:
+    // - donor_identity is 'unknown'
+    // - document is submitted (docstatus === 1)
+    // - contribution_type is 'donation'
+    // - AND there exists at least one payment_detail row that is unpaid and not already marked unknown_to_known
+    const baseCondition = donorIdentity === "unknown" && doc.docstatus === 1 && contribution === "donation";
+
+    if (!baseCondition) return false;
+
+    // Guard: if payment_detail is not available, conservatively hide the button
+    if (!Array.isArray(doc.payment_detail) || doc.payment_detail.length === 0) return false;
+
+    // Look for any eligible payment detail row
+    const hasEligible = doc.payment_detail.some((row) => {
+      if (!row) return false;
+      // Accept both boolean and numeric stored values
+      const paid = row.paid === true || Number(row.paid) === 1 || Number(row.paid) === 0 ? Number(row.paid) : (row.paid ? 1 : 0);
+      const unknownFlag = row.unknown_to_known === true || Number(row.unknown_to_known) === 1 ? 1 : 0;
+      // eligible if not paid (paid == 0) and not already unknown_to_known (unknownFlag == 0)
+      return (paid === 0) && (unknownFlag === 0);
+    });
+
+    return !!hasEligible;
   });
 
   // Payment Entry Modal State
