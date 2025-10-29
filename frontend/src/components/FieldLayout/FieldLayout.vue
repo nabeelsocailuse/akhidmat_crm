@@ -38,6 +38,11 @@ const props = defineProps({
     type: String,
     default: "CRM Lead",
   },
+  // Flag to indicate this FieldLayout is rendered inside a modal
+  isModal: {
+    type: Boolean,
+    default: false,
+  },
   isGridRow: {
     type: Boolean,
     default: false,
@@ -94,6 +99,8 @@ provide("preview", props.preview);
 provide("isGridRow", props.isGridRow);
 provide("parentFieldname", props.parentFieldname);
 provide("readOnly", props.readOnly);
+// Provide modal context so Field components can adjust behavior
+provide("isModal", props.isModal);
 provide("onFieldChange", combinedFieldChange);
 
 onMounted(() => {

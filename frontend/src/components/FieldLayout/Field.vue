@@ -15,7 +15,7 @@
     <FormControl
       v-if="
         field.read_only &&
-        !['Int', 'Float', 'Currency', 'Percent', 'Check', 'Attach', 'Attach Image', 'Table'].includes(
+        !['Int', 'Float', 'Currency', 'Percent', 'Check', 'Attach', 'Attach Image', 'Table', 'Time'].includes(
           field.fieldtype,
         )
       "
@@ -189,6 +189,24 @@
       :disabled="true"
       :description="getDescription(field)"
     />
+    <!-- Time field with proper HH:mm:ss formatting -->
+    <FormControl
+      v-else-if="field.fieldtype === 'Time' && !field.read_only"
+      type="time"
+      step="1"
+      :placeholder="getPlaceholder(field)"
+      :value="getFormattedTime(data[field.fieldname])"
+      @change="(e) => fieldChange(normalizeTimeInput(e.target.value), field)"
+      :description="getDescription(field)"
+    />
+    <FormControl
+      v-else-if="field.fieldtype === 'Time' && field.read_only"
+      type="text"
+      :placeholder="getPlaceholder(field)"
+      :value="getFormattedTime(data[field.fieldname])"
+      :disabled="true"
+      :description="getDescription(field)"
+    />
     <FormControl
       v-else-if="
         ['Small Text', 'Text', 'Long Text', 'Code'].includes(field.fieldtype)
@@ -307,6 +325,7 @@ const preview = inject('preview')
 const isGridRow = inject('isGridRow')
 const parentFieldname = inject('parentFieldname')
 const readOnly = inject('readOnly', false)
+const isModal = inject('isModal', false)
 
 const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
   getMeta(doctype)
@@ -384,9 +403,12 @@ const field = computed(() => {
     }
   }
 
-  // Force specific fields to be read-only for Tax Exemption Certificate across UI
-  // Include the donor link field itself so the donor cannot be changed from the detail page
-  if (doctype === 'Tax Exemption Certificate' && ['donor', 'donor_name', 'donor_cnic__ntn', 'donor_address', 'fiscal_year', 'date_of_issue', 'total_donation'].includes(field.fieldname)) {
+  // For Tax Exemption Certificate detail page (not modal), force key fields read-only
+  if (
+    doctype === 'Tax Exemption Certificate' &&
+    !isModal &&
+    ['donor', 'fiscal_year', 'date_of_issue'].includes(field.fieldname)
+  ) {
     field.read_only = true
   }
 
@@ -584,6 +606,58 @@ function getDataValue(value, field) {
     return value || 0
   }
   return value
+}
+
+// Format a time value to HH:mm:ss for display and input[type=time]
+function getFormattedTime(value) {
+  if (!value) return ''
+  // Accept Date objects
+  if (value instanceof Date) {
+    const hh = String(value.getHours()).padStart(2, '0')
+    const mm = String(value.getMinutes()).padStart(2, '0')
+    const ss = String(value.getSeconds()).padStart(2, '0')
+    return `${hh}:${mm}:${ss}`
+  }
+  const str = String(value).trim()
+  // Patterns: HH:mm, HH:mm:ss, HH:mm:ss.SSSSSS
+  const m = str.match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.\d+)?)?$/)
+  if (m) {
+    const h = Math.max(0, Math.min(23, parseInt(m[1] || '0', 10)))
+    const min = Math.max(0, Math.min(59, parseInt(m[2] || '0', 10)))
+    const s = Math.max(0, Math.min(59, parseInt(m[3] || '0', 10)))
+    const hh = String(h).padStart(2, '0')
+    const mm = String(min).padStart(2, '0')
+    const ss = String(s).padStart(2, '0')
+    return `${hh}:${mm}:${ss}`
+  }
+  // Fallback: try to extract first three numeric parts and clamp
+  const parts = str.split(':')
+  if (parts.length >= 2) {
+    const sPart = (parts[2] || '0').split('.')[0]
+    const h = Math.max(0, Math.min(23, parseInt(parts[0] || '0', 10)))
+    const min = Math.max(0, Math.min(59, parseInt(parts[1] || '0', 10)))
+    const s = Math.max(0, Math.min(59, parseInt(sPart || '0', 10)))
+    const hh = String(h).padStart(2, '0')
+    const mm = String(min).padStart(2, '0')
+    const ss = String(s).padStart(2, '0')
+    return `${hh}:${mm}:${ss}`
+  }
+  return ''
+}
+
+// Normalize input from <input type="time"> to HH:mm:ss
+function normalizeTimeInput(input) {
+  if (!input) return ''
+  const str = String(input).trim()
+  // Strip microseconds if present
+  const m = str.match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.\d+)?)?$/)
+  if (m) {
+    const h = String(Math.max(0, Math.min(23, parseInt(m[1] || '0', 10)))).padStart(2, '0')
+    const min = String(Math.max(0, Math.min(59, parseInt(m[2] || '0', 10)))).padStart(2, '0')
+    const s = String(Math.max(0, Math.min(59, parseInt(m[3] || '0', 10)))).padStart(2, '0')
+    return `${h}:${min}:${s}`
+  }
+  return getFormattedTime(str)
 }
 
 // Remove the ensureChildTableInitialized computed property and add this watcher

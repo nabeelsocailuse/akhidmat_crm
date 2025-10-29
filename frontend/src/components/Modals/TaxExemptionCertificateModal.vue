@@ -34,6 +34,8 @@
             <FieldLayout 
               v-if="tabs.data" 
               :tabs="tabs.data" 
+              doctype="Tax Exemption Certificate"
+              :isModal="true"
               :data="certificate.doc"
               @field-change="handleFieldChange"
             />
@@ -71,7 +73,6 @@ import { createResource, call } from 'frappe-ui'
 import { useDocument } from '@/data/document'
 import { computed, ref, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-// import { format } from 'date-fns' 
 
 const props = defineProps({ defaults: Object })
 
@@ -121,6 +122,7 @@ const tabs = createResource({
 
 const createCertificate = createResource({ url: 'frappe.client.insert' })
 
+// ✅ Fetch donor details + currency
 async function fetchAndSetDonorDetails(donorId) {
   if (!donorId) {
     if (certificate.doc) {
@@ -128,6 +130,7 @@ async function fetchAndSetDonorDetails(donorId) {
       certificate.doc.donor_cnic__ntn = ''
       certificate.doc.donor_address = ''
       certificate.doc.total_donation = 0
+      certificate.doc.currency = null
     }
     return
   }
@@ -140,6 +143,7 @@ async function fetchAndSetDonorDetails(donorId) {
       certificate.doc.donor_name = donor.donor_name || ''
       certificate.doc.donor_cnic__ntn = donor.cnic || ''
       certificate.doc.donor_address = donor.address || ''
+      certificate.doc.currency = donor.default_currency || donor.currency || null
     }
   } catch (e) {
     console.error(e)
@@ -147,19 +151,15 @@ async function fetchAndSetDonorDetails(donorId) {
 }
 
 async function handleFieldChange(fieldName, value) {
-  // Handle donor field change explicitly
   if (fieldName === 'donor' && value) {
     await fetchAndSetDonorDetails(value)
   }
 }
 
-// Watch donor changes and fetch donor details
 watch(
   () => certificate.doc?.donor,
   async (newDonor, oldDonor) => {
     if (!certificate.doc) return
-
-    // Fetch donor details when donor changes
     if (newDonor !== oldDonor) {
       await fetchAndSetDonorDetails(newDonor)
     }
@@ -167,13 +167,11 @@ watch(
   { immediate: true }
 )
 
-// Watch fiscal year or donor changes to fetch total donation
 watch(
   () => [certificate.doc?.donor, certificate.doc?.fiscal_year],
   async ([newDonor, newFiscalYear]) => {
     if (!certificate.doc) return
 
-    // Reset total donation
     certificate.doc.total_donation = 0
     error.value = null
 
@@ -189,11 +187,14 @@ watch(
       )
 
       if (r && r.total_donation !== undefined) {
-        certificate.doc.total_donation = r.total_donation || 0
-        if (r.message) {
-          error.value = r.message
-          nextTick(() => frappe.msgprint(r.message))
-        }
+        const amount = parseFloat(r.total_donation || 0)
+        // Store numeric amount for Currency field rendering
+        certificate.doc.total_donation = amount
+      }
+
+      if (r.message) {
+        error.value = r.message
+        nextTick(() => frappe.msgprint(r.message))
       }
     } catch (e) {
       console.error(e)
@@ -203,11 +204,10 @@ watch(
   { immediate: true }
 )
 
-async function createNewCertificate() {
-  if (certificate.doc.website && !certificate.doc.website.startsWith('http')) {
-    certificate.doc.website = 'https://' + certificate.doc.website
-  }
 
+// Removed formattedDonation header display
+
+async function createNewCertificate() {
   await triggerOnBeforeCreate?.()
 
   createCertificate.submit(
@@ -215,20 +215,15 @@ async function createNewCertificate() {
     {
       validate() {
         error.value = null
-        if (certificate.doc.mobile_no && isNaN(certificate.doc.mobile_no.replace(/[-+() ]/g, ''))) {
-          error.value = __('Mobile No should be a number')
-          return error.value
-        }
-        if (certificate.doc.email && !certificate.doc.email.includes('@')) {
-          error.value = __('Invalid Email')
-          return error.value
-        }
         isCertificateCreating.value = true
       },
       onSuccess(data) {
         isCertificateCreating.value = false
         show.value = false
-        router.push({ name: 'TaxExemptionCertificate', params: { certificateId: data.name } })
+        router.push({
+          name: 'TaxExemptionCertificate',
+          params: { certificateId: data.name },
+        })
       },
       onError(err) {
         isCertificateCreating.value = false
@@ -254,18 +249,16 @@ if (!certificate.doc) {
   Object.assign(certificate.doc, props.defaults)
 }
 
-// Set date_of_issue to today in YYYY-MM-DD format
+// Set date_of_issue to today
 nextTick(() => {
   if (certificate.doc && !certificate.doc.date_of_issue) {
     const today = new Date()
     const yyyy = today.getFullYear()
-    const mm = String(today.getMonth() + 1).padStart(2, '0') // Months are 0-based
+    const mm = String(today.getMonth() + 1).padStart(2, '0')
     const dd = String(today.getDate()).padStart(2, '0')
     certificate.doc.date_of_issue = `${yyyy}-${mm}-${dd}`
   }
 })
-
 </script>
 
-<style>
-</style>
+<style></style>
