@@ -3326,9 +3326,7 @@
         if (Array.isArray(err?.messages) && err.messages.length) {
           let text = htmlToText(err.messages.join("\n"));
           if (text) {
-            if (/^Row\s*#\d+/i.test(text) && !/Return entries already exist\./i.test(text)) {
-              text = `Return entries already exist.\n${text}`;
-            }
+            // Show the backend-provided message as-is without adding custom prefixes
             return text;
           }
         }
@@ -3481,11 +3479,7 @@
           if (Array.isArray(err.messages) && err.messages.length) {
             const text = htmlToText(err.messages.join("\n"));
             if (text) {
-              // If server intended a 'Return entries already exist.' title but only returned Row #... in messages,
-              // prefix the title to make it clear to the user.
-              if (/^Row\s*#\d+/i.test(text) && !/Return entries already exist\./i.test(text)) {
-                return `Return entries already exist.\n${text}`;
-              }
+              // Show the backend-provided message as-is without adding custom prefixes
               return text;
             }
           }
