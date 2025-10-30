@@ -159,18 +159,20 @@ function parseRows(rows, columns = []) {
       if (donation.hasOwnProperty(field)) {
         _rows[field] = donation[field];
 
-        if (field == "donor_identity") {
+        if (field === "donor_identity") {
           _rows[field] = {
             label: donation.donor_identity,
             image: donation.image,
             image_label: donation.donor_identity,
           };
-        } else if (field == "status") {
+
+        } else if (field === "status") {
           _rows[field] = {
             label: donation.status,
             color: donation.status === "Active" ? "green" : "red",
           };
-        } else if (field == "_assign") {
+
+        } else if (field === "_assign") {
           try {
             let assignees = JSON.parse(donation._assign || "[]");
             _rows[field] = assignees.map((user) => ({
@@ -181,21 +183,40 @@ function parseRows(rows, columns = []) {
           } catch (e) {
             _rows[field] = [];
           }
+
         } else if (["modified", "creation", "posting_date"].includes(field)) {
           _rows[field] = {
             label: formatDate(donation[field]),
             timeAgo: __(timeAgo(donation[field])),
           };
-        } else if (field == "amount") {
+
+        } else if (field === "due_date") {
+          const date = new Date(donation[field]);
+          if (!isNaN(date)) {
+            const day = String(date.getDate()).padStart(2, "0");
+            const month = String(date.getMonth() + 1).padStart(2, "0");
+            const year = date.getFullYear();
+            _rows[field] = `${day}-${month}-${year}`;
+          } else {
+            _rows[field] = "";
+          }
+
+        } else if (field === "amount") {
           if (donation[field]) {
             _rows[field] = getFormattedCurrency(field, donation);
           }
+
+        } else if (field === "total_donation") {
+          // Format total donation with currency/thousands separators
+          _rows[field] = getFormattedCurrency(field, donation);
         }
       }
     });
+
     return _rows;
   });
 }
+
 
 const handleListRefreshed = () => {
   if (donations.value && donations.value.reload) {

@@ -8,6 +8,8 @@
   "defaults_tab",
   "restore_defaults",
   "enable_forecasting",
+  "section_break_ydyp",
+  "enable",
   "currency_tab",
   "currency",
   "exchange_rate_provider_section",
@@ -105,12 +107,23 @@
   {
    "fieldname": "column_break_vqck",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_ydyp",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "0",
+   "description": "Automatically generate Tax Exemption Certificates for all valid donors and email the PDF of the certificate at the end of the current fiscal year.",
+   "fieldname": "enable",
+   "fieldtype": "Check",
+   "label": "Enable"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-07-29 11:26:50.420614",
+ "modified": "2025-10-30 12:38:06.968492",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "FCRM Settings",
